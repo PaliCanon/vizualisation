@@ -15,4 +15,6 @@ vectors, and committed: CI builds the site from it, never refetches it.
   rustdoc, MSRV 1.88, cargo-deny, coverage.
 - Site: `npm run dev` (port 5390), `npx tsc --noEmit -p .`, `npm run build`.
 - Components copied from palisearch/web keep the source commit in their header: keep them in sync.
-- Deploy: push to main → dev (dev.viz.palicanon.app, Access); tag v* → prod. Infra in `infra/`.
+- Deploy: push to main → dev (dev.viz.palicanon.app, password: functions/_middleware.js, Pages secret
+  DEV_PASSWORD on preview only, from the keychain: account palicanon, service viz-dev-password); tag v* → prod.
+  Infra in `infra/`, applied from the laptop.

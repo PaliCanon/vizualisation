@@ -1,3 +1,2 @@
 # Copy to terraform.tfvars (not committed) and fill in.
 cloudflare_account_id = "0123456789abcdef0123456789abcdef"
-admin_emails          = ["you@example.com"]

@@ -69,7 +69,9 @@ URL partageable : `?map=sim&th=0.75#mn10`. La navigation entre textes passe par 
 
 Site statique sur **Cloudflare Pages** (projet `palicanon-viz`), comme palicanon.app :
 
-- **push sur `main` → dev** : [dev.viz.palicanon.app](https://dev.viz.palicanon.app), réservé par Cloudflare Access ;
+- **push sur `main` → dev** : [dev.viz.palicanon.app](https://dev.viz.palicanon.app), protégé par un mot de passe
+  (`functions/_middleware.js`, secret Pages `DEV_PASSWORD` sur l'environnement preview seulement, posé par l'API
+  Cloudflare depuis le trousseau : compte `palicanon`, service `viz-dev-password`) ;
 - **tag `v*` → prod** : [viz.palicanon.app](https://viz.palicanon.app).
 
 `.github/workflows/deploy.yml` construit le moteur et le site (`.github/actions/build`) puis
@@ -79,11 +81,11 @@ couverture → Codecov) et le site (tsc, build).
 
 L'infra est en OpenTofu dans `infra/`, appliquée à la main (son propre état, préfixe `suttasmap` dans
 le bucket de palicanon) : le projet Pages, les deux domaines (Pages fournit le certificat de `dev.viz`, deux niveaux de
-sous-domaine) et leur DNS, Access sur dev. Appliquée depuis le Mac, comme celle de palicanon.
+sous-domaine) et leur DNS. Appliquée depuis le Mac, comme celle de palicanon.
 
 ```sh
 cd infra
-cp terraform.tfvars.example terraform.tfvars        # id du compte Cloudflare, e-mails autorisés sur dev
+cp terraform.tfvars.example terraform.tfvars        # id du compte Cloudflare
 gcloud auth application-default login               # le bucket d'état
 export CLOUDFLARE_API_TOKEN=$(security find-generic-password -a palicanon -s cloudflare-api-token -w)
 tofu init && tofu apply

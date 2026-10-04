@@ -22,8 +22,3 @@ variable "hosts" {
   type        = object({ prod = string, dev = string })
   default     = { prod = "viz.palicanon.app", dev = "dev.viz.palicanon.app" }
 }
-
-variable "admin_emails" {
-  description = "Who may open the dev site and the previews (Cloudflare Access allow-list)."
-  type        = list(string)
-}

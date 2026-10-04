@@ -1,6 +1,8 @@
 # The map is a static site (vite build -> dist/), deployed by CI with `wrangler pages deploy`
 # (direct upload): a tag pushes the virtual branch `release` (production, viz.palicanon.app),
-# main is the preview that dev.viz.palicanon.app points at, behind Access.
+# main is the preview that dev.viz.palicanon.app points at. Dev (every preview deployment) asks
+# for a password: functions/_middleware.js, the Pages secret DEV_PASSWORD on the preview
+# environment only, set through the Cloudflare API from the keychain (never tofu).
 
 data "cloudflare_zone" "site" {
   name = var.zone
@@ -52,44 +54,3 @@ resource "cloudflare_record" "dev" {
 
 # dev.viz is two levels deep: outside the zone's universal certificate, but a Pages custom domain
 # gets its own certificate from Pages (docs/conventions/deploy.md), so no certificate pack.
-
-# ---------------------------------------------------------------- Access on dev and previews
-
-resource "cloudflare_zero_trust_access_application" "dev" {
-  zone_id          = data.cloudflare_zone.site.id
-  name             = "PaliCanon viz dev"
-  domain           = var.hosts.dev
-  type             = "self_hosted"
-  session_duration = "24h"
-}
-
-resource "cloudflare_zero_trust_access_policy" "dev_allow" {
-  application_id = cloudflare_zero_trust_access_application.dev.id
-  zone_id        = data.cloudflare_zone.site.id
-  name           = "publisher only"
-  precedence     = 1
-  decision       = "allow"
-  include {
-    email = var.admin_emails
-  }
-}
-
-# The *.pages.dev aliases bypass the zone: their own Access app, at account level.
-resource "cloudflare_zero_trust_access_application" "previews" {
-  account_id       = var.cloudflare_account_id
-  name             = "PaliCanon viz previews"
-  domain           = "*.${cloudflare_pages_project.viz.name}.pages.dev"
-  type             = "self_hosted"
-  session_duration = "24h"
-}
-
-resource "cloudflare_zero_trust_access_policy" "previews_allow" {
-  application_id = cloudflare_zero_trust_access_application.previews.id
-  account_id     = var.cloudflare_account_id
-  name           = "publisher only"
-  precedence     = 1
-  decision       = "allow"
-  include {
-    email = var.admin_emails
-  }
-}
