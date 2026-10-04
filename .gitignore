@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.tsbuildinfo
+# SuttaCentral clones (npm run fetch-data): large, re-fetched by script
+data/
+# the engine's build outputs (npm run build:engine)
+engine/target/
+engine/pkg/
+.DS_Store

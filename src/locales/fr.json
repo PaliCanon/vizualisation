@@ -1,0 +1,328 @@
+{
+  "brand": "Suttas Map",
+  "search": {
+    "label": "Chercher dans les suttas",
+    "submit": "Chercher",
+    "searching": "Recherche…",
+    "placeholder": "Trouver un texte : MN 10, sn56.11, Satipaṭṭhāna…"
+  },
+  "settings": {
+    "title": "Réglages",
+    "close": "Fermer",
+    "appearance": "Apparence",
+    "themes": {
+      "dark": "Sombre",
+      "light": "Clair",
+      "sepia": "Sépia"
+    },
+    "language": "Langue",
+    "language_note": "Seule l’interface change : les titres restent en pāli et en anglais."
+  },
+  "views": {
+    "name": "Vue",
+    "liens": "Parallèles SuttaCentral : position calculée à partir des liens",
+    "sim": "Espace vectoriel pāli : textes reliés quand leur similarité dépasse le seuil",
+    "label_sim": "Espace vectoriel",
+    "label_liens": "SuttaCentral"
+  },
+  "legend": {
+    "collections": "Collections",
+    "hint": "Clic : colorer · œil : masquer",
+    "color": "Colorer / décolorer",
+    "hide": "Masquer",
+    "show": "Afficher",
+    "links": "Liens",
+    "toggle": "Afficher / masquer les collections"
+  },
+  "types": {
+    "full": "Parallèle complet",
+    "sections": "Parallèle partiel",
+    "resembling": "Ressemblant",
+    "mentions": "Mention",
+    "retells": "Récit repris",
+    "similar": "Similarité"
+  },
+  "sim": {
+    "threshold": "Seuil de similarité",
+    "stats": "{{links}} liens · {{alone}} textes sans voisin",
+    "hide_alone": "Masquer les textes sans voisin"
+  },
+  "panel": {
+    "read": "Lire sur SuttaCentral",
+    "back": "Retour",
+    "trail": "Textes visités",
+    "close": "Fermer le panneau"
+  },
+  "tooltip": {
+    "links_one": "{{count}} lien",
+    "links_other": "{{count}} liens"
+  },
+  "loading": "Chargement de la carte…",
+  "texts": {
+    "name": "Textes",
+    "all": "Tout le canon",
+    "translated": "{{count}} textes traduits"
+  },
+  "credits": {
+    "sources": "Textes et parallèles issus de SuttaCentral.",
+    "translated": "Traduit par {{names}}.",
+    "dpd": "Espace vectoriel construit avec le Digital Pāḷi Dictionary.",
+    "table_title": "Textes et traducteurs",
+    "table_intro": "Toutes les personnes dont le travail apparaît sur la carte, par langue, dans l’ordre alphabétique.",
+    "col_lang": "Langue",
+    "col_authors": "Édition et traducteurs",
+    "col_texts": "Textes",
+    "pali_edition": "Mahāsaṅgīti Tipiṭaka, Dhamma Society"
+  },
+  "footer": {
+    "sources": "Textes issus de SuttaCentral",
+    "app": "Télécharger l’app iPhone",
+    "theme": "Thème",
+    "shortcut": "Appuyez sur / pour chercher.",
+    "instagram": "Suivre @daily_sutta sur Instagram",
+    "kofi": "Soutenir sur Ko-fi",
+    "dpd": "Sens des mots pālis : Digital Pāḷi Dictionary.",
+    "translator": "Traduction anglaise de Bhikkhu Sujato.",
+    "nav": "Site",
+    "nav_home": "Accueil",
+    "nav_support": "Soutenir",
+    "nav_acknowledgements": "Crédits",
+    "nav_terms": "Conditions",
+    "nav_privacy": "Confidentialité",
+    "nav_legal": "Légal"
+  },
+  "pages": {
+    "updated": "Mis à jour le {{date}}.",
+    "acknowledgements": {
+      "title": "Remerciements",
+      "description": "Qui a fait les textes, traductions, parallèles et le dictionnaire qu’affiche Suttas Map, et sous quelle licence.",
+      "intro": [
+        "Suttas Map dessine le Canon pāli comme une carte. Tout ce qu’elle montre a été réalisé par d’autres et offert : cette page les nomme tous, dans les quatre langues qu’utilise la carte — pāli, anglais, français et vietnamien."
+      ],
+      "sections": [
+        {
+          "h": "SuttaCentral",
+          "p": [
+            "Les textes, leurs titres et résumés, les collections et les parallèles entre textes viennent tous de [SuttaCentral](https://suttacentral.net) ([sc-data](https://github.com/suttacentral/sc-data), [bilara-data](https://github.com/suttacentral/bilara-data)), publiés sous la dédicace Creative Commons CC0. Chaque traduction reste celle de son traducteur. Chaque texte de la carte renvoie à SuttaCentral : lisez-le là-bas, et pensez à [les soutenir](https://suttacentral.net/donations)."
+          ]
+        },
+        {
+          "h": "L’espace vectoriel",
+          "p": [
+            "Les positions de l’espace vectoriel sont calculées à partir du texte pāli lui-même, avec le **Digital Pāḷi Dictionary** de Bhikkhu Bodhirasa ([digitalpalidictionary.github.io](https://digitalpalidictionary.github.io), [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)) pour ramener chaque mot à sa forme de dictionnaire. Aucune entrée du dictionnaire n’est affichée."
+          ]
+        },
+        {
+          "h": "Avec gratitude",
+          "p": [
+            "À chacun des traducteurs nommés ci-dessus, à la Dhamma Society pour l’édition Mahāsaṅgīti, à l’équipe de SuttaCentral pour la publication et l’entretien des textes et de leurs parallèles, et à Bhikkhu Bodhirasa pour le dictionnaire."
+          ]
+        }
+      ]
+    },
+    "terms": {
+      "title": "Conditions d’utilisation",
+      "description": "Les conditions d’utilisation de Suttas Map.",
+      "intro": [
+        "Ces conditions régissent votre utilisation de Suttas Map (le « Service »), édité par {{publisher}} (l’« Éditeur » ; voir [Mentions légales](/legal)). En utilisant le Service, vous les acceptez."
+      ],
+      "sections": [
+        {
+          "h": "1. Le Service",
+          "p": [
+            "Le Service montre les textes du Canon pāli sous forme de carte : les parallèles publiés par SuttaCentral, et un espace où les textes sont placés selon la similarité de leur pāli. Il est gratuit, sans inscription, et fonctionne entièrement dans votre navigateur."
+          ]
+        },
+        {
+          "h": "2. Ce qu’est la carte",
+          "p": [
+            "Les positions, les liens et les scores de similarité sont calculés : ce ne sont pas des jugements sur les textes. Deux textes proches sur la carte peuvent différer, et deux textes éloignés être liés : les textes eux-mêmes, sur SuttaCentral, restent la seule référence."
+          ]
+        },
+        {
+          "h": "3. Textes et propriété intellectuelle",
+          "p": [
+            "Les textes sont publiés par SuttaCentral sous CC0 et restent ceux de leurs traducteurs ; le dictionnaire utilisé pour construire l’espace vectoriel est sous CC BY-NC 4.0 (voir [Remerciements](/acknowledgements)). Le Service lui-même — son code, ses traitements de données, son interface et son nom — est la propriété de l’Éditeur. Vous pouvez l’utiliser pour une consultation personnelle et non commerciale."
+          ]
+        },
+        {
+          "h": "4. Disponibilité et responsabilité",
+          "p": [
+            "Le Service est fourni en l’état, sans garantie de disponibilité ni d’exactitude. L’Éditeur peut le modifier ou l’arrêter à tout moment."
+          ]
+        },
+        {
+          "h": "5. Droit applicable",
+          "p": [
+            "Ces conditions sont régies par le droit français."
+          ]
+        }
+      ]
+    },
+    "privacy": {
+      "title": "Confidentialité",
+      "description": "La politique de confidentialité de Suttas Map : quelles données, pourquoi, et pour combien de temps.",
+      "intro": [
+        "Ceci est l’information requise par le Règlement général sur la protection des données (RGPD). Le responsable du traitement est {{publisher}}, contact {{contact}} (voir [Mentions légales](/legal)). Suttas Map n’a pas de compte, ne dépose aucun cookie et n’utilise ni publicité ni pistage. La recherche se fait dans votre navigateur : ce que vous tapez n’est envoyé nulle part."
+      ],
+      "sections": [
+        {
+          "h": "1. Ce qui est traité",
+          "table": {
+            "head": [
+              "Données",
+              "Finalité",
+              "Base légale (RGPD art. 6)",
+              "Conservation"
+            ],
+            "rows": [
+              [
+                "Journaux de connexion tenus par l’hébergeur : adresse IP, heure, URL demandée, navigateur.",
+                "Sécurité, prévention des abus, bon fonctionnement du Service.",
+                "Intérêt légitime (6.1.f).",
+                "Par l’hébergeur, selon sa propre politique ; en général 30 jours ou moins."
+              ]
+            ]
+          }
+        },
+        {
+          "h": "2. Ce qui reste dans votre navigateur",
+          "p": [
+            "Votre thème et vos langues, les collections colorées ou masquées, les panneaux ouverts ou fermés sont enregistrés dans le stockage local de votre navigateur, jamais envoyés à l’Éditeur. Effacer les données du site dans votre navigateur les supprime."
+          ]
+        },
+        {
+          "h": "3. Vos droits",
+          "p": [
+            "Vous pouvez demander à l’Éditeur, à {{contact}}, l’accès, la rectification ou l’effacement de toute donnée vous concernant, et saisir la CNIL ([cnil.fr](https://www.cnil.fr))."
+          ]
+        }
+      ]
+    },
+    "legal": {
+      "title": "Mentions légales",
+      "description": "Éditeur, hébergement et marques de Suttas Map.",
+      "intro": [],
+      "sections": [
+        {
+          "h": "Éditeur",
+          "p": [
+            "{{publisher}}. Contact : {{contact}}. L’Éditeur publie aussi [PaliCanon](https://palicanon.app) et l’app d’étude Tipiṭaka pour iPhone."
+          ]
+        },
+        {
+          "h": "Hébergement",
+          "list": [
+            "Cloudflare, Inc., 101 Townsend St, San Francisco, CA 94107, États-Unis."
+          ]
+        },
+        {
+          "h": "Marques",
+          "p": [
+            "App Store est une marque d’Apple Inc. ; Instagram de Meta Platforms, Inc. ; Ko-fi de Ko-fi Labs Ltd. Aucune d’elles ne cautionne le Service."
+          ]
+        },
+        {
+          "h": "Voir aussi",
+          "p": [
+            "[Conditions d’utilisation](/terms) · [Confidentialité](/privacy) · [Remerciements](/acknowledgements)"
+          ]
+        }
+      ]
+    },
+    "support": {
+      "title": "Soutenir",
+      "description": "Ce que coûtent Suttas Map, PaliCanon et l’app Tipiṭaka, et comment aider à les garder gratuits.",
+      "intro": [
+        "Suttas Map, PaliCanon et l’app Tipiṭaka pour iPhone sont gratuits : pas de publicité, pas de compte, rien de vous n’est à vendre. Une seule personne les construit et les fait tourner."
+      ],
+      "app": {
+        "h": "L’app Tipiṭaka",
+        "tagline": "Tout le Canon pāli sur votre iPhone, hors ligne : pāli et traductions côte à côte, un dictionnaire sur chaque mot, des parcours d’étude, des notes — en anglais, français et vietnamien.",
+        "cta": "Télécharger l’app iPhone",
+        "alts": [
+          "Écran d’accueil de l’app Tipiṭaka",
+          "Lecture d’un sutta, pāli et traduction côte à côte",
+          "Recherche dans le Canon par mot ou par sens",
+          "Graphe de concepts reliant des passages",
+          "Prise de notes sur un passage"
+        ]
+      },
+      "instagram": {
+        "h": "Sur Instagram",
+        "tagline": "Un sutta par jour, avec une courte réflexion.",
+        "cta": "Suivre sur Instagram"
+      },
+      "sections": [
+        {
+          "h": "Ce que ça coûte",
+          "list": [
+            "Les serveurs et le réseau devant les sites.",
+            "Les noms de domaine.",
+            "L’abonnement développeur Apple qui garde l’app sur l’App Store.",
+            "Le calcul pour construire les index, les cartes et les traductions.",
+            "Le temps : construire, corriger, ajouter des langues."
+          ]
+        },
+        {
+          "h": "Comment aider",
+          "p": [
+            "Un don sur Ko-fi, ponctuel ou mensuel, va directement aux coûts ci-dessus."
+          ],
+          "cta": {
+            "label": "Soutenir sur Ko-fi",
+            "href": "https://ko-fi.com/tipitaka"
+          }
+        },
+        {
+          "h": "Autres façons d’aider",
+          "list": [
+            "Partager un sutta trouvé avec quelqu’un.",
+            "Noter l’app sur l’[App Store](https://apps.apple.com/app/apple-store/id6760995639?pt=128678815&ct=PaliWebMapSupport&mt=8).",
+            "Signaler une erreur : écrire à {{contact}}."
+          ],
+          "p": [
+            "Le Dhamma a toujours été offert librement ; ceci prolonge l’offrande."
+          ]
+        }
+      ],
+      "web": [
+        {
+          "h": "PaliCanon",
+          "name": "PaliCanon",
+          "tagline": "Chercher dans les suttas par mots ou par sens, lire les passages trouvés, et en discuter avec le modèle d’IA de votre choix — en anglais, français et vietnamien.",
+          "cta": "Ouvrir PaliCanon",
+          "href": "https://palicanon.app",
+          "alts": [
+            "Page d’accueil de PaliCanon",
+            "Résultats de recherche pour « how to meditate »"
+          ]
+        },
+        {
+          "h": "Suttas Map",
+          "name": "Suttas Map",
+          "tagline": "Le Canon pāli comme une carte : les parallèles de SuttaCentral entre les textes, et tout le canon placé selon le sens de son pāli.",
+          "cta": "Ouvrir Suttas Map",
+          "href": "https://viz.palicanon.app",
+          "alts": [
+            "La carte SuttaCentral en entier",
+            "Les parallèles de MN 10 sur la carte SuttaCentral",
+            "SN 56.11 dans l’espace vectoriel",
+            "DN 16 et ses parallèles, en français"
+          ]
+        }
+      ]
+    }
+  },
+  "head": {
+    "home_title": "Suttas Map — les liens entre les suttas du Canon pāli",
+    "home_description": "Une carte 3D du Canon pāli : les parallèles de SuttaCentral entre les suttas, et les textes qui se ressemblent en pāli, en anglais, français et vietnamien.",
+    "notfound_title": "Anattā — Suttas Map"
+  },
+  "notfound": {
+    "eyebrow": "404",
+    "title": "Anattā",
+    "body": "Vous cherchiez une page ici et n’y avez trouvé aucun soi. Comme toute chose conditionnée, cette adresse est apparue, et a déjà disparu.",
+    "home": "Revenir à la carte"
+  }
+}

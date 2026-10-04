@@ -1,0 +1,33 @@
+name: deploy
+
+# Push to main → dev (the `main` preview, dev.viz.palicanon.app, behind Access);
+# tag v* → prod (the virtual branch `release`, Pages production, viz.palicanon.app).
+# Infra (the Pages project, domains, DNS, certificate, Access) is infra/, applied by hand.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+concurrency:
+  group: deploy-${{ startsWith(github.ref, 'refs/tags/') && 'prod' || 'dev' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PAGES_PROJECT: palicanon-viz
+  PAGES_BRANCH: ${{ startsWith(github.ref, 'refs/tags/') && 'release' || 'main' }}
+
+jobs:
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/build
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name ${{ env.PAGES_PROJECT }} --branch ${{ env.PAGES_BRANCH }} --commit-dirty=true

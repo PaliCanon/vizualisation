@@ -1,0 +1,24 @@
+name: build
+description: The engine (Rust → wasm32 → wasm-bindgen) then the site (tsc, vite) into dist/.
+runs:
+  using: composite
+  steps:
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: wasm32-unknown-unknown
+    # The CLI must match the wasm-bindgen crate exactly (engine/Cargo.toml pins =0.2.129).
+    - uses: taiki-e/install-action@v2
+      with:
+        tool: wasm-bindgen@0.2.129
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: npm
+    - run: npm ci
+      shell: bash
+    - run: npm run build:engine
+      shell: bash
+    - run: npx tsc --noEmit -p .
+      shell: bash
+    - run: npm run build
+      shell: bash

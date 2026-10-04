@@ -1,0 +1,152 @@
+@import "tailwindcss";
+
+/* Theme tokens live in plain CSS variables so <html data-theme> can swap them;
+   Tailwind utilities read them through @theme inline (bg-page, text-gold, …).
+   Dark is the default; light and sepia are the iOS app's other reading themes. */
+
+
+:root,
+:root[data-theme="dark"] {
+  /* The iOS app's dark theme: cool slate, parchment text, dharma gold. */
+  --ps-page: #20262e;
+  --ps-card: #2c333d;
+  --ps-card-edge: #3c4651;
+  --ps-chip: #262d36;
+  --ps-chip-hover: #2f3742;
+  --ps-line: #333b46;
+  --ps-field: #262d36;
+  --ps-heading: #f0e8df;
+  --ps-ink: #ddd5cb;
+  --ps-muted: #b0a89f;
+  --ps-subtle: #a0978c;
+  --ps-gold: #c9a84c;
+  --ps-gold-hover: #d8b95e;
+  --ps-on-gold: #20262e;
+  --ps-mark: rgb(201 168 76 / 0.16);
+  --ps-danger: #e07a7a;
+  --ps-glass: rgb(44 51 61 / 0.6);
+  --ps-glow: rgb(201 168 76 / 0.2);
+  --ps-halo: rgb(201 168 76 / 0.14);
+  --ps-card-from: #2c333d;
+  --ps-card-to: #242a33;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --ps-page: #fdf6e3;
+  --ps-card: #f5ecd7;
+  --ps-card-edge: #e3d4b4;
+  --ps-chip: #f0e5cc;
+  --ps-chip-hover: #e8dab9;
+  --ps-line: #ede0c8;
+  --ps-field: #fffaf0;
+  --ps-heading: #2c1810;
+  --ps-ink: #3d2a1e;
+  --ps-muted: #5c4a3d;
+  --ps-subtle: #6f6152;
+  --ps-gold: #84590a;
+  --ps-gold-hover: #6e4a08;
+  --ps-on-gold: #fffaf0;
+  --ps-mark: rgb(232 163 23 / 0.22);
+  --ps-danger: #b03a3a;
+  --ps-glass: rgb(245 236 215 / 0.8);
+  --ps-glow: rgb(184 125 15 / 0.18);
+  --ps-halo: rgb(184 125 15 / 0.1);
+  --ps-card-from: #fffaf0;
+  --ps-card-to: #f5ecd7;
+  color-scheme: light;
+}
+:root[data-theme="sepia"] {
+  --ps-page: #f7eac6;
+  --ps-card: #efdeb4;
+  --ps-card-edge: #d8c28f;
+  --ps-chip: #ecdaa9;
+  --ps-chip-hover: #e3cd93;
+  --ps-line: #decb9e;
+  --ps-field: #fbf1d6;
+  --ps-heading: #2c1810;
+  --ps-ink: #3d2a1e;
+  --ps-muted: #5c4a3d;
+  --ps-subtle: #6d5a35;
+  --ps-gold: #84590a;
+  --ps-gold-hover: #6e4a08;
+  --ps-on-gold: #fbf1d6;
+  --ps-mark: rgb(232 163 23 / 0.25);
+  --ps-danger: #a83535;
+  --ps-glass: rgb(239 222 180 / 0.8);
+  --ps-glow: rgb(184 125 15 / 0.2);
+  --ps-halo: rgb(184 125 15 / 0.12);
+  --ps-card-from: #fbf1d6;
+  --ps-card-to: #efdeb4;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-page: var(--ps-page);
+  --color-card: var(--ps-card);
+  --color-card-edge: var(--ps-card-edge);
+  --color-chip: var(--ps-chip);
+  --color-chip-hover: var(--ps-chip-hover);
+  --color-line: var(--ps-line);
+  --color-field: var(--ps-field);
+  --color-heading: var(--ps-heading);
+  --color-ink: var(--ps-ink);
+  --color-muted: var(--ps-muted);
+  --color-subtle: var(--ps-subtle);
+  --color-gold: var(--ps-gold);
+  --color-gold-hover: var(--ps-gold-hover);
+  --color-on-gold: var(--ps-on-gold);
+  --color-mark: var(--ps-mark);
+  --color-danger: var(--ps-danger);
+  --color-glass: var(--ps-glass);
+  --color-glow: var(--ps-glow);
+  --color-halo: var(--ps-halo);
+  --color-card-from: var(--ps-card-from);
+  --color-card-to: var(--ps-card-to);
+  --font-serif: Lora, "Iowan Old Style", Georgia, serif;
+  --font-sans: Inter, -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@layer base {
+  html { background: var(--ps-page); overflow-x: clip; }
+  body { @apply bg-page text-ink font-sans antialiased; overflow-x: clip; -webkit-tap-highlight-color: transparent; }
+  :focus-visible { @apply outline-2 outline-offset-2 outline-gold rounded-sm; }
+  mark { @apply bg-mark text-inherit rounded-[2px]; box-shadow: 0 1.5px 0 var(--ps-gold); }
+  input[type="search"]::-webkit-search-cancel-button { appearance: none; }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.animate-rise { animation: rise 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise { animation: none; }
+  *, *::before, *::after { transition: none !important; }
+}
+
+/* iOS Safari zooms the whole page when a focused field's text is under 16px
+   and does not zoom back out — the "site is wider than my phone" effect. On
+   phones every field renders at 16px at least; unlayered, so it wins over the
+   utility classes a component sets. */
+@media (max-width: 639px) {
+  input,
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* The passage of the day fades in when it changes; a CSS animation, not a
+   state flip, so it never stays invisible when frames are throttled. */
+@keyframes passage-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.passage-in {
+  animation: passage-in 0.5s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .passage-in { animation: none; }
+}

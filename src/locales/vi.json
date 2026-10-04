@@ -1,0 +1,328 @@
+{
+  "brand": "Suttas Map",
+  "search": {
+    "label": "Tìm trong các bài kinh",
+    "submit": "Tìm",
+    "searching": "Đang tìm…",
+    "placeholder": "Tìm một bài kinh: MN 10, sn56.11, Satipaṭṭhāna…"
+  },
+  "settings": {
+    "title": "Cài đặt",
+    "close": "Đóng",
+    "appearance": "Giao diện",
+    "themes": {
+      "dark": "Tối",
+      "light": "Sáng",
+      "sepia": "Nâu cổ"
+    },
+    "language": "Ngôn ngữ",
+    "language_note": "Chỉ giao diện thay đổi: tên các bài kinh vẫn bằng tiếng Pāli và tiếng Anh."
+  },
+  "views": {
+    "name": "Chế độ xem",
+    "liens": "Các bài kinh tương đương của SuttaCentral: vị trí được tính từ các liên kết",
+    "sim": "Không gian vectơ Pāli: các bài kinh được nối khi độ tương đồng vượt ngưỡng",
+    "label_sim": "Không gian vectơ",
+    "label_liens": "SuttaCentral"
+  },
+  "legend": {
+    "collections": "Bộ kinh",
+    "hint": "Nhấp: tô màu · mắt: ẩn",
+    "color": "Tô màu / bỏ màu",
+    "hide": "Ẩn",
+    "show": "Hiện",
+    "links": "Liên kết",
+    "toggle": "Hiện / ẩn các bộ kinh"
+  },
+  "types": {
+    "full": "Tương đương hoàn toàn",
+    "sections": "Tương đương một phần",
+    "resembling": "Tương tự",
+    "mentions": "Nhắc đến",
+    "retells": "Kể lại",
+    "similar": "Độ tương đồng"
+  },
+  "sim": {
+    "threshold": "Ngưỡng tương đồng",
+    "stats": "{{links}} liên kết · {{alone}} bài kinh không có láng giềng",
+    "hide_alone": "Ẩn các bài kinh không có láng giềng"
+  },
+  "panel": {
+    "read": "Đọc trên SuttaCentral",
+    "back": "Quay lại",
+    "trail": "Các bài kinh đã xem",
+    "close": "Đóng bảng"
+  },
+  "tooltip": {
+    "links_one": "{{count}} liên kết",
+    "links_other": "{{count}} liên kết"
+  },
+  "loading": "Đang tải bản đồ…",
+  "texts": {
+    "name": "Văn bản",
+    "all": "Toàn bộ Kinh tạng",
+    "translated": "{{count}} bài kinh đã dịch"
+  },
+  "credits": {
+    "sources": "Kinh văn và các bài tương đương từ SuttaCentral.",
+    "translated": "Dịch bởi {{names}}.",
+    "dpd": "Không gian vectơ được xây dựng với Digital Pāḷi Dictionary.",
+    "table_title": "Kinh văn và dịch giả",
+    "table_intro": "Tất cả những người có công trình xuất hiện trên bản đồ, theo ngôn ngữ, xếp theo thứ tự chữ cái.",
+    "col_lang": "Ngôn ngữ",
+    "col_authors": "Ấn bản và dịch giả",
+    "col_texts": "Số bài",
+    "pali_edition": "Mahāsaṅgīti Tipiṭaka, Dhamma Society"
+  },
+  "footer": {
+    "sources": "Kinh văn từ SuttaCentral",
+    "app": "Tải ứng dụng cho iPhone",
+    "theme": "Giao diện",
+    "shortcut": "Nhấn / để tìm kiếm.",
+    "instagram": "Theo dõi @daily_sutta trên Instagram",
+    "kofi": "Ủng hộ trên Ko-fi",
+    "dpd": "Nghĩa từ Pāli lấy từ Digital Pāḷi Dictionary.",
+    "translator": "Bản dịch tiếng Anh của Tỳ-kheo Sujato.",
+    "nav": "Trang",
+    "nav_home": "Trang chủ",
+    "nav_support": "Ủng hộ",
+    "nav_acknowledgements": "Tri ân",
+    "nav_terms": "Điều khoản",
+    "nav_privacy": "Quyền riêng tư",
+    "nav_legal": "Pháp lý"
+  },
+  "pages": {
+    "updated": "Cập nhật lần cuối {{date}}.",
+    "acknowledgements": {
+      "title": "Tri ân",
+      "description": "Ai đã làm ra kinh văn, bản dịch, các bài tương đương và từ điển mà Suttas Map hiển thị, theo giấy phép nào.",
+      "intro": [
+        "Suttas Map vẽ Kinh tạng Pāli thành một bản đồ. Mọi thứ hiển thị ở đây đều do người khác làm ra và rộng lòng trao tặng: trang này ghi tên tất cả, trong bốn ngôn ngữ mà bản đồ dùng — Pāli, tiếng Anh, tiếng Pháp và tiếng Việt."
+      ],
+      "sections": [
+        {
+          "h": "SuttaCentral",
+          "p": [
+            "Kinh văn, tên kinh và phần tóm lược, các bộ kinh và các bài tương đương giữa các kinh đều lấy từ [SuttaCentral](https://suttacentral.net) ([sc-data](https://github.com/suttacentral/sc-data), [bilara-data](https://github.com/suttacentral/bilara-data)), công bố theo tuyên bố Creative Commons CC0. Mỗi bản dịch thuộc về dịch giả của nó. Mỗi bài kinh trên bản đồ đều dẫn về SuttaCentral: xin hãy đọc ở đó, và cân nhắc [ủng hộ họ](https://suttacentral.net/donations)."
+          ]
+        },
+        {
+          "h": "Không gian vectơ",
+          "p": [
+            "Vị trí trong không gian vectơ được tính từ chính văn bản Pāli, với **Digital Pāḷi Dictionary** của Tỳ-kheo Bodhirasa ([digitalpalidictionary.github.io](https://digitalpalidictionary.github.io), [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)) để đưa mỗi từ về dạng gốc trong từ điển. Không mục từ nào được hiển thị."
+          ]
+        },
+        {
+          "h": "Với lòng biết ơn",
+          "p": [
+            "Xin tri ân từng dịch giả có tên ở trên, Dhamma Society vì ấn bản Mahāsaṅgīti, nhóm SuttaCentral đã xuất bản và gìn giữ kinh văn cùng các bài tương đương, và Tỳ-kheo Bodhirasa vì bộ từ điển."
+          ]
+        }
+      ]
+    },
+    "terms": {
+      "title": "Điều khoản sử dụng",
+      "description": "Các điều khoản sử dụng Suttas Map.",
+      "intro": [
+        "Các điều khoản này áp dụng cho việc bạn sử dụng Suttas Map (“Dịch vụ”), do {{publisher}} (“Nhà xuất bản”; xem [Pháp lý](/legal)) công bố. Khi sử dụng Dịch vụ, bạn chấp nhận các điều khoản này."
+      ],
+      "sections": [
+        {
+          "h": "1. Dịch vụ",
+          "p": [
+            "Dịch vụ hiển thị các bài kinh của Kinh tạng Pāli dưới dạng bản đồ: các bài tương đương do SuttaCentral công bố, và một không gian nơi các bài kinh được đặt theo độ tương đồng của văn bản Pāli. Dịch vụ miễn phí, không cần đăng ký và chạy hoàn toàn trong trình duyệt của bạn."
+          ]
+        },
+        {
+          "h": "2. Bản đồ là gì",
+          "p": [
+            "Vị trí, liên kết và điểm tương đồng đều được tính toán, không phải là nhận định về kinh văn. Hai bài kinh gần nhau trên bản đồ có thể khác nhau, hai bài xa nhau có thể liên quan: chính kinh văn trên SuttaCentral mới là chuẩn mực duy nhất."
+          ]
+        },
+        {
+          "h": "3. Kinh văn và sở hữu trí tuệ",
+          "p": [
+            "Kinh văn do SuttaCentral công bố theo CC0 và thuộc về dịch giả; từ điển dùng để xây dựng không gian vectơ theo giấy phép CC BY-NC 4.0 (xem [Tri ân](/acknowledgements)). Bản thân Dịch vụ — mã nguồn, xử lý dữ liệu, giao diện và tên gọi — thuộc sở hữu của Nhà xuất bản. Bạn được dùng để tham khảo cá nhân, phi thương mại."
+          ]
+        },
+        {
+          "h": "4. Tính sẵn có và trách nhiệm",
+          "p": [
+            "Dịch vụ được cung cấp nguyên trạng, không bảo đảm về tính sẵn có hay độ chính xác. Nhà xuất bản có thể thay đổi hoặc ngừng Dịch vụ bất cứ lúc nào."
+          ]
+        },
+        {
+          "h": "5. Luật áp dụng",
+          "p": [
+            "Các điều khoản này tuân theo luật pháp Pháp."
+          ]
+        }
+      ]
+    },
+    "privacy": {
+      "title": "Quyền riêng tư",
+      "description": "Chính sách quyền riêng tư của Suttas Map: dữ liệu nào được xử lý, vì sao và trong bao lâu.",
+      "intro": [
+        "Đây là thông báo về quyền riêng tư theo Quy định chung về bảo vệ dữ liệu (GDPR). Bên kiểm soát dữ liệu là {{publisher}}, liên hệ {{contact}} (xem [Pháp lý](/legal)). Suttas Map không có tài khoản, không đặt cookie, không quảng cáo hay theo dõi. Việc tìm kiếm diễn ra trong trình duyệt của bạn: những gì bạn gõ không được gửi đi đâu cả."
+      ],
+      "sections": [
+        {
+          "h": "1. Những gì được xử lý",
+          "table": {
+            "head": [
+              "Dữ liệu",
+              "Mục đích",
+              "Cơ sở pháp lý (GDPR điều 6)",
+              "Lưu giữ"
+            ],
+            "rows": [
+              [
+                "Nhật ký kết nối do nhà cung cấp lưu trữ giữ: địa chỉ IP, thời gian, URL được yêu cầu, trình duyệt.",
+                "An ninh, ngăn chặn lạm dụng, duy trì hoạt động của Dịch vụ.",
+                "Lợi ích chính đáng (6.1.f).",
+                "Do nhà cung cấp lưu theo chính sách riêng; thường 30 ngày hoặc ít hơn."
+              ]
+            ]
+          }
+        },
+        {
+          "h": "2. Những gì ở lại trong trình duyệt của bạn",
+          "p": [
+            "Giao diện và ngôn ngữ, các bộ kinh bạn tô màu hay ẩn, các bảng bạn mở hay đóng được lưu trong bộ nhớ cục bộ của trình duyệt, không bao giờ gửi cho Nhà xuất bản. Xóa dữ liệu trang web trong trình duyệt sẽ xóa chúng."
+          ]
+        },
+        {
+          "h": "3. Quyền của bạn",
+          "p": [
+            "Bạn có thể yêu cầu Nhà xuất bản, qua {{contact}}, truy cập, chỉnh sửa hoặc xóa mọi dữ liệu liên quan đến bạn, và khiếu nại với CNIL ([cnil.fr](https://www.cnil.fr))."
+          ]
+        }
+      ]
+    },
+    "legal": {
+      "title": "Thông tin pháp lý",
+      "description": "Nhà xuất bản, lưu trữ và nhãn hiệu của Suttas Map.",
+      "intro": [],
+      "sections": [
+        {
+          "h": "Nhà xuất bản",
+          "p": [
+            "{{publisher}}. Liên hệ: {{contact}}. Nhà xuất bản cũng phát hành [PaliCanon](https://palicanon.app) và ứng dụng học Tipiṭaka cho iPhone."
+          ]
+        },
+        {
+          "h": "Lưu trữ",
+          "list": [
+            "Cloudflare, Inc., 101 Townsend St, San Francisco, CA 94107, Hoa Kỳ."
+          ]
+        },
+        {
+          "h": "Nhãn hiệu",
+          "p": [
+            "App Store là nhãn hiệu của Apple Inc.; Instagram của Meta Platforms, Inc.; Ko-fi của Ko-fi Labs Ltd. Không bên nào bảo trợ Dịch vụ."
+          ]
+        },
+        {
+          "h": "Xem thêm",
+          "p": [
+            "[Điều khoản sử dụng](/terms) · [Quyền riêng tư](/privacy) · [Tri ân](/acknowledgements)"
+          ]
+        }
+      ]
+    },
+    "support": {
+      "title": "Ủng hộ",
+      "description": "Chi phí vận hành Suttas Map, PaliCanon và ứng dụng Tipiṭaka, và cách bạn có thể giúp giữ chúng miễn phí.",
+      "intro": [
+        "Suttas Map, PaliCanon và ứng dụng Tipiṭaka cho iPhone đều miễn phí: không quảng cáo, không tài khoản, không bán thông tin của bạn. Một người duy nhất xây dựng và duy trì chúng."
+      ],
+      "app": {
+        "h": "Ứng dụng Tipiṭaka",
+        "tagline": "Toàn bộ Kinh tạng Pāli trên iPhone, dùng ngoại tuyến: Pāli và bản dịch song song, từ điển trên từng chữ, lộ trình học, ghi chú — bằng tiếng Anh, tiếng Pháp và tiếng Việt.",
+        "cta": "Tải ứng dụng cho iPhone",
+        "alts": [
+          "Màn hình chính của ứng dụng Tipiṭaka",
+          "Đọc kinh, Pāli và bản dịch song song",
+          "Tìm trong Kinh tạng theo từ hoặc theo nghĩa",
+          "Đồ thị khái niệm nối các đoạn kinh liên quan",
+          "Ghi chú trên một đoạn kinh"
+        ]
+      },
+      "instagram": {
+        "h": "Trên Instagram",
+        "tagline": "Mỗi ngày một bài kinh, kèm một suy ngẫm ngắn.",
+        "cta": "Theo dõi trên Instagram"
+      },
+      "sections": [
+        {
+          "h": "Chi phí",
+          "list": [
+            "Máy chủ và mạng lưới phía trước các trang web.",
+            "Tên miền.",
+            "Phí thành viên nhà phát triển Apple để giữ ứng dụng trên App Store.",
+            "Tài nguyên tính toán để xây dựng chỉ mục, bản đồ và bản dịch.",
+            "Thời gian: xây dựng, sửa lỗi, thêm ngôn ngữ."
+          ]
+        },
+        {
+          "h": "Cách giúp đỡ",
+          "p": [
+            "Một khoản đóng góp trên Ko-fi, một lần hay hằng tháng, sẽ dùng trực tiếp cho các chi phí trên."
+          ],
+          "cta": {
+            "label": "Ủng hộ trên Ko-fi",
+            "href": "https://ko-fi.com/tipitaka"
+          }
+        },
+        {
+          "h": "Những cách khác",
+          "list": [
+            "Chia sẻ một bài kinh bạn tìm thấy với ai đó.",
+            "Đánh giá ứng dụng trên [App Store](https://apps.apple.com/app/apple-store/id6760995639?pt=128678815&ct=PaliWebMapSupport&mt=8).",
+            "Báo lỗi: viết cho {{contact}}."
+          ],
+          "p": [
+            "Giáo pháp xưa nay luôn được trao tặng miễn phí; điều này giúp sự trao tặng được tiếp nối."
+          ]
+        }
+      ],
+      "web": [
+        {
+          "h": "PaliCanon",
+          "name": "PaliCanon",
+          "tagline": "Tìm kinh theo từ hoặc theo nghĩa, đọc các đoạn tìm được, và trao đổi với mô hình AI bạn chọn — bằng tiếng Anh, tiếng Pháp và tiếng Việt.",
+          "cta": "Mở PaliCanon",
+          "href": "https://palicanon.app",
+          "alts": [
+            "Trang chủ PaliCanon",
+            "Kết quả tìm kiếm cho “how to meditate”"
+          ]
+        },
+        {
+          "h": "Suttas Map",
+          "name": "Suttas Map",
+          "tagline": "Kinh tạng Pāli dưới dạng bản đồ: các bài tương đương của SuttaCentral, và toàn bộ Kinh tạng được đặt theo nghĩa của văn bản Pāli.",
+          "cta": "Mở Suttas Map",
+          "href": "https://viz.palicanon.app",
+          "alts": [
+            "Toàn bộ bản đồ SuttaCentral",
+            "Các bài tương đương của MN 10 trên bản đồ SuttaCentral",
+            "SN 56.11 trong không gian vectơ",
+            "DN 16 và các bài tương đương, bằng tiếng Pháp"
+          ]
+        }
+      ]
+    }
+  },
+  "head": {
+    "home_title": "Suttas Map — mối liên hệ giữa các bài kinh trong Kinh tạng Pāli",
+    "home_description": "Bản đồ 3D của Kinh tạng Pāli: các bài kinh tương đương theo SuttaCentral, và những bài kinh giống nhau trong tiếng Pāli, bằng tiếng Anh, Pháp và Việt.",
+    "notfound_title": "Anattā — Suttas Map"
+  },
+  "notfound": {
+    "eyebrow": "404",
+    "title": "Anattā",
+    "body": "Bạn tìm một trang ở đây và không thấy có tự ngã nào trong đó. Như mọi pháp hữu vi, địa chỉ này đã sinh khởi, và đã diệt đi rồi.",
+    "home": "Trở về bản đồ"
+  }
+}
