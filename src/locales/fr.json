@@ -23,7 +23,13 @@
     "liens": "Parallèles SuttaCentral : position calculée à partir des liens",
     "sim": "Espace vectoriel pāli : textes reliés quand leur similarité dépasse le seuil",
     "label_sim": "Espace vectoriel",
-    "label_liens": "SuttaCentral"
+    "label_liens": "SuttaCentral",
+    "label_pca": "Test · ACP 3D",
+    "label_tsne": "Test · t-SNE 3D",
+    "label_umap": "Test · UMAP 3D",
+    "pca": "Espace vectoriel pāli placé par ses 3 directions principales (ACP), sans simulation",
+    "tsne": "Espace vectoriel pāli réduit en 3D par t-SNE : voisinages gardés, sans simulation",
+    "umap": "Espace vectoriel pāli réduit en 3D par UMAP : voisinages et forme d'ensemble, sans simulation"
   },
   "legend": {
     "collections": "Collections",

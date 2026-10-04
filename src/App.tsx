@@ -83,36 +83,32 @@ function loadView(name: MapName) {
   return v;
 }
 
-const initialMap = (): MapName => (new URLSearchParams(location.search).get("map") === "sim" ? "sim" : "liens");
+const initialMap = (): MapName => {
+  const m = new URLSearchParams(location.search).get("map");
+  return MAPS.find((v) => v.value === m)?.value ?? "liens";
+};
 
 export function App() {
   const { t, i18n } = useTranslation();
   useHead({ title: t("head.home_title"), description: t("head.home_description"), canonical: "/" });
   const [translations, setTranslations] = useState<Translations | null>(null);
   useEffect(() => { void loadTranslations().then(setTranslations); }, []);
-  // Texts language: follows the interface language until picked in the chip; changing the
-  // interface language makes it follow again.
+  // Texts language: Pāli (the whole canon) until another is picked in the chip; the choice is kept.
   const uiLang = (i18n.resolvedLanguage ?? "en") as TextLang;
   const [textLangChoice, setTextLangChoice] = useState<TextLang | null>(() => {
     try { return localStorage.getItem(TEXT_LANG_KEY) as TextLang | null; } catch { return null; }
   });
-  const firstUiLang = useRef(uiLang);
-  useEffect(() => {
-    if (uiLang === firstUiLang.current) return;
-    firstUiLang.current = uiLang;
-    setTextLangChoice(null);
-  }, [uiLang]);
   useEffect(() => {
     try {
       if (textLangChoice) localStorage.setItem(TEXT_LANG_KEY, textLangChoice);
       else localStorage.removeItem(TEXT_LANG_KEY);
     } catch { /* private mode */ }
   }, [textLangChoice]);
-  const textLang: TextLang = textLangChoice ?? uiLang;
+  const textLang: TextLang = textLangChoice ?? "pli";
   const langTitles = textLang === "pli" ? null : (translations?.[textLang]?.titles ?? null);
-  // Glosses and summaries in the texts' language; English ones when the texts are in Pāli, and for
-  // the summaries SuttaCentral has not translated.
-  const glossLang = textLang === "pli" ? "en" : textLang;
+  // Glosses and summaries in the texts' language; in the interface language when the texts are in
+  // Pāli (English where SuttaCentral has no translation).
+  const glossLang = textLang === "pli" ? (uiLang === "pli" ? "en" : uiLang) : textLang;
   const [blurbs, setBlurbs] = useState<{ lang: Record<string, string>; en: Record<string, string> }>({ lang: {}, en: {} });
   useEffect(() => {
     let live = true;
@@ -210,7 +206,7 @@ export function App() {
       }
       setTypeOn(g.types.map(() => true));
       setGraph(g);
-      setTimeout(() => MAPS.forEach((m) => void loadView(m.value)), 0); // the other view, ahead of time
+      setTimeout(() => (["liens", "sim"] as MapName[]).forEach((m) => void loadView(m)), 0); // the main views, ahead of time
     });
     return () => { live = false; };
   }, [mapName]);
@@ -323,7 +319,7 @@ export function App() {
   useEffect(() => {
     if (!engine || !graph?.sim || !pairs) return;
     const { edges, sims } = linksAt(pairs, threshold, graph.nodes.length);
-    engine.setLinks(edges, sims, threshold !== laidOutAt.current);
+    engine.setLinks(edges, sims, !graph.fixed && threshold !== laidOutAt.current);
     laidOutAt.current = threshold;
     setLinksVersion((v) => v + 1);
   }, [engine, graph, pairs, threshold]);
@@ -540,7 +536,7 @@ export function App() {
               refOf={refOf}
               blurbOf={blurbOf}
               translatorOf={translatorOf}
-              dpd={mapName === "sim"}
+              dpd={!!graph.sim}
               onPick={(j) => choose(j)}
               onClose={() => setPanelOpen(false)}
               trail={trail.map((uid) => {
