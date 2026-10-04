@@ -8,7 +8,9 @@ positions; `fixed: true` tells the page not to re-run the layout when the thresh
 
 Run with pali-embedder's environment (scikit-learn, umap-learn):
     ../pali-embedder/.venv/bin/python scripts/reduce-3d.py [pca tsne umap]
--> public/graph-sim-<method>.json, scaled like graph-sim.json (95th-percentile radius).
+      -> public/graph-sim-<method>.json, scaled like graph-sim.json (95th-percentile radius)
+    ../pali-embedder/.venv/bin/python scripts/reduce-3d.py --into tsne
+      -> the positions of public/graph-sim.json itself (the vectorial space view; npm run build-sim)
 """
 import json
 import sys
@@ -39,7 +41,8 @@ def reduce(method, X):
 
 
 def main():
-    methods = sys.argv[1:] or ["pca", "tsne", "umap"]
+    into = "--into" in sys.argv
+    methods = [a for a in sys.argv[1:] if a != "--into"] or ["pca", "tsne", "umap"]
     base = json.loads((ROOT / "public/graph-sim.json").read_text())
     uids, V = vectors.read(VEC.with_suffix(".bin"), 512, VEC.with_suffix(".json"))
     pos = {u: i for i, u in enumerate(uids)}
@@ -54,8 +57,10 @@ def main():
         g = dict(base)
         g["nodes"] = [n[:7] + [round(float(x), 1) for x in p] for n, p in zip(base["nodes"], P)]
         g["fixed"] = True
-        (ROOT / f"public/graph-sim-{m}.json").write_text(json.dumps(g, ensure_ascii=False, separators=(",", ":")))
-        print(f"{m}: {time.time() - t0:.0f}s -> public/graph-sim-{m}.json", flush=True)
+        out = ROOT / ("public/graph-sim.json" if into else f"public/graph-sim-{m}.json")
+        g["layout"] = m
+        out.write_text(json.dumps(g, ensure_ascii=False, separators=(",", ":")))
+        print(f"{m}: {time.time() - t0:.0f}s -> {out.relative_to(ROOT)}", flush=True)
 
 
 if __name__ == "__main__":
