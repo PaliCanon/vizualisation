@@ -50,17 +50,8 @@ resource "cloudflare_record" "dev" {
   proxied = true
 }
 
-# Universal SSL covers the apex and one level (*.palicanon.app); dev.viz is two levels deep, so
-# it gets its own edge certificate (an advanced pack must list the apex too).
-resource "cloudflare_certificate_pack" "dev" {
-  zone_id               = data.cloudflare_zone.site.id
-  type                  = "advanced"
-  hosts                 = [var.zone, var.hosts.dev]
-  validation_method     = "txt"
-  validity_days         = 90
-  certificate_authority = "google"
-  cloudflare_branding   = false
-}
+# dev.viz is two levels deep: outside the zone's universal certificate, but a Pages custom domain
+# gets its own certificate from Pages (docs/conventions/deploy.md), so no certificate pack.
 
 # ---------------------------------------------------------------- Access on dev and previews
 

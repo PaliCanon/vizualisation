@@ -17,5 +17,5 @@ terraform {
 
 # Credentials come from the environment, never from files in the repo:
 #   gcloud auth application-default login        (the state bucket)
-#   export CLOUDFLARE_API_TOKEN=…   (zone: DNS, SSL certificates, Access; account: Pages, Access)
+#   export CLOUDFLARE_API_TOKEN=…   (zone: DNS, Access; account: Pages, Access)
 provider "cloudflare" {}

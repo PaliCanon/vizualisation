@@ -78,8 +78,8 @@ Site statique sur **Cloudflare Pages** (projet `palicanon-viz`), comme palicanon
 couverture → Codecov) et le site (tsc, build).
 
 L'infra est en OpenTofu dans `infra/`, appliquée à la main (son propre état, préfixe `suttasmap` dans
-le bucket de palicanon) : le projet Pages, les deux domaines, leur DNS, le certificat de `dev.viz`
-(deux niveaux de sous-domaine : hors du certificat universel) et Access.
+le bucket de palicanon) : le projet Pages, les deux domaines (Pages fournit le certificat de `dev.viz`, deux niveaux de
+sous-domaine) et leur DNS, Access sur dev. Appliquée depuis le Mac, comme celle de palicanon.
 
 ```sh
 cd infra
