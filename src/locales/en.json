@@ -21,12 +21,14 @@
   "views": {
     "name": "View",
     "liens": "SuttaCentral parallels: positions computed from the links",
-    "sim": "Pāli vectorial space placed by t-SNE of the Pāli vectors; texts linked when their similarity is above the threshold",
+    "sim": "Pāli vectorial space: texts linked when their similarity is above the threshold",
     "label_sim": "Vectorial space",
     "label_liens": "SuttaCentral",
     "label_pca": "Test · PCA 3D",
+    "label_tsne": "Test · t-SNE 3D",
     "label_umap": "Test · UMAP 3D",
     "pca": "Pāli vectorial space placed by its 3 main directions (PCA), no layout",
+    "tsne": "Pāli vectorial space reduced to 3D by t-SNE: neighbourhoods kept, no layout",
     "umap": "Pāli vectorial space reduced to 3D by UMAP: neighbourhoods and global shape, no layout"
   },
   "legend": {
