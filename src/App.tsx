@@ -60,12 +60,27 @@ const useThree = new URLSearchParams(location.search).get("engine") === "three";
 async function createEngine(canvas: HTMLCanvasElement, graph: Graph, theme: ReturnType<typeof mapTheme>, events: EngineEvents): Promise<Engine> {
   if (!useThree) {
     try {
-      return await RustMapEngine.create(canvas, graph, theme, events);
+      const e = await RustMapEngine.create(canvas, graph, theme, events);
+      document.documentElement.dataset.engine = "rust"; // which engine draws: visible in the dev tools
+      return e;
     } catch (err) {
       console.warn("Rust map engine unavailable, using three.js", err);
     }
   }
+  document.documentElement.dataset.engine = "three";
   return new MapEngine(canvas, graph, theme, events);
+}
+
+// Each view's data, fetched once per page (the vectorial space also has its similarity pairs):
+// switching back is instant, and the other view is fetched in the background after the first.
+const views = new Map<MapName, Promise<{ g: Graph; p: Pairs | null }>>();
+function loadView(name: MapName) {
+  let v = views.get(name);
+  if (!v) {
+    v = loadGraph(name).then(async (g) => ({ g, p: g.sim ? await loadPairs(g.sim) : null }));
+    views.set(name, v);
+  }
+  return v;
 }
 
 const initialMap = (): MapName => (new URLSearchParams(location.search).get("map") === "sim" ? "sim" : "liens");
@@ -179,15 +194,13 @@ export function App() {
   const [active, setActive] = useState(0);
 
   // ---------- Load the view ----------
+  // The current view stays on screen until the next one is ready (no blank "Loading…" between
+  // views); the engine is given the new graph in place.
   useEffect(() => {
     let live = true;
-    setGraph(null);
-    setPairs(null);
-    loadGraph(mapName).then(async (g) => {
+    loadView(mapName).then(({ g, p }) => {
       if (!live) return;
-      if (g.sim) {
-        const p = await loadPairs(g.sim);
-        if (!live) return;
+      if (g.sim && p) {
         const fromUrl = Number(new URLSearchParams(location.search).get("th"));
         const th = fromUrl >= g.sim.min && fromUrl <= g.sim.max ? fromUrl : g.sim.default;
         laidOutAt.current = g.sim.default; // positions in the JSON are for the default threshold
@@ -197,6 +210,7 @@ export function App() {
       }
       setTypeOn(g.types.map(() => true));
       setGraph(g);
+      setTimeout(() => MAPS.forEach((m) => void loadView(m.value)), 0); // the other view, ahead of time
     });
     return () => { live = false; };
   }, [mapName]);
