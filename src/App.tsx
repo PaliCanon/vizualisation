@@ -93,11 +93,18 @@ export function App() {
   useHead({ title: t("head.home_title"), description: t("head.home_description"), canonical: "/" });
   const [translations, setTranslations] = useState<Translations | null>(null);
   useEffect(() => { void loadTranslations().then(setTranslations); }, []);
-  // Texts language: Pāli (the whole canon) until another is picked in the chip; the choice is kept.
+  // Texts language: Pāli (the whole canon) on a first visit; switching the interface language shows
+  // the texts translated into it; the chip picks any, Pāli included. The choice is kept.
   const uiLang = (i18n.resolvedLanguage ?? "en") as TextLang;
   const [textLangChoice, setTextLangChoice] = useState<TextLang | null>(() => {
     try { return localStorage.getItem(TEXT_LANG_KEY) as TextLang | null; } catch { return null; }
   });
+  const lastUiLang = useRef(uiLang);
+  useEffect(() => {
+    if (uiLang === lastUiLang.current) return;
+    lastUiLang.current = uiLang;
+    setTextLangChoice(uiLang);
+  }, [uiLang]);
   useEffect(() => {
     try {
       if (textLangChoice) localStorage.setItem(TEXT_LANG_KEY, textLangChoice);
@@ -278,10 +285,15 @@ export function App() {
 
   useEffect(() => { engine?.setTypes(typeOn); }, [engine, typeOn]);
 
-  const available = useMemo(
-    () => (graph && langTitles ? graph.nodes.map((n) => n[0] in langTitles) : null),
-    [graph, langTitles],
-  );
+  // Language -> which of this view's texts it has: one mask per language, made once per view, so a
+  // language change only picks one and hands it to the engine (Pāli: no mask, the whole canon).
+  const masks = useMemo(() => {
+    if (!graph || !translations) return null;
+    const out = new Map<string, boolean[]>();
+    for (const [lang, tr] of Object.entries(translations)) out.set(lang, graph.nodes.map((n) => n[0] in tr.titles));
+    return out;
+  }, [graph, translations]);
+  const available = textLang === "pli" ? null : (masks?.get(textLang) ?? null);
   useEffect(() => { engine?.setAvailable(available); }, [engine, available]);
 
   // The open text: last of the trail, if it is on this map and shown.
