@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
 description = "A 3D graph renderer for the web (wgpu: WebGPU, WebGL2 fallback): points, links, orbit camera, picking. Knows no corpus."
-license = "LicenseRef-Proprietary"
+license = "CC-BY-NC-4.0"
 publish = false
 
 [lib]
