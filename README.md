@@ -59,7 +59,7 @@ URL partageable : `?map=sim&th=0.75#mn10`. La navigation entre textes passe par 
   `palisearch.lang`) : intégrée à palicanon.app, la carte partage ces choix.
 - `src/map/engine.ts` : la carte Three.js, sans interface ; `src/App.tsx` la pilote.
 - `scripts/` : construction des données ; `scripts/lib/canon.mjs` : sigles, titres et collections depuis sc-data.
-- Les vecteurs de la vue Vectorial space sont lus dans `../palicanon/pali-embedder/out/pali-lsa-kept-512.*` (LSA pāli avec formules, bigrammes rares et WCCN : `python -m pali_embedder.lsa.variants --write`, voir `out/lsa-variants.md`).
+- Les vecteurs de la vue Vectorial space sont lus dans `../pali-embedder/out/pali-lsa-kept-512.*` (LSA pāli avec formules, bigrammes rares et WCCN : `python -m pali_embedder.lsa.variants --write`, voir `out/lsa-variants.md`).
 - Référencement : `index.html` porte la description, Open Graph (`public/og.png`, 1200×630, tiré de
   `public/support/web/map-whole.jpg`), le JSON-LD et un `<noscript>` lisible ; `public/robots.txt`,
   `public/sitemap.xml` (la carte et les 5 pages, à tenir à jour), `public/_redirects` (toute adresse →

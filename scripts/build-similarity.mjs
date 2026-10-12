@@ -5,7 +5,7 @@
 //               re-run the layout live: per pair, a u16, b u16, round(t * 65535) u16 where
 //               t = (sim - lo) / (hi - lo) and [lo, hi] is stored in the JSON (sim.range)
 //
-//   npm run build-sim    (vectors: ../palicanon/pali-embedder/out/pali-lsa-kept-512.*)
+//   npm run build-sim    (vectors: ../pali-embedder/out/pali-lsa-kept-512.*)
 //
 // Without MIN_SIM / DEFAULT_SIM / MAX_SIM the thresholds come from the number of links per
 // text (cosines are not on the same scale in every space): ~25, ~6 and ~0.5 per text.
