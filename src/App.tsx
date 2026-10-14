@@ -13,8 +13,7 @@ import { Footer, SocialLinks } from "./components/Footer";
 import { SimControls } from "./components/SimControls";
 import { TextPanel, TextRow } from "./components/TextPanel";
 import { SuttaRef, type RefData } from "./components/SuttaRef";
-import { MapEngine, type EngineEvents } from "./map/engine";
-import { RustMapEngine } from "./map/rust-engine";
+import { RustMapEngine, type EngineEvents } from "./map/rust-engine";
 import { MAPS, linksAt, loadBlurbs, loadGraph, loadPairs, loadTranslations, normalize, type Graph, type MapName, type Pairs, type Translations } from "./map/data";
 
 const card = "rounded-xl border border-card-edge bg-card shadow-[0_16px_40px_-16px_rgb(0_0_0/0.7)]";
@@ -53,22 +52,10 @@ function useMediaQuery(query: string) {
 }
 
 // SuttaCentral is the default view; ?map=sim opens the vectorial space.
-// The map's engine: Rust (engine/, WebGPU) by default; ?engine=three for the three.js one, which
-// is also the fallback when the Rust one cannot start.
-type Engine = MapEngine | RustMapEngine;
-const useThree = new URLSearchParams(location.search).get("engine") === "three";
+// The map's engine: Rust (engine/, wgpu: WebGPU, else WebGL2).
+type Engine = RustMapEngine;
 async function createEngine(canvas: HTMLCanvasElement, graph: Graph, theme: ReturnType<typeof mapTheme>, events: EngineEvents): Promise<Engine> {
-  if (!useThree) {
-    try {
-      const e = await RustMapEngine.create(canvas, graph, theme, events);
-      document.documentElement.dataset.engine = "rust"; // which engine draws: visible in the dev tools
-      return e;
-    } catch (err) {
-      console.warn("Rust map engine unavailable, using three.js", err);
-    }
-  }
-  document.documentElement.dataset.engine = "three";
-  return new MapEngine(canvas, graph, theme, events);
+  return RustMapEngine.create(canvas, graph, theme, events);
 }
 
 // Each view's data, fetched once per page (the vectorial space also has its similarity pairs):
@@ -219,20 +206,19 @@ export function App() {
   }, [mapName]);
 
   // ---------- Engine lifecycle ----------
-  // The Rust engine is made once and given each view's graph (setGraph: same GPU setup, the
-  // camera eases to the new points); the three.js one is made again for each view.
+  // The engine is made once and given each view's graph (setGraph: same GPU setup, the camera
+  // eases to the new points).
   const liveEngine = useRef<Engine | null>(null);
   useEffect(() => () => { liveEngine.current?.dispose(); liveEngine.current = null; }, []);
   useEffect(() => {
     if (!graph || !canvas.current) return;
     const cur = liveEngine.current;
-    if (cur instanceof RustMapEngine) {
+    if (cur) {
       cur.setGraph(graph, mapTheme(loadTheme(), graph));
       setShownGraph(graph);
       return;
     }
     let live = true;
-    let made: Engine | null = null;
     void createEngine(canvas.current, graph, mapTheme(loadTheme(), graph), {
       onSelect: (i) => {
         chooseRef.current(i);
@@ -240,20 +226,12 @@ export function App() {
       },
       onHover: (i, x, y) => setHover({ i, x, y }),
     }).then((e) => {
-      made = e;
       if (!live) return e.dispose();
       liveEngine.current = e;
       setEngine(e);
       setShownGraph(graph);
-    });
-    return () => {
-      live = false;
-      if (made instanceof MapEngine) {
-        made.dispose();
-        liveEngine.current = null;
-        setEngine(null);
-      }
-    };
+    }, (err) => console.error("map engine unavailable", err));
+    return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph]);
 

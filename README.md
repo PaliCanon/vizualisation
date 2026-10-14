@@ -57,7 +57,7 @@ URL partageable : `?map=sim&th=0.75#mn10`. La navigation entre textes passe par 
   `src/components/{SearchBar,Menu,LangSwitch,SettingsPanel}.tsx` sont **copiés** de `palisearch/web/src`
   (commit noté en tête de fichier) : les garder synchronisés. Mêmes clés de stockage (`theme`,
   `palisearch.lang`) : intégrée à palicanon.app, la carte partage ces choix.
-- `src/map/engine.ts` : la carte Three.js, sans interface ; `src/App.tsx` la pilote.
+- `engine/` : le moteur de la carte en Rust (wgpu : WebGPU, sinon WebGL2) ; `src/map/rust-engine.ts` décide quoi dessiner, `src/App.tsx` le pilote.
 - `scripts/` : construction des données ; `scripts/lib/canon.mjs` : sigles, titres et collections depuis sc-data.
 - Les vecteurs de la vue Vectorial space sont lus dans `../pali-embedder/out/pali-lsa-kept-512.*` (LSA pāli avec formules, bigrammes rares et WCCN : `python -m pali_embedder.lsa.variants --write`, voir `out/lsa-variants.md`).
 - Référencement : `index.html` porte la description, Open Graph (`public/og.png`, 1200×630, tiré de
