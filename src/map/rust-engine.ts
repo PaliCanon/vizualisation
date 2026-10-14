@@ -1,16 +1,20 @@
-// The map on the Rust engine (engine/, wgpu: WebGPU, else WebGL2), with the same interface as
-// the three.js MapEngine (engine.ts), so App drives either. The engine only draws (points,
-// segments, camera, picking); what to draw is decided here, as engine.ts does: colours by
-// collection, visibility, link types, selection, the live force layout of the vectorial space.
+// The map on the Rust engine (engine/, wgpu: WebGPU, else WebGL2). The engine only draws (points,
+// segments, camera, picking); what to draw is decided here: colours by collection, visibility,
+// link types, selection, the live force layout of the vectorial space.
 import createGraph from 'ngraph.graph';
 import createLayout, { type Layout } from 'ngraph.forcelayout';
 import init, { createGraphView, type GraphView } from '../../engine/pkg/map_engine.js';
 import { TYPE_STYLE, type Graph } from './data';
-import type { EngineEvents } from './engine';
 import type { MapTheme } from './theme';
 
+/** What the map tells the page: a text chosen (-1: nothing), a text under the pointer. */
+export interface EngineEvents {
+  onSelect: (i: number) => void; // -1: nothing
+  onHover: (i: number, x: number, y: number) => void;
+}
+
 const POINT_SIZE = 7;
-const LINKS = 1.5; // link opacity factor (engine.ts VIEW.links)
+const LINKS = 1.5; // link opacity factor
 const LAYOUT_STEPS = 400;
 const median = (xs: number[]) => xs.sort((x, y) => x - y)[Math.floor(xs.length / 2)]!;
 
@@ -19,7 +23,7 @@ const hex = (h: string): Rgb => {
   const n = parseInt(h.replace('#', '').slice(0, 6), 16);
   return [(n >> 16) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 };
-// What three.js's Color holds (linear), which its point shader is given as is.
+// Colours are given to the engine linear (sRGB decoded).
 const toLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
 const linear = (h: string): Rgb => hex(h).map(toLinear) as Rgb;
 const mix = (a: Rgb, b: Rgb, t: number): Rgb => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
@@ -117,7 +121,7 @@ export class RustMapEngine {
     this.view.setHighlight(new Float32Array(this.N), false);
   }
 
-  // ---------- Public setters (as engine.ts) ----------
+  // ---------- Public setters ----------
   setTheme(theme: MapTheme) {
     if (this.disposed) return;
     this.theme = theme;
@@ -354,7 +358,7 @@ export class RustMapEngine {
     this.listen(window, 'blur', () => { held.clear(); push(); });
   }
 
-  // ---------- Live layout (vectorial space), as engine.ts ----------
+  // ---------- Live layout (vectorial space) ----------
   private startLayout() {
     this.layout?.dispose();
     const graph = createGraph();
