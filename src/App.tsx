@@ -135,6 +135,8 @@ export function App() {
   const [graph, setGraph] = useState<Graph | null>(null);
   const [pairs, setPairs] = useState<Pairs | null>(null);
   const [engineState, setEngine] = useState<Engine | null>(null);
+  // Neither WebGPU nor WebGL2: the map cannot be drawn, the page says so.
+  const [noGpu, setNoGpu] = useState(false);
   const [shownGraph, setShownGraph] = useState<Graph | null>(null); // the graph the engine draws
   // The engine, once it draws the current graph (between views it still draws the previous one).
   const engine = engineState && shownGraph === graph ? engineState : null;
@@ -228,9 +230,13 @@ export function App() {
     }).then((e) => {
       if (!live) return e.dispose();
       liveEngine.current = e;
+      document.documentElement.dataset.engine = e.backend; // which API draws: visible in the dev tools
       setEngine(e);
       setShownGraph(graph);
-    }, (err) => console.error("map engine unavailable", err));
+    }, (err) => {
+      console.error("map engine unavailable", err);
+      if (live) setNoGpu(true);
+    });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph]);
@@ -509,7 +515,14 @@ export function App() {
               {textsMenu}
             </div>
           </div>
-          {!graph && (
+          {noGpu ? (
+            <div role="alert" className="absolute inset-0 grid place-items-center p-6">
+              <div className="max-w-md text-center">
+                <p className="font-serif text-xl italic">{t("noGpu.title")}</p>
+                <p className="mt-3 text-sm text-muted">{t("noGpu.body")}</p>
+              </div>
+            </div>
+          ) : !graph && (
             <p className="absolute inset-0 grid place-items-center font-serif text-xl italic text-muted">{t("loading")}</p>
           )}
         </main>

@@ -64,6 +64,10 @@
     "links_other": "{{count}} links"
   },
   "loading": "Loading the map…",
+  "noGpu": {
+    "title": "Your browser cannot draw the map",
+    "body": "The map needs WebGPU or WebGL2. Update your browser (Chrome, Edge, Firefox or Safari), or turn hardware acceleration on in its settings."
+  },
   "texts": {
     "name": "Texts",
     "all": "The whole canon",
