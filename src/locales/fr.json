@@ -64,6 +64,10 @@
     "links_other": "{{count}} liens"
   },
   "loading": "Chargement de la carte…",
+  "noGpu": {
+    "title": "Votre navigateur ne peut pas afficher la carte",
+    "body": "La carte a besoin de WebGPU ou de WebGL2. Mettez votre navigateur à jour (Chrome, Edge, Firefox ou Safari), ou activez l’accélération matérielle dans ses réglages."
+  },
   "texts": {
     "name": "Textes",
     "all": "Tout le canon",

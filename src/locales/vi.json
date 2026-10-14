@@ -64,6 +64,10 @@
     "links_other": "{{count}} liên kết"
   },
   "loading": "Đang tải bản đồ…",
+  "noGpu": {
+    "title": "Trình duyệt của bạn không thể hiển thị bản đồ",
+    "body": "Bản đồ cần WebGPU hoặc WebGL2. Hãy cập nhật trình duyệt (Chrome, Edge, Firefox hoặc Safari), hoặc bật tăng tốc phần cứng trong phần cài đặt."
+  },
   "texts": {
     "name": "Văn bản",
     "all": "Toàn bộ Kinh tạng",

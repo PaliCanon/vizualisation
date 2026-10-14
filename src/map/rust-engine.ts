@@ -200,6 +200,11 @@ export class RustMapEngine {
     this.view.flyToPosition(c[0]!, c[1]!, c[2]!, r * 2, performance.now());
   }
 
+  /** The graphics API the engine got: "BrowserWebGpu" or "Gl" (WebGL2). */
+  get backend(): string {
+    return this.view.backend;
+  }
+
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
