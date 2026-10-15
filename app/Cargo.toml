@@ -25,8 +25,12 @@ leptos_i18n = { version = "0.6.2", default-features = false }
 leptos_axum = { workspace = true, optional = true }
 axum = { version = "0.8", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net"], optional = true }
-# The data files' types (task 004), read at boot on the server only.
-map-formats = { version = "0.1.0", path = "../formats", optional = true }
+# The data files' types (task 004): read at boot on the server, and in the browser by the
+# map's logic (`map/`, shared by ssr and hydrate; serde only, it builds for wasm32).
+map-formats = { version = "0.1.0", path = "../formats" }
+# Search folds diacritics as the React page did (`normalize`, src/map/data.ts: NFD, then the
+# combining marks dropped).
+unicode-normalization = "0.1"
 # The origin guard and the password gate compare their secrets in constant time
 # (`origin.rs`, `gate.rs`); the gate decodes HTTP Basic credentials.
 subtle = { version = "2", optional = true }
@@ -68,7 +72,6 @@ ssr = [
   "dep:subtle",
   "dep:base64",
   "dep:tower-http",
-  "dep:map-formats",
   "leptos/ssr",
   "leptos_meta/ssr",
   "leptos_router/ssr",
