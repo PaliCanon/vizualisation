@@ -7,7 +7,15 @@
 #![recursion_limit = "512"]
 
 pub mod app;
+#[cfg(feature = "ssr")]
+pub mod boot;
 mod catalogue;
+#[cfg(feature = "ssr")]
+pub mod gate;
+#[cfg(feature = "ssr")]
+pub mod origin;
+#[cfg(feature = "ssr")]
+pub mod router;
 
 // `build.rs` includes this same file (`#[path]`) for the env badge's pure
 // decisions; declared here too so `cargo test -p vizualisation` covers it.
