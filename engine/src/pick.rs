@@ -26,7 +26,10 @@ pub fn pick(
             continue;
         }
         let ndc = clip.truncate() / clip.w;
-        let screen = Vec2::new((ndc.x + 1.0) * 0.5 * size.x, (1.0 - ndc.y) * 0.5 * size.y);
+        let screen = Vec2::new(
+            f32::midpoint(ndc.x, 1.0) * size.x,
+            (1.0 - ndc.y) * 0.5 * size.y,
+        );
         let d = screen.distance(at);
         if d <= r.max(MIN_RADIUS) && best.is_none_or(|(_, bd)| d < bd) {
             best = Some((i, d));

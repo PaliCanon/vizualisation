@@ -1,0 +1,11 @@
+[package]
+name = "map-layout"
+description = "The 3D force-directed layout of the map (a port of ngraph.forcelayout): generic, no corpus, deterministic. Used live by the engine (wasm32) and by the data tools."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true

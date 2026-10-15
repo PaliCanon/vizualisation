@@ -319,11 +319,20 @@ dependencies = [
  "bytemuck",
  "glam",
  "js-sys",
+ "map-layout",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
  "wgpu",
 ]
+
+[[package]]
+name = "map-formats"
+version = "0.1.0"
+
+[[package]]
+name = "map-layout"
+version = "0.1.0"
 
 [[package]]
 name = "naga"

@@ -1,12 +1,15 @@
-# From Lsh0x/rankfusion's deny.toml; this crate is unpublished (publish = false), so its own
-# licence is not checked, only its dependencies'.
+# From learn-pali/deny.toml (its licence list and policy), without the leptos-only advisory
+# ignores and the ui-lib git source: task 005 adds those with the app crate.
 [advisories]
 version = 2
 ignore = []
 
 [licenses]
 version = 2
+# PaliCanon's own licence (every PaliCanon crate is CC-BY-NC-4.0), then permissive
+# licences for the dependencies.
 allow = [
+    "CC-BY-NC-4.0",
     "MIT",
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
@@ -17,10 +20,8 @@ allow = [
     "Zlib",
 ]
 confidence-threshold = 0.9
+# The allow list is a policy, not an inventory of the current tree.
 unused-allowed-license = "allow"
-
-[licenses.private]
-ignore = true
 
 [bans]
 multiple-versions = "warn"

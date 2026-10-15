@@ -17,6 +17,10 @@ struct Style {
 
 /// A graph on a canvas.
 #[wasm_bindgen]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent dirty flags, one per GPU buffer to refresh; a bitset would hide them"
+)]
 pub struct GraphView {
     gpu: Gpu,
     orbit: Orbit,
@@ -36,6 +40,9 @@ pub struct GraphView {
 
 /// Create a view on `canvas` (CSS size `width`×`height`, device pixel ratio `dpr`) for points
 /// at `positions` (x, y, z per point).
+///
+/// # Errors
+/// When the GPU, the canvas surface or a graphics adapter cannot be set up.
 #[wasm_bindgen(js_name = createGraphView)]
 pub async fn create_graph_view(
     canvas: web_sys::HtmlCanvasElement,
@@ -45,7 +52,7 @@ pub async fn create_graph_view(
     positions: Vec<f32>,
 ) -> Result<GraphView, JsError> {
     let dpr = dpr.min(2.0);
-    let (w, h) = ((width * dpr) as u32, (height * dpr) as u32);
+    let (w, h) = (check::px(width * dpr), check::px(height * dpr));
     canvas.set_width(w.max(1));
     canvas.set_height(h.max(1));
     let gpu = Gpu::new(canvas, w, h).await.map_err(|e| JsError::new(&e))?;
@@ -105,12 +112,12 @@ fn frame_of(ps: &[Vec3]) -> (Vec3, f32) {
     let c = Vec3::new(median(0), median(1), median(2));
     let mut d: Vec<f32> = ps.iter().map(|p| p.distance(c)).collect();
     d.sort_by(f32::total_cmp);
-    (c, d[(d.len() as f32 * 0.9) as usize].max(1.0))
+    (c, d[check::p90_index(d.len())].max(1.0))
 }
 
 #[wasm_bindgen]
 impl GraphView {
-    /// "BrowserWebGpu" or "Gl".
+    /// `"BrowserWebGpu"` or `"Gl"`.
     #[wasm_bindgen(getter)]
     pub fn backend(&self) -> String {
         self.gpu.backend.clone()
@@ -125,6 +132,9 @@ impl GraphView {
     /// Show other points (`positions`, x, y, z per point; any count) on the same view: points
     /// get default colours and sizes, segments are cleared, and the camera eases to frame them.
     /// Much cheaper than a new view: the GPU device, pipelines and canvas stay.
+    ///
+    /// # Errors
+    /// When `positions` is not a whole number of (x, y, z) triples.
     #[wasm_bindgen(js_name = setGraph)]
     pub fn set_graph(&mut self, positions: &[f32], now: f64) -> Result<(), JsError> {
         check::len("positions", positions.len(), positions.len() / 3, 3)
@@ -163,6 +173,9 @@ impl GraphView {
     }
 
     /// Colour (r, g, b per point) and size (0: hidden) of every point.
+    ///
+    /// # Errors
+    /// When `colors` or `sizes` do not have one entry (three for colours) per point.
     #[wasm_bindgen(js_name = setPoints)]
     pub fn set_points(&mut self, colors: &[f32], sizes: &[f32]) -> Result<(), JsError> {
         let n = self.points.len();
@@ -178,6 +191,9 @@ impl GraphView {
     }
 
     /// Highlight: 2 selected, 1 neighbour, 0 other; `dim` fades the others.
+    ///
+    /// # Errors
+    /// When `hl` does not have one entry per point.
     #[wasm_bindgen(js_name = setHighlight)]
     pub fn set_highlight(&mut self, hl: &[f32], dim: bool) -> Result<(), JsError> {
         check::len("highlight", hl.len(), self.points.len(), 1).map_err(|e| JsError::new(&e))?;
@@ -190,6 +206,9 @@ impl GraphView {
     }
 
     /// Segments: pairs of point indices, and r, g, b, a per segment.
+    ///
+    /// # Errors
+    /// When the ends are not pairs, a colour is missing, or an end is not a point.
     #[wasm_bindgen(js_name = setSegments)]
     pub fn set_segments(&mut self, ends: Vec<u32>, colors: Vec<f32>) -> Result<(), JsError> {
         check::segments(&ends, &colors, self.points.len()).map_err(|e| JsError::new(&e))?;
@@ -200,6 +219,9 @@ impl GraphView {
     }
 
     /// Move the points (a running layout).
+    ///
+    /// # Errors
+    /// When `positions` does not have three values per point.
     #[wasm_bindgen(js_name = setPositions)]
     pub fn set_positions(&mut self, positions: &[f32]) -> Result<(), JsError> {
         check::len("positions", positions.len(), self.points.len(), 3)
@@ -218,7 +240,7 @@ impl GraphView {
         self.css = Vec2::new(width, height);
         self.dpr = dpr.min(2.0);
         self.gpu
-            .resize((width * self.dpr) as u32, (height * self.dpr) as u32);
+            .resize(check::px(width * self.dpr), check::px(height * self.dpr));
         self.redraw = true;
     }
 
@@ -271,7 +293,7 @@ impl GraphView {
             }
         };
         crate::pick::pick(Vec2::new(x, y), self.css, vp, &self.positions, radius)
-            .map_or(-1, |i| i as i32)
+            .map_or(-1, check::point_id)
     }
 
     /// Ease the camera to point `i`, `distance` away; `now` in ms.
