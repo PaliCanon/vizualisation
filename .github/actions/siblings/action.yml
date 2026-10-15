@@ -1,0 +1,74 @@
+name: siblings
+description: >
+  Checks out PaliCanon/ui-lib beside vizualisation/, at the ref app/Cargo.toml
+  names, with a short-lived GitHub App token (Contents: read). The workspace
+  reaches it through `../ui-lib` (its [patch], app/style/main.css,
+  app/build.rs); it is private.
+
+# From search-front/.github/actions/siblings/action.yml. What differs: one
+# sibling, ui-lib (this service has no API client), and the checkout folder
+# `vizualisation/`.
+#
+# Used after the job has checked vizualisation out into `vizualisation/`
+# (`actions/checkout` with `path: vizualisation`, `persist-credentials: false`):
+#
+#   - uses: ./vizualisation/.github/actions/siblings
+#     with: { app-id: ..., private-key: ... }
+#
+# The token is the only credential of the whole pipeline: the image build
+# takes none (the sibling is COPYed, Cargo.lock holds no git source), and it
+# is not left in any `.git/config` (`persist-credentials: false`). The token
+# is revoked when the job ends (create-github-app-token's post step).
+
+inputs:
+  app-id:
+    description: The GitHub App's id (a repository secret of the caller).
+    required: true
+  private-key:
+    description: The GitHub App's private key (a repository secret of the caller).
+    required: true
+  manifest:
+    description: The manifest naming the git dependency, relative to the workspace.
+    default: vizualisation/app/Cargo.toml
+
+runs:
+  using: composite
+  steps:
+    - name: Read the ref the manifest names
+      id: refs
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        MANIFEST: ${{ inputs.manifest }}
+      run: |
+        set -euo pipefail
+        echo "ui_lib=$(bash vizualisation/scripts/manifest-ref.sh "$MANIFEST" palicanon-ui-lib)" >> "$GITHUB_OUTPUT"
+
+    - name: Mint a token for ui-lib, Contents read
+      id: app
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: PaliCanon
+        repositories: |
+          ui-lib
+
+    - uses: actions/checkout@v7
+      with:
+        repository: PaliCanon/ui-lib
+        ref: ${{ steps.refs.outputs.ui_lib }}
+        path: ui-lib
+        token: ${{ steps.app.outputs.token }}
+        persist-credentials: false
+
+    # A missing repository or ref fails the checkout above; this catches a
+    # checkout that succeeded on the wrong thing.
+    - name: Check what the workspace reaches is there
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        test -f ui-lib/Cargo.toml || { echo "ui-lib/Cargo.toml is missing"; exit 1; }
+        test -f ui-lib/build/placeholders.rs || { echo "ui-lib/build/placeholders.rs is missing"; exit 1; }
+        test -f ui-lib/style/theme.css || { echo "ui-lib/style/theme.css is missing"; exit 1; }
