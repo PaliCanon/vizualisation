@@ -16,6 +16,7 @@ pub mod data;
 #[cfg(feature = "ssr")]
 pub mod gate;
 mod head;
+pub mod manifest;
 #[cfg(feature = "ssr")]
 pub mod origin;
 mod pages;
