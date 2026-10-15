@@ -2978,6 +2978,7 @@ dependencies = [
  "subtle",
  "tokio",
  "tower",
+ "tower-http",
  "wasm-bindgen",
 ]
 

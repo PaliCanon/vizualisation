@@ -333,7 +333,9 @@ mod tests {
             view! {
                 <AppShell footer=|| {
                     view! { <SiteFooter /> }
-                }>{(0..200).map(|n| view! { <p>{format!("line {n}")}</p> }).collect_view()}</AppShell>
+                }>
+                    {(0..200).map(|n| view! { <p>{format!("line {n}")}</p> }).collect_view()}
+                </AppShell>
             }
             .to_html()
         }));

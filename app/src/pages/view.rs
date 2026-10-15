@@ -162,7 +162,12 @@ fn Body(page: &'static PageText) -> impl IntoView {
         <h1 class="font-serif text-3xl font-semibold text-heading">{page.title}</h1>
         {page.intro.iter().map(|p| view! { <p class=P>{rich(p)}</p> }).collect_view()}
         {page.app.as_ref().map(app_block)}
-        {page.sites.iter().zip(WEB_SHOTS).map(|(site, shots)| site_block(site, shots)).collect_view()}
+        {page
+            .sites
+            .iter()
+            .zip(WEB_SHOTS)
+            .map(|(site, shots)| site_block(site, shots))
+            .collect_view()}
         {page.instagram.as_ref().map(instagram_block)}
         {page.sections.iter().map(section).collect_view()}
     }

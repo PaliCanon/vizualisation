@@ -11,12 +11,12 @@ pub mod app;
 pub mod boot;
 mod catalogue;
 mod components;
-mod pages;
-mod route;
 #[cfg(feature = "ssr")]
 pub mod gate;
 #[cfg(feature = "ssr")]
 pub mod origin;
+mod pages;
+mod route;
 #[cfg(feature = "ssr")]
 pub mod router;
 

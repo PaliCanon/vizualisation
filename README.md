@@ -1,92 +1,110 @@
 # vizualisation — Suttas Map
 
-Carte 3D du canon pāli, servie sur [viz.palicanon.app](https://viz.palicanon.app) : les parallèles de
-SuttaCentral, et un espace vectoriel construit sur le texte pāli.
+The 3D map of the Pāli canon at [viz.palicanon.app](https://viz.palicanon.app): SuttaCentral's
+parallels, and a vectorial space built on the Pāli text.
 
-**Contient** : le site (`src/`, React + Tailwind), le moteur 3D (`engine/`, Rust → WebAssembly, générique :
-il ne connaît aucun texte), les scripts qui fabriquent les données (`scripts/`) et ces données (`public/`),
-l'infra Cloudflare (`infra/`). **Ne contient jamais** : les clones de SuttaCentral (`data/`, refaits par
-`npm run fetch-data`), les vecteurs de pali-embedder (lus dans `../pali-embedder` au moment de
-`npm run build-sim`), de secret.
+**Being rewritten in Leptos** (design `002 design` v4, tasks 004–008 in `.task/`). Until task 008
+the repository holds both:
+
+- `app/`: the Leptos app (SSR + hydrate) on [`PaliCanon/ui-lib`](https://github.com/PaliCanon/ui-lib),
+  served by Cloud Run behind a Cloudflare Worker — today its shell, routes, pages, gates and deploy
+  (005); the map screen comes in 006;
+- `src/`, `index.html`: the React site, still what `dev.viz.palicanon.app` serves (Cloudflare Pages)
+  until 008 removes it.
+
+Also: the 3D engine (`engine/`, Rust → WebAssembly, generic: it knows no text), the force layout
+(`layout/`, a port of ngraph.forcelayout), the data files' types (`formats/`), the scripts that build
+the data (`scripts/`) and the data (`public/`), the infra (`infra/`). **Never holds**: SuttaCentral's
+clones (`data/`, made again by `npm run fetch-data`), pali-embedder's vectors (read from
+`../pali-embedder` by `npm run build-sim`), any secret.
+
+## Run it
+
+```sh
+# Toolchain with the wasm32 target, isolated from the system Rust:
+export RUSTUP_HOME=$HOME/.rustup-pc/rustup CARGO_HOME=$HOME/.rustup-pc/cargo PATH=$HOME/.rustup-pc/cargo/bin:$PATH RUSTC_WRAPPER=sccache
+# This service's own port: site 3301, live reload 4301 (Cargo.toml's leptos metadata).
+VIZ_GATE=off cargo leptos watch
+```
+
+`VIZ_GATE` is required at every boot: `off` locally and in prod, `password` in dev (with
+`DEV_PASSWORD`). A deployed build also requires `ORIGIN_SECRET` (the Worker's). A missing or blank
+variable stops the service at boot, naming the variable, never its value. **No `.env` file.**
+
+The app depends on `palicanon-ui-lib` by git tag (`v0.1.1`), with the workspace's `[patch]` to
+`../ui-lib` (a worktree reaches it through the `wt/ui-lib` symlink).
+
+The React site, until 008:
 
 ```sh
 npm install
-npm run fetch-data          # SuttaCentral : sc-data + bilara-data (clones partiels dans data/)
-npm run build-graph         # vue SuttaCentral    -> public/graph.json
-npm run build-sim           # vue Vectorial space -> public/graph-sim.json + .bin
-npm run build-translations  # textes traduits     -> public/translations.json
-npm run build:engine        # moteur 3D (Rust -> wasm) -> engine/pkg
-npm run dev
+npm run build:engine        # the 3D engine (Rust -> wasm) -> engine/pkg
+npm run dev                 # port 5390
 ```
 
-> Si npm échoue avec `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`, préfixer par
-> `NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem`.
+## Data
 
-## Données
-
-Tout le contenu affiché vient de **SuttaCentral** ([sc-data](https://github.com/suttacentral/sc-data),
-[bilara-data](https://github.com/suttacentral/bilara-data)). Seule exception : les positions de la vue
-« Vectorial space », calculées par [pali-embedder](https://github.com/Lsh0x/pali-embedder) sur le texte pāli
-de SuttaCentral, avec le *Digital Pāḷi Dictionary* pour ramener chaque mot à sa forme de base.
-
-| Fichier | Contenu | Source |
-|---|---|---|
-| `public/graph.json` | Textes pāli ayant un parallèle, liens par type, positions 3D (simulation physique) | sc-data `relationship/new_parallels.json` |
-| `public/graph-sim.json`, `.bin` | Tout le canon (7 286 textes), paires de textes par similarité | pali-embedder : bilara-data `root/pli/ms` + DPD |
-| `public/translations.json` | Textes traduits en en / fr / vi sur SuttaCentral, avec leur titre | bilara-data `translation/`, sc-data `html_text/*/pli` |
-| Sigles, titres pāli et anglais, collections | | sc-data `structure/`, `misc/`, `sc_bilara_data/*/name` |
-
-Titres traduits : pour bilara, le segment d'en-tête qui porte le titre pāli du texte ; pour les anciennes
-traductions HTML, le premier `<h1>` (ce qu'affiche SuttaCentral).
-
-## Vues
-
-- **SuttaCentral** : les textes sont placés par les parallèles de SuttaCentral (ressorts entre textes liés).
-- **Vectorial space** : même simulation, mais les liens sont les paires de textes dont la similarité
-  (vecteurs pāli, 512 dimensions) dépasse un seuil réglable ; la disposition est recalculée en direct.
-- **Textes** : Pāli (tout le canon) ou une langue (seulement les textes traduits sur SuttaCentral, titres
-  traduits). Suit la langue de l'interface tant qu'on n'en choisit pas une autre.
-
-URL partageable : `?map=sim&th=0.75#mn10`. La navigation entre textes passe par l'historique du navigateur
-(bouton précédent, fil d'Ariane dans le panneau).
-
-## Code
-
-- Interface : **React 19 + Tailwind v4**, même stack et même thème que palicanon.app (`palisearch/web`).
-  `src/styles.css`, `src/icons.tsx`, `src/i18n.ts`, `src/settings.ts` et
-  `src/components/{SearchBar,Menu,LangSwitch,SettingsPanel}.tsx` sont **copiés** de `palisearch/web/src`
-  (commit noté en tête de fichier) : les garder synchronisés. Mêmes clés de stockage (`theme`,
-  `palisearch.lang`) : intégrée à palicanon.app, la carte partage ces choix.
-- `engine/` : le moteur de la carte en Rust (wgpu : WebGPU, sinon WebGL2) ; `src/map/rust-engine.ts` décide quoi dessiner, `src/App.tsx` le pilote.
-- `scripts/` : construction des données ; `scripts/lib/canon.mjs` : sigles, titres et collections depuis sc-data.
-- Les vecteurs de la vue Vectorial space sont lus dans `../pali-embedder/out/pali-lsa-kept-512.*` (LSA pāli avec formules, bigrammes rares et WCCN : `python -m pali_embedder.lsa.variants --write`, voir `out/lsa-variants.md`).
-- Référencement : `index.html` porte la description, Open Graph (`public/og.png`, 1200×630, tiré de
-  `public/support/web/map-whole.jpg`), le JSON-LD et un `<noscript>` lisible ; `public/robots.txt`,
-  `public/sitemap.xml` (la carte et les 5 pages, à tenir à jour), `public/_redirects` (toute adresse →
-  `index.html`, la 404 est rendue côté client avec `noindex`). Titre et canonique par route : `src/head.ts`.
-
-## Déploiement
-
-Site statique sur **Cloudflare Pages** (projet `palicanon-viz`), comme palicanon.app :
-
-- **push sur `main` → dev** : [dev.viz.palicanon.app](https://dev.viz.palicanon.app), protégé par un mot de passe
-  (`functions/_middleware.js`, secret Pages `DEV_PASSWORD` sur l'environnement preview seulement, posé par l'API
-  Cloudflare depuis le trousseau : compte `palicanon`, service `viz-dev-password`) ;
-- **tag `v*` → prod** : [viz.palicanon.app](https://viz.palicanon.app).
-
-`.github/workflows/deploy.yml` construit le moteur et le site (`.github/actions/build`) puis
-`wrangler pages deploy` (secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`).
-`.github/workflows/ci.yml` vérifie chaque PR : le moteur (fmt, clippy, tests, rustdoc, MSRV, cargo-deny,
-couverture → Codecov) et le site (tsc, build).
-
-L'infra est en OpenTofu dans `infra/`, appliquée à la main (son propre état, préfixe `suttasmap` dans
-le bucket de palicanon) : le projet Pages, les deux domaines (Pages fournit le certificat de `dev.viz`, deux niveaux de
-sous-domaine) et leur DNS. Appliquée depuis le Mac, comme celle de palicanon.
+Everything shown comes from **SuttaCentral** ([sc-data](https://github.com/suttacentral/sc-data),
+[bilara-data](https://github.com/suttacentral/bilara-data)), except the positions of the vectorial
+space, computed by [pali-embedder](https://github.com/Lsh0x/pali-embedder) on SuttaCentral's Pāli
+text, with the *Digital Pāḷi Dictionary* bringing each word to its base form.
 
 ```sh
-cd infra
-cp terraform.tfvars.example terraform.tfvars        # id du compte Cloudflare
-gcloud auth application-default login               # le bucket d'état
-export CLOUDFLARE_API_TOKEN=$(security find-generic-password -a palicanon -s cloudflare-api-token -w)
-tofu init && tofu apply
+npm run fetch-data          # SuttaCentral: sc-data + bilara-data (partial clones in data/)
+npm run build-graph         # SuttaCentral view   -> public/graph.json
+npm run build-sim           # vectorial space     -> public/graph-sim.json + .bin
+npm run build-translations  # translated texts    -> public/translations.json
 ```
+
+| File | Holds | Source |
+|---|---|---|
+| `public/graph.json` | Pāli texts with a parallel, links by type, 3D positions (force layout) | sc-data `relationship/new_parallels.json` |
+| `public/graph-sim.json`, `.bin` | The whole canon (7,286 texts), pairs of texts by similarity | pali-embedder: bilara-data `root/pli/ms` + DPD |
+| `public/translations.json` | Texts translated into en / fr / vi on SuttaCentral, with their titles | bilara-data `translation/`, sc-data `html_text/*/pli` |
+
+The vectors are read from `../pali-embedder/out/pali-lsa-kept-512.*` (Pāli LSA with formulas, rare
+bigrams and WCCN). The data tools move to Rust in task 007.
+
+## Checks
+
+```sh
+cargo fmt --all --check
+leptosfmt --check app
+cargo clippy -p vizualisation --features ssr --all-targets -- -D warnings
+cargo clippy -p vizualisation --lib --features hydrate --target wasm32-unknown-unknown -- -D warnings
+cargo clippy -p map-engine -p map-layout -p map-formats --all-targets -- -D warnings
+cargo clippy -p map-engine --lib --target wasm32-unknown-unknown -- -D warnings
+cargo test -p vizualisation --features ssr
+cargo test -p map-engine -p map-layout -p map-formats
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps -p vizualisation --features ssr
+cargo deny check advisories bans sources licenses
+cargo leptos build
+```
+
+The same in CI (`.github/workflows/ci.yml`), plus `cargo check --locked` on Rust 1.88 (the MSRV),
+coverage, the deploy's own tests and `tofu fmt`/`validate`:
+
+```sh
+python3 scripts/check_workflows_test.py && python3 scripts/check_workflows.py
+python3 scripts/port_strings_test.py
+bash scripts/manifest-ref.test.sh && bash scripts/serving-revision.test.sh
+bash infra/scripts/origin-secret.test.sh
+node --test 'infra/worker/*.test.mjs'
+(cd infra && tofu fmt -check -recursive && tofu init -backend=false && tofu validate)
+```
+
+Functions stay under 50 lines (`clippy.toml`).
+
+## Deploy
+
+`main` deploys `viz.dev.palicanon.app`, a `v*` tag `viz.palicanon.app` (prod is added to `infra/`
+once dev is checked; `viz.palicanon.app` stays on Pages until 008) — `.github/workflows/deploy.yml`,
+from search-front's. Cloudflare (a Worker per host) is the only way in: the service answers 403 to
+any request without the Worker's `x-origin-auth` secret. Dev asks for a password (`VIZ_GATE=password`,
+`DEV_PASSWORD` from Secret Manager; the value in the keychain: account `palicanon`, service
+`viz-dev-password`); prod runs the same image with the gate off and no access to that secret. The
+image is built with no credential (`Dockerfile`): ui-lib is COPYed as a sibling checkout. CI's
+checkouts use a GitHub App token (`.github/actions/siblings`); the repository secrets are `APP_ID`
+and `APP_PRIVATE_KEY`, the variables `WIF_PROVIDER`, `DEPLOYER_SA` and `GCP_PROJECT`. The infra, the
+Worker and the ordered first-time commands are in `infra/README.md` (OpenTofu, applied from the
+laptop, state prefix `vizualisation`).
