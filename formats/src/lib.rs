@@ -8,6 +8,7 @@
 pub mod blurbs;
 pub mod error;
 pub mod graph;
+pub mod manifest;
 pub mod pairs;
 pub mod stamp;
 pub mod translations;
