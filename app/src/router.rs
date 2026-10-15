@@ -167,11 +167,11 @@ mod tests {
 
     #[tokio::test]
     async fn the_sitemap_is_served_as_xml_behind_the_gate() {
-        let (status, headers) = status("/sitemap.xml", true, true).await;
-        assert_eq!(status, StatusCode::OK);
+        let (code, headers) = status("/sitemap.xml", true, true).await;
+        assert_eq!(code, StatusCode::OK);
         assert!(headers.contains("application/xml"), "{headers}");
-        let (status, _) = status("/sitemap.xml", true, false).await;
-        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let (code, _) = status("/sitemap.xml", true, false).await;
+        assert_eq!(code, StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
