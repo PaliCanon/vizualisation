@@ -10,10 +10,26 @@
 //! - [`texts_lang`]: the texts' language (`viz_textlang`) and its availability masks.
 //! - [`open_text`]: what a `/:view/:uid` address opens.
 //! - [`draw`]: the buffers the engine is given (points, segments, highlight, camera).
+//!
+//! And the map's wiring (task 006, M5), the map screen live:
+//!
+//! - `address`: the address ↔ the state (view, text, threshold, the trail in the history).
+//! - `cookies`: `viz_legend` and `viz_textlang`, read by the server, written by the browser.
+//! - `first`: what the server decides for an address (its panel, its 404) and hands to the
+//!   browser in the page.
+//! - `fetch`: the data files, fetched by the browser at their hashed URLs.
+//! - `live`: `LiveMap`, the state of the map screen as signals, `EngineView` and the UI
+//!   around it.
 
+pub(crate) mod address;
+pub(crate) mod cookies;
 pub mod draw;
 pub mod engine_view;
+#[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
+mod fetch;
+pub(crate) mod first;
 pub mod legend;
+pub(crate) mod live;
 pub mod model;
 pub mod open_text;
 pub mod search;

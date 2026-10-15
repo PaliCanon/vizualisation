@@ -7,8 +7,12 @@ parallels, and a vectorial space built on the Pāli text.
 the repository holds both:
 
 - `app/`: the Leptos app (SSR + hydrate) on [`PaliCanon/ui-lib`](https://github.com/PaliCanon/ui-lib),
-  served by Cloud Run behind a Cloudflare Worker — today its shell, routes, pages, gates and deploy
-  (005); the map screen comes in 006;
+  served by Cloud Run behind a Cloudflare Worker — its shell, routes, pages, gates and deploy (005)
+  and the map screen (006): each view at its path (`/`, `/sim`, `/pca`, `/umap`, `/tsne`), each
+  text at `/<view>/<uid>` with its panel rendered by the server (a uid in no view is a 404),
+  `?th=` the threshold, the browser's history the trail of texts visited; the legend and the
+  texts' language kept in the `viz_legend` and `viz_textlang` cookies; `/sitemap.xml` lists
+  every text once, at its first view;
 - `src/`, `index.html`: the React site, still what `dev.viz.palicanon.app` serves (Cloudflare Pages)
   until 008 removes it.
 

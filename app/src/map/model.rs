@@ -4,6 +4,8 @@
 
 use std::collections::HashMap;
 
+use serde::{Deserialize, Serialize};
+
 pub use map_formats::blurbs::Blurbs;
 pub use map_formats::graph::{Collection, Graph, Group, NodeRow, SimInfo};
 pub use map_formats::pairs::{Link, Pairs};
@@ -23,7 +25,7 @@ pub fn index_of(graph: &Graph) -> HashMap<String, usize> {
 }
 
 /// A text's reference as cards and rows show it (App.tsx lines 295–301, `refOf`).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextRef {
     /// `MN 10`.
     pub acronym: String,

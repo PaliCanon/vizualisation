@@ -33,13 +33,12 @@ pub mod text_ref;
 pub mod texts_menu;
 pub mod tooltip;
 pub mod translators;
-// The map's wiring (task 006, M5) mounts `ViewMenu` in `MapScreen`'s chips; until then only
-// its tests use it. Crate-wide: it takes the crate's own `View`.
-#[allow(dead_code)]
+// Crate-wide: it takes the crate's own `View`.
 pub(crate) mod view_menu;
 
 use leptos_i18n::td_string;
 use palicanon_ui_lib::Language;
+use serde::{Deserialize, Serialize};
 
 use crate::catalogue::Locale;
 use crate::map::model::{Blurbs, Graph, LangTranslations, TextRef, blurb_of, text_ref};
@@ -60,7 +59,7 @@ pub const CARD: &str =
     "rounded-xl border border-card-edge bg-card shadow-[0_16px_40px_-16px_rgb(0_0_0/0.7)]";
 
 /// One text as a row, a card or the tooltip shows it.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TextItem {
     /// Its index in the view's graph.
     pub index: usize,

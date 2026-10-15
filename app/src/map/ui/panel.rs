@@ -12,6 +12,7 @@ use std::ops::Range;
 use leptos::prelude::*;
 use leptos_i18n::td_string;
 use palicanon_ui_lib::{Icon, IconName, language_signal};
+use serde::{Deserialize, Serialize};
 
 use crate::catalogue::strings;
 use crate::map::draw::Scene;
@@ -25,7 +26,7 @@ use crate::map::ui::{TextItem, Texts, conjunction, encode_component, type_label}
 pub const TRAIL_SHOWN: usize = 6;
 
 /// One text of the trail: its uid and the acronym shown.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TrailStep {
     /// The uid.
     pub uid: String,
@@ -34,7 +35,7 @@ pub struct TrailStep {
 }
 
 /// The neighbours by one link type.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct NeighbourSection {
     /// The link type's name (`full`, `similar`…): the section's title and its id.
     pub type_name: String,
@@ -43,7 +44,7 @@ pub struct NeighbourSection {
 }
 
 /// Everything the panel shows of one text.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PanelText {
     /// The text: reference, summary.
     pub item: TextItem,

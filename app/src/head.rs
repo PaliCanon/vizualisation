@@ -70,13 +70,27 @@ const JSON_LD: &str = concat!(
     r#""isPartOf":{"@type":"WebSite","name":"PaliCanon","url":"https://palicanon.app/"}}"#,
 );
 
-/// `sitemap.xml`: the map's home and the footer pages (the texts come with the
-/// map screen, task 006), each at its canonical URL.
+/// `sitemap.xml`: the map's home, the footer pages, then every text of
+/// `texts` once, at its canonical address (its first view, `open_text`'s
+/// canonical: `/mn10`, `/sim/ds1.1`).
 #[cfg(feature = "ssr")]
 #[must_use]
-pub fn sitemap() -> String {
-    let paths = std::iter::once("/").chain(PageKind::ALL.map(PageKind::path));
-    let urls = paths.fold(String::new(), |mut urls, path| {
+pub(crate) fn sitemap(texts: &crate::data::TextIndex) -> String {
+    use crate::route::Route;
+    let pages = std::iter::once("/")
+        .chain(PageKind::ALL.map(PageKind::path))
+        .map(str::to_owned);
+    let texts = texts.iter().filter_map(|(uid, entry)| {
+        let (view, _) = entry.views.first()?;
+        Some(
+            Route::Map {
+                view: *view,
+                uid: Some(uid.to_owned()),
+            }
+            .path(),
+        )
+    });
+    let urls = pages.chain(texts).fold(String::new(), |mut urls, path| {
         let _ = writeln!(
             urls,
             "  <url>\n    <loc>{CANONICAL_BASE}{path}</loc>\n  </url>"
@@ -93,20 +107,60 @@ pub fn sitemap() -> String {
 mod tests {
     use super::*;
 
+    /// The committed data's text index, as the server builds it at boot.
+    #[cfg(feature = "ssr")]
+    fn texts() -> crate::data::TextIndex {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public");
+        let data = crate::data::Data::load(&dir).expect("the committed data");
+        crate::data::TextIndex::build(&data)
+    }
+
+    /// The home and every page once, then every text once at its canonical
+    /// address — its first view (`/mn10` for a text of the parallels,
+    /// `/sim/ds1.1` for one of the vectorial space only) —, an address the
+    /// route table reads back as that text. Mutations it catches: a text
+    /// left out, listed twice, or at another view than its first.
     #[cfg(feature = "ssr")]
     #[test]
-    fn the_sitemap_lists_the_home_and_every_page_once() {
-        let xml = sitemap();
+    fn the_sitemap_lists_each_text_once_at_its_canonical() {
+        use crate::route::{Route, View};
+        let texts = texts();
+        let xml = sitemap(&texts);
         assert!(
             xml.starts_with(r#"<?xml version="1.0" encoding="UTF-8"?>"#),
             "{xml}"
         );
         let mut expected = vec![format!("{CANONICAL_BASE}/")];
         expected.extend(PageKind::ALL.map(|kind| format!("{CANONICAL_BASE}{}", kind.path())));
+        for (uid, entry) in texts.iter() {
+            let view = entry.views[0].0;
+            let path = Route::Map {
+                view,
+                uid: Some(uid.to_owned()),
+            }
+            .path();
+            assert_eq!(
+                Route::parse(&path),
+                Some(Route::Map {
+                    view,
+                    uid: Some(uid.to_owned())
+                }),
+                "{path}"
+            );
+            expected.push(format!("{CANONICAL_BASE}{path}"));
+        }
         for url in &expected {
             let loc = format!("<loc>{url}</loc>");
-            assert_eq!(xml.matches(&loc).count(), 1, "{loc} in {xml}");
+            assert_eq!(xml.matches(&loc).count(), 1, "{loc}");
         }
-        assert_eq!(xml.matches("<loc>").count(), expected.len(), "{xml}");
+        assert_eq!(xml.matches("<loc>").count(), expected.len());
+        assert!(xml.contains(&format!("<loc>{CANONICAL_BASE}/mn10</loc>")));
+        assert!(xml.contains(&format!("<loc>{CANONICAL_BASE}/sim/ds1.1</loc>")));
+        assert!(!xml.contains(&format!("<loc>{CANONICAL_BASE}/sim/mn10</loc>")));
+        assert!(
+            texts.iter().any(|(_, e)| e.views[0].0 == View::Sim),
+            "some texts are sim-only"
+        );
+        assert_eq!(texts.iter().count(), 8268, "every uid of the five views");
     }
 }

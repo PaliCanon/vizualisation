@@ -39,11 +39,13 @@ async fn healthz(axum::extract::State(data): axum::extract::State<Arc<Data>>) ->
     lines.join("\n") + "\n"
 }
 
-/// `sitemap.xml`, as [`crate::head::sitemap`] writes it.
-async fn sitemap() -> ([(axum::http::HeaderName, &'static str); 1], String) {
+/// `sitemap.xml`, as `crate::head::sitemap` writes it from the text index.
+async fn sitemap(
+    State(served): State<Served>,
+) -> ([(axum::http::HeaderName, &'static str); 1], String) {
     (
         [(axum::http::header::CONTENT_TYPE, "application/xml")],
-        crate::head::sitemap(),
+        crate::head::sitemap(&served.texts),
     )
 }
 
@@ -100,7 +102,7 @@ pub fn router(options: LeptosOptions, config: Config, data: Arc<Data>) -> axum::
         .call_fallback_on_method_not_allowed(true)
         .fallback(app);
     let site = axum::Router::new()
-        .route("/sitemap.xml", get(sitemap))
+        .route("/sitemap.xml", get(sitemap).with_state(served.clone()))
         .route("/data/{file}", get(data_file).with_state(served))
         .fallback_service(files)
         .layer(axum::middleware::from_fn_with_state(
@@ -376,5 +378,45 @@ mod tests {
     async fn a_page_behind_the_password_is_not_cached() {
         let (_, headers) = status("/", true, true).await;
         assert!(headers.contains("private, no-store"), "{headers}");
+    }
+
+    /// A text's address whose uid no view has is a 404, behind and in
+    /// front of a view, with the not-found page, not indexed; a uid one view
+    /// has is a page (200), whichever view the address names.
+    #[tokio::test]
+    async fn a_uid_in_no_view_is_a_404() {
+        for path in ["/zz999", "/sim/zz999", "/tsne/mn99999"] {
+            let response = get_from(prod(), path).await;
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+            let body = axum::body::to_bytes(response.into_body(), 1 << 24)
+                .await
+                .unwrap();
+            let body = String::from_utf8(body.to_vec()).unwrap();
+            assert!(
+                body.contains(r#"<meta name="robots" content="noindex">"#),
+                "{path}: {body}"
+            );
+        }
+        for path in ["/mn10", "/sim/mn10", "/ds1.1", "/umap/ds1.1"] {
+            let response = get_from(prod(), path).await;
+            assert_eq!(response.status(), StatusCode::OK, "{path}");
+        }
+    }
+
+    /// The sitemap lists the texts too: one `<loc>` per text, at its
+    /// canonical address, after the home and the pages.
+    #[tokio::test]
+    async fn the_sitemap_names_the_texts() {
+        let response = get_from(prod(), "/sitemap.xml").await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), 1 << 24)
+            .await
+            .unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(
+            body.contains("<loc>https://viz.palicanon.app/mn10</loc>"),
+            "{body}"
+        );
+        assert_eq!(body.matches("<loc>").count(), 1 + 5 + 8268);
     }
 }

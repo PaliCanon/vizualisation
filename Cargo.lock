@@ -2992,6 +2992,7 @@ dependencies = [
  "base64",
  "console_error_panic_hook",
  "futures",
+ "js-sys",
  "leptos",
  "leptos_axum",
  "leptos_i18n",
@@ -3002,6 +3003,7 @@ dependencies = [
  "map-engine",
  "map-formats",
  "palicanon-ui-lib",
+ "serde",
  "serde_json",
  "subtle",
  "tokio",
@@ -3009,6 +3011,7 @@ dependencies = [
  "tower-http",
  "unicode-normalization",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
 ]
 

@@ -11,12 +11,13 @@
 //! one place a path's meaning is decided.
 
 use leptos_i18n::td_string;
+use serde::{Deserialize, Serialize};
 
 use crate::catalogue::Locale;
 use crate::pages::PageKind;
 
 /// One of the map's views, each at its own path segment.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(crate) enum View {
     /// SuttaCentral's parallels, the default view, at `/`.
     Parallels,

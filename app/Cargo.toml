@@ -28,6 +28,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net"]
 # The data files' types (task 004): read at boot on the server, and in the browser by the
 # map's logic (`map/`, shared by ssr and hydrate; serde only, it builds for wasm32).
 map-formats = { version = "0.1.0", path = "../formats" }
+# The first render's decisions travel to the browser in the page (`map::first`, a Leptos
+# `SharedValue`, JSON): the panel and its parts derive `Serialize`/`Deserialize`.
+serde = { version = "1", features = ["derive"] }
 # Search folds diacritics as the React page did (`normalize`, src/map/data.ts: NFD, then the
 # combining marks dropped).
 unicode-normalization = "0.1"
@@ -40,10 +43,16 @@ base64 = { version = "0.22", optional = true }
 tower-http = { version = "0.6", features = ["fs"], optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
+# The map's data files are fetched by the browser (`map/fetch.rs`): a fetch's future, its
+# bytes.
+wasm-bindgen-futures = { version = "0.4", optional = true }
+js-sys = { version = "0.3", optional = true }
 
 # `EngineView` (map/engine_view.rs) in the browser: the map engine (wgpu, task 004) and the
 # DOM it is driven through (the canvas, pointer, wheel and key events, ResizeObserver,
-# requestAnimationFrame). `hydrate` only, and wasm32 only: the server renders the empty canvas.
+# requestAnimationFrame); the map's wiring (`map/live.rs`): its cookies, the history entry's
+# trail, the device's colour scheme, the data files' responses. `hydrate` only, and wasm32
+# only: the server renders the empty canvas.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 map-engine = { version = "0.1.0", path = "../engine", optional = true }
 web-sys = { version = "0.3", optional = true, features = [
@@ -55,13 +64,17 @@ web-sys = { version = "0.3", optional = true, features = [
   "Element",
   "Event",
   "EventTarget",
+  "History",
   "HtmlCanvasElement",
+  "HtmlDocument",
   "HtmlElement",
   "KeyboardEvent",
+  "MediaQueryList",
   "MouseEvent",
   "Performance",
   "PointerEvent",
   "ResizeObserver",
+  "Response",
   "WheelEvent",
   "Window",
   "console",
@@ -90,6 +103,8 @@ hydrate = [
   "palicanon-ui-lib/hydrate",
   "dep:console_error_panic_hook",
   "dep:wasm-bindgen",
+  "dep:wasm-bindgen-futures",
+  "dep:js-sys",
   "dep:map-engine",
   "dep:web-sys",
 ]

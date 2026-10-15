@@ -247,16 +247,11 @@ impl TextIndex {
     }
 
     /// The text `uid`, `None` when no view has it.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "read by the map screen (006 M5)")
-    )]
     pub(crate) fn get(&self, uid: &str) -> Option<&TextEntry> {
         self.0.get(uid)
     }
 
     /// Every text, ordered by uid.
-    #[cfg_attr(not(test), expect(dead_code, reason = "read by the sitemap (006 M5)"))]
     pub(crate) fn iter(&self) -> impl Iterator<Item = (&str, &TextEntry)> {
         self.0.iter().map(|(uid, entry)| (uid.as_str(), entry))
     }
@@ -271,7 +266,6 @@ pub(crate) struct Served {
     /// Each data file's hashed URL.
     pub manifest: Arc<Manifest>,
     /// Every text by uid.
-    #[expect(dead_code, reason = "read by the map screen (006 M5)")]
     pub texts: Arc<TextIndex>,
 }
 
