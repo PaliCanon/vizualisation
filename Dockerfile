@@ -10,7 +10,8 @@
 # that must never reach the browser; this service holds none (its secrets are
 # the origin secret and, on dev, the password, both server-side env read at
 # boot), so both files are dropped. The smoke test checks instead that no
-# response echoes a secret, and that the boot refuses an unset VIZ_GATE.
+# response and no log holds a secret, and that the boot refuses an unset
+# VIZ_GATE.
 #
 # Build context: the FOLDER HOLDING `vizualisation/` AND `ui-lib/` (CI checks
 # the two out side by side, `.github/actions/siblings`). The workspace reaches
@@ -89,7 +90,7 @@ RUN ! grep -q '^source = "git+' Cargo.lock \
     || { echo "Cargo.lock holds a git source: the build would need a GitHub credential (search-front 007)"; exit 1; }
 RUN cargo leptos build --release --cargo-locked \
     && mkdir /out \
-    && cp target/release/vizualisation /out/ \
+    && cp target/release/vizualisation target/release/hash.txt /out/ \
     && cp -r target/site /out/site \
     && cp scripts/smoke.sh /out/
 
@@ -97,9 +98,11 @@ RUN cargo leptos build --release --cargo-locked \
 FROM debian:bookworm-slim
 RUN useradd --system --uid 10001 --home /nonexistent --shell /usr/sbin/nologin app
 WORKDIR /app
-COPY --from=builder --chown=app:app /out/vizualisation /out/smoke.sh ./
-# site/ is LEPTOS_SITE_ROOT. The bundle is not hash-named (the workspace sets
-# no `hash-files`): there is no hash.txt to ship.
+# The server reads hash.txt NEXT TO ITS OWN EXECUTABLE to name the hashed
+# files (`vizualisation.<hash>.js/.wasm/.css`: the workspace sets
+# `hash-files`), when LEPTOS_HASH_FILES=true (below); site/ is
+# LEPTOS_SITE_ROOT.
+COPY --from=builder --chown=app:app /out/vizualisation /out/hash.txt /out/smoke.sh ./
 COPY --from=builder --chown=app:app /out/site ./site
 # The data files, read once at boot (app/src/data.rs, VIZ_DATA_DIR): the
 # image carries the very files the commit holds (design v4: baked in, loaded
@@ -125,6 +128,7 @@ ENV LEPTOS_OUTPUT_NAME=vizualisation \
     LEPTOS_SITE_ROOT=site \
     LEPTOS_SITE_PKG_DIR=pkg \
     LEPTOS_SITE_ADDR=0.0.0.0:8080 \
+    LEPTOS_HASH_FILES=true \
     LEPTOS_ENV=PROD \
     VIZ_DATA_DIR=data \
     RUST_LOG=info \
@@ -135,9 +139,12 @@ EXPOSE 8080
 # image will run it, on a free local port, with VIZ_GATE=password and a
 # throwaway origin secret and dev password it makes itself (valid for this run
 # only, never the real ones), and asks it what the rollout will ask:
-# /healthz is 200 with the origin header and 403 without, / is 401 without
-# the password and 200 with it, the .wasm it links is served, no response
-# echoes a secret; then it boots it without VIZ_GATE, which must exit 2. A
+# /healthz is 200 with the origin header and 403 without and says
+# `ok <commit>` and each graph file's stamp, / is 401 without the password
+# and 200 with it, the .wasm it links is served; then it starts it as prod
+# runs it (VIZ_GATE=off, LEPTOS_ENV=PROD): / is 200 without the password and
+# nothing asks for one; then it boots it without VIZ_GATE, which must exit
+# 2; no response and no log of the three runs holds a secret. A
 # broken build or a missing site root fails here, not on Cloud Run. Plain
 # bash (/dev/tcp): the image has no curl and gains none.
 RUN ./smoke.sh ./vizualisation

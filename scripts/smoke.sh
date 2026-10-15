@@ -7,27 +7,37 @@
 # this service has a password gate (`VIZ_GATE`) and `/healthz`, and holds no
 # API token, so there is no `token-pattern` and no token check (search-front
 # looked for its API token's shape in the responses; nothing here could put
-# one there). In its place, `leak`: no response echoes the throwaway origin
-# secret or dev password. The boot check is new: an unset `VIZ_GATE` must
-# stop the binary with exit 2 before it listens.
+# one there). In its place, `leak`: no response and no log of the binary
+# holds the throwaway origin secret or dev password. Two runs are new: prod
+# (the gate off, no password asked) and the boot (an unset `VIZ_GATE` must
+# stop the binary with exit 2 before it listens).
 #
 #   scripts/smoke.sh BINARY
 #       starts BINARY on a free local port with VIZ_GATE=password and a
 #       throwaway ORIGIN_SECRET and DEV_PASSWORD of its own (valid for this
-#       run only, never the real ones), checks it, stops it; then starts it
-#       once more without VIZ_GATE and checks it refuses to boot.
+#       run only, never the real ones), checks it, stops it; starts it again
+#       as prod runs it (VIZ_GATE=off, LEPTOS_ENV=PROD, the same throwaway
+#       ORIGIN_SECRET, no DEV_PASSWORD), checks it, stops it; then starts it
+#       once more without VIZ_GATE and checks it refuses to boot. Its output
+#       goes to server.log, prod.log and boot.log, which `leak` reads too.
 #   ORIGIN_SECRET=… DEV_PASSWORD=… scripts/smoke.sh --port PORT
 #       checks a server already listening on 127.0.0.1:PORT, with the secret
 #       and the password from the environment (never arguments).
 #
 # Checks, each named in the output: `listen` (the binary stays up and
-# listens), `healthz` (/healthz with the origin header is 200 and says ok),
+# listens, and stops within SMOKE_WAIT of a SIGTERM), `healthz` (/healthz
+# with the origin header is 200, its first line `ok <commit>`, and a line
+# gives graph.json's stamp),
 # `guard` (without the header, or with a wrong one, / is 403, and /healthz
 # without it is 403), `gate` (/ and the .wasm without the password are 401,
 # the 401 asks for it with WWW-Authenticate, a wrong password is 401), `root`
 # (/ with both is 200 and names the page), `wasm` (the .wasm the page links is
-# served as application/wasm), `leak` (no response holds the secret or the
-# password), `boot` (BINARY mode: VIZ_GATE unset → exit 2, never listening).
+# served as application/wasm), `prod` (BINARY mode: with the gate off and
+# LEPTOS_ENV=PROD, /healthz is 200 with the header, / is 403 without it, /
+# and the .wasm are 200 with it and no password, no response carries
+# WWW-Authenticate, the binary stops), `boot` (BINARY mode: VIZ_GATE unset →
+# exit 2, never listening), `leak` (no response and, in BINARY mode, no log
+# holds the secret or the password).
 # Exit 0 all good, 1 a check failed (named), 2 usage. Only status codes are
 # printed, never a secret.
 # SMOKE_WAIT: seconds to wait for the binary to listen, or to exit (default 30).
@@ -96,7 +106,10 @@ run_checks() { # port secret password
 
   get "$port" /healthz "$work/healthz" "$secret" || fail healthz "no answer on port $port"
   expect_status healthz "$work/healthz" 200 "/healthz with the header"
-  tr -d '\r' <"$work/healthz" | sed '1,/^$/d' | grep -aq '^ok' || fail healthz "/healthz does not say ok"
+  tr -d '\r' <"$work/healthz" | sed '1,/^$/d' >"$work/healthz-body"
+  head -n 1 "$work/healthz-body" | grep -aEq '^ok [^[:space:]]' \
+    || fail healthz "/healthz does not say ok <commit> on its first line"
+  grep -aq '^graph\.json: ' "$work/healthz-body" || fail healthz "/healthz gives no graph.json stamp"
   echo "smoke: healthz ok"
 
   get "$port" / "$work/open" "" "$basic" || fail guard "no answer without the header"
@@ -131,15 +144,42 @@ run_checks() { # port secret password
   get "$port" "$wasm" "$work/wasm-nopass" "$secret" || fail gate "no answer for $wasm without the password"
   expect_status gate "$work/wasm-nopass" 401 "$wasm without the password"
   echo "smoke: gate ok"
+}
 
-  local f
+# check_leak SECRET PASSWORD: no file of the run (every response, and the
+# binary's server.log, prod.log and boot.log) holds the secret, the password
+# or its Basic credentials.
+check_leak() {
+  local secret=$1 password=$2 basic f
+  basic="$(basic_of "$password")"
   for f in "$work"/*; do
-    case "$f" in */server.log) continue ;; esac
+    [ -f "$f" ] || continue
     if grep -aqF -- "$secret" "$f" || grep -aqF -- "$password" "$f" || grep -aqF -- "$basic" "$f"; then
-      fail leak "a response echoes the origin secret or the password ($(basename "$f"))"
+      fail leak "a response or a log holds the origin secret or the password ($(basename "$f"))"
     fi
   done
   echo "smoke: leak ok"
+}
+
+# stop CHECK: the binary still runs, and a SIGTERM stops it within SMOKE_WAIT.
+# The loop's stderr is dropped: bash reports the job it reaps there
+# ("Terminated: 15"), which is the expected end, not news.
+stop() {
+  local deadline=$((SECONDS + ${SMOKE_WAIT:-30})) late=""
+  kill -0 "$pid" 2>/dev/null || fail "$1" "the binary exited before it was stopped"
+  kill "$pid" 2>/dev/null
+  {
+    while kill -0 "$pid"; do
+      if [ "$SECONDS" -ge "$deadline" ]; then late=1; break; fi
+      sleep 0.1
+    done
+    [ -n "$late" ] || wait "$pid"
+  } 2>/dev/null
+  if [ -n "$late" ]; then
+    kill -9 "$pid" 2>/dev/null
+    fail "$1" "the binary still runs ${SMOKE_WAIT:-30}s after a SIGTERM"
+  fi
+  pid=""
 }
 
 random_port() {
@@ -150,6 +190,38 @@ random_port() {
     port=$((20000 + RANDOM % 40000))
     (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null || { echo "$port"; return; }
   done
+}
+
+# check_prod BINARY SECRET: the binary as prod runs it (design v4: the same
+# image, VIZ_GATE=off, LEPTOS_ENV=PROD, the origin secret and no password)
+# guards the origin and never asks for a password.
+check_prod() {
+  local binary=$1 secret=$2 port wasm f
+  port="$(random_port)"
+  env -u DEV_PASSWORD VIZ_GATE=off LEPTOS_ENV=PROD ORIGIN_SECRET="$secret" \
+    LEPTOS_SITE_ADDR="127.0.0.1:$port" "$binary" >"$work/prod.log" 2>&1 &
+  pid=$!
+  wait_listening "$port"
+  get "$port" /healthz "$work/prod-healthz" "$secret" || fail prod "no answer for /healthz"
+  get "$port" / "$work/prod-open" || fail prod "no answer without the header"
+  get "$port" / "$work/prod-root" "$secret" || fail prod "no answer without the password"
+  wasm="$(grep -aEo '/pkg/[^"'"'"' <>]*\.wasm' "$work/prod-root" | head -n 1)"
+  if [ -n "$wasm" ]; then
+    get "$port" "$wasm" "$work/prod-wasm" "$secret" || fail prod "no answer for $wasm"
+  fi
+  for f in "$work"/prod-*; do
+    if headers_of "$f" | grep -iq '^www-authenticate:'; then
+      fail prod "a response asks for a password with the gate off ($(basename "$f"))"
+    fi
+  done
+  expect_status prod "$work/prod-healthz" 200 "/healthz with the header (prod)"
+  expect_status prod "$work/prod-open" 403 "/ without the header (prod)"
+  expect_status prod "$work/prod-root" 200 "/ without the password (prod)"
+  grep -aEq '<title>[^<]*Suttas Map' "$work/prod-root" || fail prod "/ does not name the page (prod)"
+  [ -n "$wasm" ] || fail prod "the page links no .wasm (prod)"
+  expect_status prod "$work/prod-wasm" 200 "$wasm without the password (prod)"
+  stop prod
+  echo "smoke: prod ok"
 }
 
 # check_boot BINARY SECRET PASSWORD: without VIZ_GATE the binary must exit 2
@@ -184,6 +256,7 @@ case "${1:-}" in
     [ -n "${DEV_PASSWORD:-}" ] || { echo "smoke: DEV_PASSWORD is not set" >&2; exit 2; }
     wait_listening "$2"
     run_checks "$2" "$ORIGIN_SECRET" "$DEV_PASSWORD"
+    check_leak "$ORIGIN_SECRET" "$DEV_PASSWORD"
     ;;
   "" | -*)
     echo "usage: smoke.sh BINARY | smoke.sh --port PORT" >&2
@@ -202,9 +275,9 @@ case "${1:-}" in
     sleep 0.3
     kill -0 "$pid" 2>/dev/null || fail listen "the binary exited (its port was taken?)"
     run_checks "$port" "$secret" "$password"
-    kill "$pid" 2>/dev/null
-    wait "$pid" 2>/dev/null
-    pid=""
+    stop listen
+    check_prod "$binary" "$secret"
     check_boot "$binary" "$secret" "$password"
+    check_leak "$secret" "$password"
     ;;
 esac

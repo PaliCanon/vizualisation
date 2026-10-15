@@ -7,9 +7,10 @@
 //! workspace has four members (`app`, `engine`, `layout`, `formats`), all
 //! copied; no `token-pattern` beside `smoke.sh` (this service holds no API
 //! token, so the image has no token check: `scripts/smoke.sh`'s header);
-//! and two tests of our own: the runtime env is the Leptos settings the
-//! brief names, and the image never sets `VIZ_GATE` (each deployment says
-//! it, the boot refuses it unset).
+//! and tests of our own: the runtime env is the Leptos settings the brief
+//! names, the image never sets `VIZ_GATE` (each deployment says it, the boot
+//! refuses it unset), and the bundle is hash-named with `hash.txt` shipped
+//! next to the binary (as learn-pali's image).
 //!
 //! No docker on the laptop, so the build context is simulated: the
 //! Dockerfile's own `COPY` lines (the ones without `--from`) are replayed
@@ -535,4 +536,61 @@ fn the_image_never_chooses_the_gate() {
             );
         }
     }
+}
+
+/// The bundle is hash-named (learn-pali/Cargo.toml: `hash-files = true`):
+/// `cargo leptos build` names `pkg/vizualisation.<hash>.{js,wasm,css}` and
+/// writes `hash.txt` next to the server binary, so a new build is never
+/// served from a browser's or the CDN's cache of the old one.
+#[test]
+fn the_workspace_hash_names_the_bundle() {
+    let manifest = fs::read_to_string(repo_root().join("Cargo.toml")).expect("the root Cargo.toml");
+    let section = manifest
+        .split("[[workspace.metadata.leptos]]")
+        .nth(1)
+        .expect("a [[workspace.metadata.leptos]] section");
+    let section = section.split("\n[").next().unwrap_or_default();
+    assert!(
+        section
+            .lines()
+            .any(|line| line.trim() == "hash-files = true"),
+        "[[workspace.metadata.leptos]] sets no `hash-files = true`"
+    );
+}
+
+/// The server reads `hash.txt` NEXT TO ITS OWN EXECUTABLE to name the hashed
+/// files, and only when `LEPTOS_HASH_FILES=true` (the image has no
+/// Cargo.toml): the builder keeps the file the build wrote, the runtime
+/// stage puts it beside `./vizualisation` (learn-pali/app/Dockerfile).
+#[test]
+fn the_image_ships_hash_txt_next_to_the_binary() {
+    let all = instructions(&dockerfile());
+    let build = all
+        .iter()
+        .find(|i| i.starts_with("RUN ") && i.contains("cargo leptos build"))
+        .expect("the builder runs cargo leptos build");
+    assert!(
+        build.contains("cp target/release/vizualisation target/release/hash.txt /out/"),
+        "the builder does not copy target/release/hash.txt to /out: {build}"
+    );
+    let runtime = all
+        .iter()
+        .rposition(|i| i.starts_with("FROM "))
+        .expect("a runtime stage");
+    let beside = all[runtime..].iter().any(|i| {
+        let words: Vec<&str> = i.split_whitespace().collect();
+        i.starts_with("COPY --from=builder")
+            && words.contains(&"/out/vizualisation")
+            && words.contains(&"/out/hash.txt")
+            && words.last() == Some(&"./")
+    });
+    assert!(
+        beside,
+        "the runtime stage does not copy /out/hash.txt next to ./vizualisation"
+    );
+    assert!(
+        all[runtime..].iter().any(|i| i.starts_with("ENV ")
+            && i.split_whitespace().any(|w| w == "LEPTOS_HASH_FILES=true")),
+        "the runtime stage sets no LEPTOS_HASH_FILES=true"
+    );
 }

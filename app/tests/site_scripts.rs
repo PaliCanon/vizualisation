@@ -12,7 +12,8 @@
 //! boot that refuses an unset `VIZ_GATE` (exit 2). No API, so no live search
 //! and no token shape: the `search` and `token` checks and the
 //! `token-pattern` file are gone; `smoke.sh` checks instead that no
-//! response echoes its throwaway secret or password (`leak`).
+//! response and no log of the binary holds its throwaway secret or password
+//! (`leak`), and runs the binary as prod does too (`prod`).
 #![cfg(feature = "ssr")]
 
 use std::fmt::Write as _;
@@ -193,6 +194,11 @@ fn answer(mut stream: TcpStream, handler: &impl Fn(&Req) -> Resp, seen: &Mutex<V
 
 const WASM: &str = "/pkg/vizualisation.wasm";
 
+/// The probe's body as the real service writes it: the commit, then each
+/// graph file's stamp (`app/src/data.rs`, `stamp_lines`).
+const HEALTHZ: &str = "ok 63bdba3\ngraph.json: none\ngraph-sim.json: none\n\
+    graph-sim-pca.json: none\ngraph-sim-umap.json: none\ngraph-sim-tsne.json: none\n";
+
 /// The page the real service renders, as far as the scripts read it.
 fn page(extra: &str) -> String {
     format!(
@@ -211,7 +217,7 @@ fn serve(req: &Req, gated: bool) -> Resp {
         return Resp::new(403, "").with("cache-control", "no-store");
     }
     if req.path == "/healthz" {
-        return Resp::new(200, "ok 63bdba3\n").with("content-type", "text/plain");
+        return Resp::new(200, HEALTHZ).with("content-type", "text/plain");
     }
     if gated && !req.admitted() {
         return Resp::new(401, "")
@@ -434,7 +440,7 @@ fn origin_cases() -> Vec<Case> {
             "/healthz without the header answers 200",
             Box::new(|r| {
                 if r.path == "/healthz" {
-                    Resp::new(200, "ok 63bdba3\n")
+                    Resp::new(200, HEALTHZ)
                 } else {
                     dev(r)
                 }
@@ -511,8 +517,9 @@ fn smoke_passes_on_the_real_binary_and_leaves_no_service_behind() {
         "gate ok",
         "root ok",
         "wasm ok",
-        "leak ok",
+        "prod ok",
         "boot ok",
+        "leak ok",
     ] {
         assert!(text.contains(check), "{check} is reported: {text}");
     }
@@ -566,9 +573,87 @@ fn smoke_fails_naming_the_boot_when_an_unset_gate_is_not_refused() {
     let _ = std::fs::remove_dir_all(site);
 }
 
-/// What only `smoke.sh` checks: the wasm's type, and no echo of a secret.
+/// The prod run (`check_prod`) starts the binary as prod does: the gate
+/// off, `LEPTOS_ENV=PROD`, the origin secret, no password. A wrapper that
+/// refuses any other environment still passes, and reports `prod ok`.
+#[test]
+fn smoke_runs_the_binary_as_prod_does() {
+    let site = site_root("smoke-prod-env", true);
+    let binary = wrapper(
+        "prod-env",
+        "if [ \"${VIZ_GATE:-}\" = off ]; then\n\
+         [ \"${LEPTOS_ENV:-}\" = PROD ] && [ -n \"${ORIGIN_SECRET:-}\" ] \\\n\
+         && [ -z \"${DEV_PASSWORD+set}\" ] && [ -n \"${VIZ_DATA_DIR:-}\" ] || exit 3\n\
+         fi",
+    );
+    let out = smoke_binary(binary.to_str().expect("utf-8"), &site);
+    let text = printed(&out);
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(text.contains("prod ok"), "{text}");
+    let _ = std::fs::remove_file(binary);
+    let _ = std::fs::remove_dir_all(site);
+}
+
+/// A binary that asks for a password with the gate off (prod), or does not
+/// stop on a SIGTERM there, fails `prod`; one that writes the secret or the password to its output fails `leak`,
+/// naming the log (the dev run's `server.log`, the refused boot's
+/// `boot.log`).
+#[test]
+fn smoke_fails_on_a_password_in_prod_and_on_a_secret_in_a_log() {
+    let site = site_root("smoke-prod-leak", true);
+    for (name, body, check, file) in [
+        (
+            "prod-401",
+            "[ \"${VIZ_GATE:-}\" != off ] || export VIZ_GATE=password DEV_PASSWORD=wrapper-pw",
+            "prod",
+            "prod-",
+        ),
+        (
+            "prod-ignores-sigterm",
+            "[ \"${VIZ_GATE:-}\" != off ] || trap '' TERM",
+            "prod",
+            "SIGTERM",
+        ),
+        (
+            "server-log",
+            "[ \"${VIZ_GATE:-}\" != password ] || echo \"debug: origin $ORIGIN_SECRET\" >&2",
+            "leak",
+            "server.log",
+        ),
+        (
+            "boot-log",
+            "[ -n \"${VIZ_GATE:-}\" ] || echo \"debug: password $DEV_PASSWORD\" >&2",
+            "leak",
+            "boot.log",
+        ),
+    ] {
+        let binary = wrapper(name, body);
+        let out = smoke_binary(binary.to_str().expect("utf-8"), &site);
+        assert_fails_naming(&out, check, name);
+        assert!(
+            printed(&out).contains(file),
+            "{name}: names {file}: {}",
+            printed(&out)
+        );
+        let _ = std::fs::remove_file(binary);
+    }
+    let _ = std::fs::remove_dir_all(site);
+}
+
+/// What only `smoke.sh` checks: the probe's body, the wasm's type, and no
+/// echo of a secret.
 fn smoke_only_cases() -> Vec<Case> {
     vec![
+        (
+            "healthz",
+            "/healthz gives no stamp line",
+            health(200, "ok 63bdba3\n"),
+        ),
+        (
+            "healthz",
+            "/healthz says ok without a commit",
+            health(200, "ok\ngraph.json: none\n"),
+        ),
         (
             "wasm",
             "the wasm is served as text",

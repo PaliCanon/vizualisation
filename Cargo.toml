@@ -44,6 +44,10 @@ reload-port = 4301
 bin-features = ["ssr"]
 lib-features = ["hydrate"]
 lib-profile-release = "wasm-release"
+# Hashed file names (`vizualisation.<hash>.css`, `.js`, `.wasm`), as learn-pali: a new
+# build is never served from a cache of the old one. The server reads the hash file
+# `cargo-leptos` writes next to its binary (`hash.txt`) when LEPTOS_HASH_FILES=true.
+hash-files = true
 
 # Built from ../ui-lib (a worktree reaches it through the wt/ui-lib symlink), not from
 # GitHub: a change to both repositories is seen at once.

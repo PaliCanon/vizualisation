@@ -206,6 +206,32 @@ mod tests {
         assert_eq!(code, StatusCode::UNAUTHORIZED);
     }
 
+    /// The probe says which build answers and what each graph file was built
+    /// from: `ok <sha>`, then the five stamp lines, nothing else.
+    #[tokio::test]
+    async fn the_probe_names_the_build_and_the_data_stamps() {
+        let response = dev()
+            .oneshot(
+                Request::get("/healthz")
+                    .header(ORIGIN_HEADER, SECRET)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), 1 << 16)
+            .await
+            .unwrap();
+        let body = String::from_utf8(body.to_vec()).expect("utf-8");
+        let lines: Vec<&str> = body.lines().collect();
+        let stamps = data().stamp_lines();
+        assert_eq!(stamps.len(), 5, "five graph files");
+        assert_eq!(lines.len(), 6, "{body}");
+        assert_eq!(lines[0], format!("ok {BUILD_SHA}"), "{body}");
+        assert_eq!(&lines[1..], stamps.as_slice(), "{body}");
+    }
+
     #[tokio::test]
     async fn a_page_behind_the_password_is_not_cached() {
         let (_, headers) = status("/", true, true).await;

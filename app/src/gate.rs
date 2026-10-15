@@ -155,6 +155,7 @@ mod tests {
                 false,
             ),
             ("wrong password", basic("dev:nope"), false),
+            ("empty password", basic("dev:"), false),
             ("longer password", basic(&format!("dev:{longer}")), false),
             ("no colon", basic(PASSWORD), false),
             (
