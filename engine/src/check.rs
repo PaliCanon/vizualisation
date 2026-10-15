@@ -29,6 +29,24 @@ pub fn segments(ends: &[u32], colors: &[f32], n_points: usize) -> Result<(), Str
     }
 }
 
+/// Links for a layout: pairs of point indices, one finite rest length per pair, every index a
+/// point.
+pub fn links(ends: &[u32], lengths: &[f32], n_points: usize) -> Result<(), String> {
+    if !ends.len().is_multiple_of(2) {
+        return Err(format!("links: {} ends, expected pairs", ends.len()));
+    }
+    len("rest lengths", lengths.len(), ends.len() / 2, 1)?;
+    if let Some(k) = ends.iter().find(|&&k| k as usize >= n_points) {
+        return Err(format!(
+            "links: point {k} does not exist ({n_points} points)"
+        ));
+    }
+    if lengths.iter().any(|l| !l.is_finite()) {
+        return Err("rest lengths must be finite numbers".into());
+    }
+    Ok(())
+}
+
 /// A count as the GPU's `u32`; saturates (a draw call cannot take more).
 pub fn to_u32(n: usize) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX)
@@ -103,5 +121,32 @@ mod tests {
     fn point_id_saturates_for_the_page() {
         assert_eq!(point_id(5), 5);
         assert_eq!(point_id(usize::MAX), i32::MAX);
+    }
+
+    #[test]
+    fn links_check_rejects_odd_length_and_missing_node() {
+        assert!(links(&[0, 1, 1, 2], &[1.0, 2.0], 3).is_ok());
+        assert!(links(&[], &[], 0).is_ok());
+        assert!(
+            links(&[0, 1, 1], &[1.0, 2.0], 3)
+                .unwrap_err()
+                .contains("pairs")
+        );
+        assert!(
+            links(&[0, 1, 1, 2], &[1.0], 3)
+                .unwrap_err()
+                .contains("rest lengths")
+        );
+        assert!(links(&[0, 3], &[1.0], 3).unwrap_err().contains("point 3"));
+        assert!(
+            links(&[0, 1], &[f32::NAN], 3)
+                .unwrap_err()
+                .contains("finite")
+        );
+        assert!(
+            links(&[0, 1], &[f32::INFINITY], 3)
+                .unwrap_err()
+                .contains("finite")
+        );
     }
 }
