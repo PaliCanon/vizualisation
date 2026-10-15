@@ -8,6 +8,9 @@
 
 pub mod app;
 mod catalogue;
+mod components;
+mod pages;
+mod route;
 
 // `build.rs` includes this same file (`#[path]`) for the env badge's pure
 // decisions; declared here too so `cargo test -p vizualisation` covers it.

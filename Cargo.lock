@@ -2955,8 +2955,10 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 name = "vizualisation"
 version = "0.1.0"
 dependencies = [
+ "any_spawner",
  "axum",
  "console_error_panic_hook",
+ "futures",
  "leptos",
  "leptos_axum",
  "leptos_i18n",

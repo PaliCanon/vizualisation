@@ -37,6 +37,11 @@ serde_json = "1"
 
 [dev-dependencies]
 serde_json = "1"
+# Drive the document test (learn-pali/app/Cargo.toml): the head the meta
+# context collected is injected into the rendered stream as `leptos_axum`
+# does, which awaits a tick of the global executor (both already in the lock).
+futures = "0.3"
+any_spawner = { version = "0.3", features = ["tokio"] }
 
 [features]
 hydrate = [

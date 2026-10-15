@@ -1,7 +1,11 @@
 //! The service's shell: the HTML document ([`shell`], server-rendered), the
 //! app root ([`App`], what hydration mounts), and `AppShell`'s rail with the
-//! services Search, Learn and Map (this one). From search-front/app/src/app.rs
-//! and learn-pali/app/src/app.rs; the routes and pages come in slice S2.
+//! services Search, Learn and Map (this one), its routes (the map's views,
+//! the footer pages, the 404: `crate::route`), the footer under each
+//! (`SiteFooter`) carrying the build badge. From search-front/app/src/app.rs
+//! (commit 6d370b4) and learn-pali/app/src/app.rs; what differs: three rail
+//! entries, and one view for every route, rendering what the typed table
+//! says (`RoutedPage`).
 
 use leptos::prelude::*;
 use leptos_i18n::td_string;
@@ -10,11 +14,34 @@ use leptos_router::components::{Route, Router, Routes};
 use leptos_router::hooks::use_location;
 use leptos_router::path;
 use palicanon_ui_lib::{
-    AppShell, IconName, NavEntry, NavList, NavSection, language_attribute, provide_language,
-    theme_attribute,
+    AppShell, EnvBadgeInfo, IconName, NavEntry, NavList, NavSection, language_attribute,
+    provide_language, theme_attribute,
 };
 
 use crate::catalogue::strings;
+use crate::components::map_placeholder::MapPlaceholder;
+use crate::components::not_found::NotFoundPage;
+use crate::components::site_footer::SiteFooter;
+use crate::pages::FooterPage;
+use crate::route;
+
+/// The branch this build came from (`build.rs`,
+/// `VIZUALISATION_GIT_BRANCH`, from git, or from the `BUILD_BRANCH` the
+/// image build passes when it has no `.git`): `main`, `feat/…` — this
+/// service's own `env` for [`EnvBadgeInfo`] (replaced by `dev` / `prod`
+/// once this deploys, like every other service).
+pub(crate) const BUILD_BRANCH: &str = env!("VIZUALISATION_GIT_BRANCH");
+/// The short commit this build came from (`build.rs`,
+/// `VIZUALISATION_GIT_SHA`, from git, or from `BUILD_SHA`), a trailing `*`
+/// when the worktree had uncommitted changes at build time (git only).
+pub(crate) const BUILD_SHA: &str = env!("VIZUALISATION_GIT_SHA");
+
+/// This build, as the footer's badge shows it (at the footer's left —
+/// `SiteFooter`; nothing on the shell's panel).
+pub(crate) const BADGE: EnvBadgeInfo = EnvBadgeInfo {
+    env: BUILD_BRANCH,
+    sha: BUILD_SHA,
+};
 
 /// The HTML document around the app, rendered on the server. `data-theme`
 /// and `lang` follow the request's cookies ([`theme_attribute`],
@@ -89,16 +116,50 @@ fn nav(current: Signal<String>) -> NavList {
     NavList::new(sections, current)
 }
 
-/// The shell around the pages: `AppShell`'s rail, theme and languages.
+/// The shell around the pages: `AppShell`'s rail, theme and languages, the
+/// routes, the footer under each. The router knows every path pattern of
+/// `crate::route` (so the server answers them, and the rest falls to the
+/// 404 with its status); what each one shows is [`RoutedPage`]'s. The
+/// pages come before `/:uid`, the views before `/:uid` too, so a page or a
+/// view is never read as a text.
 #[component]
 fn Layout() -> impl IntoView {
     let location = use_location();
     view! {
-        <AppShell nav=nav(location.pathname.into())>
-            <Routes fallback=|| "Not found.">
-                <Route path=path!("/") view=|| () />
+        <AppShell nav=nav(location.pathname.into()) footer=|| view! { <SiteFooter /> }>
+            <Routes fallback=|| view! { <NotFoundPage /> }>
+                <Route path=path!("/acknowledgements") view=RoutedPage />
+                <Route path=path!("/terms") view=RoutedPage />
+                <Route path=path!("/privacy") view=RoutedPage />
+                <Route path=path!("/legal") view=RoutedPage />
+                <Route path=path!("/support") view=RoutedPage />
+                <Route path=path!("/") view=RoutedPage />
+                <Route path=path!("/sim") view=RoutedPage />
+                <Route path=path!("/pca") view=RoutedPage />
+                <Route path=path!("/umap") view=RoutedPage />
+                <Route path=path!("/tsne") view=RoutedPage />
+                <Route path=path!("/sim/:uid") view=RoutedPage />
+                <Route path=path!("/pca/:uid") view=RoutedPage />
+                <Route path=path!("/umap/:uid") view=RoutedPage />
+                <Route path=path!("/tsne/:uid") view=RoutedPage />
+                <Route path=path!("/:uid") view=RoutedPage />
             </Routes>
         </AppShell>
+    }
+}
+
+/// What the current path shows, as [`route::Route::parse`] reads it: a
+/// footer page, the map (its placeholder until task 006), or the 404 for a
+/// path the router matched but the table refuses (`/MN10`).
+#[component]
+fn RoutedPage() -> impl IntoView {
+    let location = use_location();
+    move || match route::Route::parse(&location.pathname.get()) {
+        Some(route::Route::Page(kind)) => view! { <FooterPage kind=kind /> }.into_any(),
+        Some(route::Route::Map { view, uid }) => {
+            view! { <MapPlaceholder view=view uid=uid /> }.into_any()
+        }
+        None => view! { <NotFoundPage /> }.into_any(),
     }
 }
 
@@ -124,5 +185,180 @@ mod tests {
             hrefs,
             ["https://palicanon.app", "https://learn.palicanon.app", "/"]
         );
+    }
+
+    /// [`Layout`] as the server renders it for `path`, the language set
+    /// (search-front's `render_layout`).
+    #[cfg(feature = "ssr")]
+    fn render_layout(language: Language, path: &str) -> String {
+        use leptos_router::location::RequestUrl;
+        Owner::new().with(|| {
+            palicanon_ui_lib::provide_language().set(language);
+            provide_meta_context();
+            provide_context(RequestUrl::new(path));
+            view! {
+                <Router>
+                    <Layout />
+                </Router>
+            }
+            .to_html()
+        })
+    }
+
+    /// The footer pages' paths and their titles in en, fr, vi.
+    #[cfg(feature = "ssr")]
+    const PAGE_TITLES: [(&str, [&str; 3]); 5] = [
+        (
+            "/acknowledgements",
+            ["Acknowledgements", "Remerciements", "Tri ân"],
+        ),
+        (
+            "/terms",
+            [
+                "Terms of use",
+                "Conditions d’utilisation",
+                "Điều khoản sử dụng",
+            ],
+        ),
+        ("/privacy", ["Privacy", "Confidentialité", "Quyền riêng tư"]),
+        (
+            "/legal",
+            ["Legal notice", "Mentions légales", "Thông tin pháp lý"],
+        ),
+        ("/support", ["Support", "Soutenir", "Ủng hộ"]),
+    ];
+
+    /// The views' path prefixes and their names in en, fr, vi.
+    #[cfg(feature = "ssr")]
+    const VIEW_TITLES: [(&str, [&str; 3]); 5] = [
+        ("", ["SuttaCentral", "SuttaCentral", "SuttaCentral"]),
+        (
+            "/sim",
+            ["Vectorial space", "Espace vectoriel", "Không gian vectơ"],
+        ),
+        ("/pca", ["Test · PCA 3D", "Test · ACP 3D", "Thử · PCA 3D"]),
+        (
+            "/umap",
+            ["Test · UMAP 3D", "Test · UMAP 3D", "Thử · UMAP 3D"],
+        ),
+        (
+            "/tsne",
+            ["Test · t-SNE 3D", "Test · t-SNE 3D", "Thử · t-SNE 3D"],
+        ),
+    ];
+
+    /// Every route of the table renders, inside the shell, its title in
+    /// each language (a page's `<h1>`, the view's name on a map route),
+    /// before the footer, and is no 404.
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn every_route_renders() {
+        let mut routes: Vec<(String, [&str; 3], Option<&str>)> = PAGE_TITLES
+            .iter()
+            .map(|(path, titles)| ((*path).to_owned(), *titles, None))
+            .collect();
+        for (prefix, titles) in VIEW_TITLES {
+            let bare = if prefix.is_empty() { "/" } else { prefix };
+            routes.push((bare.to_owned(), titles, None));
+            routes.push((format!("{prefix}/mn10"), titles, Some("mn10")));
+        }
+        assert_eq!(routes.len(), 15, "5 pages, 5 views with and without a uid");
+        for (path, titles, uid) in routes {
+            for (language, title) in Language::ALL.into_iter().zip(titles) {
+                let html = render_layout(language, &path);
+                let h1 = html.find(&format!(">{title}</h1>")).expect(&html);
+                let footer = html.find("<footer").expect(&html);
+                assert!(h1 < footer, "{path} {language:?}: {html}");
+                assert!(!html.contains("Anattā"), "{path} {language:?}: {html}");
+                if let Some(uid) = uid {
+                    assert!(html.contains(&format!(">{uid}</p>")), "{path}: {html}");
+                }
+            }
+        }
+    }
+
+    /// A path the table refuses renders the 404 page, in each language,
+    /// whether the router matched a pattern (`/MN10` is `/:uid`) or not.
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn an_unknown_path_renders_the_404() {
+        for path in ["/nope/x/y", "/sim/a/b", "/MN10"] {
+            for language in Language::ALL {
+                let html = render_layout(language, path);
+                assert!(html.contains(">Anattā</h1>"), "{path}: {html}");
+                assert!(html.contains(">404</p>"), "{path}: {html}");
+                assert!(html.contains("<footer"), "{path}: {html}");
+            }
+        }
+    }
+
+    /// The whole document of [`shell`] for `path`, with the head the meta
+    /// context collected injected the way `leptos_axum` does
+    /// (learn-pali/app/src/app.rs's `render_document`).
+    #[cfg(feature = "ssr")]
+    fn render_document(path: &str) -> String {
+        use futures::StreamExt;
+        use leptos_meta::ServerMetaContext;
+        use leptos_router::location::RequestUrl;
+
+        let options = LeptosOptions::builder()
+            .output_name("vizualisation")
+            .build();
+        let (server, output) = ServerMetaContext::new();
+        let body = Owner::new().with(|| {
+            let request = axum::http::Request::builder().uri(path);
+            provide_context(request.body(()).expect("a request").into_parts().0);
+            provide_context(server);
+            provide_context(RequestUrl::new(path));
+            shell(options).to_html()
+        });
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("a runtime");
+        runtime.block_on(async {
+            // The injection waits a tick of the global executor; it is set
+            // once per process, a second call is the expected refusal.
+            let _ = any_spawner::Executor::init_tokio();
+            output
+                .inject_meta_context(futures::stream::iter([body]))
+                .await
+                .collect::<String>()
+                .await
+        })
+    }
+
+    /// The 404 asks not to be indexed (`<meta name="robots"
+    /// content="noindex">` in the document's `<head>`, through
+    /// `leptos_meta`); a page and a map route do not.
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn the_404_is_noindex() {
+        let noindex = r#"<meta name="robots" content="noindex">"#;
+        for path in ["/nope/x/y", "/sim/a/b"] {
+            let html = render_document(path);
+            let head = &html[..html.find("</head>").expect(&html)];
+            assert!(head.contains(noindex), "{path}: {head}");
+            assert!(
+                head.contains("<title>Anattā — Suttas Map</title>"),
+                "{head}"
+            );
+        }
+        for path in ["/terms", "/sim/mn10"] {
+            let html = render_document(path);
+            assert!(!html.contains("noindex"), "{path}: {html}");
+        }
+    }
+
+    /// The build badge sits in the footer only, once, after the page.
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn the_badge_sits_in_the_footer_after_the_page() {
+        let html = render_layout(Language::En, "/terms");
+        let badge = format!(r#"title="{} · {}""#, BADGE.env, BADGE.sha);
+        let page = html.find("</main>").expect(&html);
+        let footer = html.find("<footer").expect(&html);
+        let copies: Vec<usize> = html.match_indices(&badge).map(|(i, _)| i).collect();
+        assert_eq!(copies.len(), 1, "one badge, in the footer: {html}");
+        assert!(copies[0] > page && copies[0] > footer, "{html}");
     }
 }
