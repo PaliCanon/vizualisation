@@ -31,6 +31,13 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # A runner has ~14 GB free: the app's seven test binaries (leptos + axum each)
+  # with full debug info filled it (PR #6: "Free space left: 1 MB", ld killed by
+  # SIGBUS). CI needs no debugger: no debug info, no incremental cache. Coverage
+  # is unaffected (llvm-cov instruments the code, it does not read debug info).
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  CARGO_INCREMENTAL: "0"
   # The engine and its crates, checked together as before task 005.
   MAP_CRATES: -p map-engine -p map-layout -p map-formats
 
