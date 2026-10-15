@@ -2984,6 +2984,7 @@ dependencies = [
  "leptos_i18n_parser",
  "leptos_meta",
  "leptos_router",
+ "map-formats",
  "palicanon-ui-lib",
  "serde_json",
  "subtle",
