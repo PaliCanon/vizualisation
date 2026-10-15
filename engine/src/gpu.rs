@@ -1,6 +1,7 @@
 //! The GPU side: device and canvas surface (WebGPU, else WebGL2), the two pipelines (points,
 //! lines) and their buffers, one frame's draw.
 
+use crate::check;
 use crate::timer::Timer;
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
@@ -117,33 +118,7 @@ impl Gpu {
         config: wgpu::SurfaceConfiguration,
         backend: String,
     ) -> Gpu {
-        let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("uniforms"),
-            size: size_of::<Uniforms>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: None,
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-        let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None,
-            layout: &layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniforms.as_entire_binding(),
-            }],
-        });
+        let (uniforms, layout, bind) = uniform_bind(&device);
         let pipes = Pipelines::new(&device, &layout, config.format);
         let msaa = msaa_view(&device, &config);
         let points = device.create_buffer(&wgpu::BufferDescriptor {
@@ -202,7 +177,7 @@ impl Gpu {
         } else {
             self.queue.write_buffer(&self.points, 0, bytes);
         }
-        self.n_points = pts.len() as u32;
+        self.n_points = check::to_u32(pts.len());
     }
 
     /// Replace every line segment (2 vertices each).
@@ -215,7 +190,7 @@ impl Gpu {
                     contents: bytemuck::cast_slice(verts),
                     usage: wgpu::BufferUsages::VERTEX,
                 });
-            (buf, verts.len() as u32)
+            (buf, check::to_u32(verts.len()))
         });
     }
 
@@ -240,41 +215,7 @@ impl Gpu {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let timing = self.timer.as_mut().is_some_and(Timer::poll);
-        {
-            let [r, g, b] = background;
-            let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.msaa,
-                    resolve_target: Some(&view),
-                    depth_slice: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color { r, g, b, a: 1.0 }),
-                        store: wgpu::StoreOp::Discard,
-                    },
-                })],
-                timestamp_writes: if timing {
-                    self.timer.as_ref().map(Timer::writes)
-                } else {
-                    None
-                },
-                ..Default::default()
-            });
-            pass.set_bind_group(0, &self.bind, &[]);
-            if let Some((buf, n)) = &self.lines {
-                pass.set_pipeline(if additive {
-                    &self.lines_add
-                } else {
-                    &self.lines_over
-                });
-                pass.set_vertex_buffer(0, buf.slice(..));
-                pass.draw(0..*n, 0..1);
-            }
-            if self.n_points > 0 {
-                pass.set_pipeline(&self.points_pipe);
-                pass.set_vertex_buffer(0, self.points.slice(..));
-                pass.draw(0..6, 0..self.n_points);
-            }
-        }
+        self.record_pass(&mut enc, &view, background, additive, timing);
         let timer = self.timer.as_ref().filter(|_| timing);
         if let Some(t) = timer {
             t.resolve(&mut enc);
@@ -286,6 +227,82 @@ impl Gpu {
         self.queue.present(frame);
         true
     }
+
+    /// Record the one render pass: clear to `background`, the lines, then the points.
+    fn record_pass(
+        &self,
+        enc: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        background: [f64; 3],
+        additive: bool,
+        timing: bool,
+    ) {
+        let [r, g, b] = background;
+        let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &self.msaa,
+                resolve_target: Some(view),
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color { r, g, b, a: 1.0 }),
+                    store: wgpu::StoreOp::Discard,
+                },
+            })],
+            timestamp_writes: if timing {
+                self.timer.as_ref().map(Timer::writes)
+            } else {
+                None
+            },
+            ..Default::default()
+        });
+        pass.set_bind_group(0, &self.bind, &[]);
+        if let Some((buf, n)) = &self.lines {
+            pass.set_pipeline(if additive {
+                &self.lines_add
+            } else {
+                &self.lines_over
+            });
+            pass.set_vertex_buffer(0, buf.slice(..));
+            pass.draw(0..*n, 0..1);
+        }
+        if self.n_points > 0 {
+            pass.set_pipeline(&self.points_pipe);
+            pass.set_vertex_buffer(0, self.points.slice(..));
+            pass.draw(0..6, 0..self.n_points);
+        }
+    }
+}
+
+/// The uniform buffer, and the bind group (with its layout) that exposes it to both stages.
+fn uniform_bind(device: &wgpu::Device) -> (wgpu::Buffer, wgpu::BindGroupLayout, wgpu::BindGroup) {
+    let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("uniforms"),
+        size: size_of::<Uniforms>() as u64,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: None,
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }],
+    });
+    let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: None,
+        layout: &layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: uniforms.as_entire_binding(),
+        }],
+    });
+    (uniforms, layout, bind)
 }
 
 fn msaa_view(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> wgpu::TextureView {
@@ -394,7 +411,7 @@ fn pipeline(
             module: shader,
             entry_point: Some(s.vs),
             buffers: &[Some(s.layout)],
-            compilation_options: Default::default(),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         primitive: wgpu::PrimitiveState {
             topology: s.topology,
@@ -413,7 +430,7 @@ fn pipeline(
                 blend: Some(s.blend),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
-            compilation_options: Default::default(),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
         multiview_mask: None,
         cache: None,

@@ -27,6 +27,7 @@ struct Flight {
 
 /// Where the camera is and how it moves.
 pub struct Orbit {
+    /// The point the camera looks at.
     pub target: Vec3,
     radius: f32,
     theta: f32, // around the vertical axis
@@ -34,6 +35,7 @@ pub struct Orbit {
     d_theta: f32,
     d_phi: f32,
     zoom: f32, // pending radius factor
+    /// Turn slowly around the target until the user takes over.
     pub auto_rotate: bool,
     flight: Option<Flight>,
     last: Option<f64>,
@@ -133,7 +135,7 @@ impl Orbit {
         let r = self
             .radius
             .clamp(self.scene_radius * MIN_ZOOM, self.scene_radius * MAX_ZOOM);
-        if r != self.radius {
+        if r.total_cmp(&self.radius).is_ne() {
             self.radius = r;
             self.zoom = 1.0; // the rest of this zoom goes nowhere
         }
@@ -159,6 +161,10 @@ impl Orbit {
     }
 
     /// Advance to time `now` (ms); returns true while something moves.
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "a frame delta in seconds and a 0..1 flight fraction fit f32"
+    )]
     pub fn update(&mut self, now: f64) -> bool {
         let dt = self
             .last

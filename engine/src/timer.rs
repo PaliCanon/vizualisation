@@ -59,7 +59,12 @@ impl Timer {
         if self.state.get() == READY {
             if let Ok(data) = self.readback.slice(..).get_mapped_range() {
                 let t = |k: usize| bytemuck::pod_read_unaligned::<u64>(&data[k * 8..k * 8 + 8]);
-                self.last_ms = t(1).saturating_sub(t(0)) as f64 * self.period_ns / 1e6;
+                #[allow(
+                    clippy::cast_precision_loss,
+                    reason = "a tick difference over a frame is far below 2^52"
+                )]
+                let ticks = t(1).saturating_sub(t(0)) as f64;
+                self.last_ms = ticks * self.period_ns / 1e6;
             }
             self.readback.unmap();
             self.state.set(IDLE);
@@ -89,7 +94,7 @@ impl Timer {
         self.readback
             .slice(..)
             .map_async(wgpu::MapMode::Read, move |r| {
-                state.set(if r.is_ok() { READY } else { IDLE })
+                state.set(if r.is_ok() { READY } else { IDLE });
             });
     }
 }
