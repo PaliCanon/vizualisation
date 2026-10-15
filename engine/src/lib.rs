@@ -9,6 +9,7 @@ pub mod camera;
 mod check;
 #[cfg(target_arch = "wasm32")]
 mod gpu;
+pub mod live_layout;
 pub mod pick;
 #[cfg(target_arch = "wasm32")]
 mod timer;

@@ -4,7 +4,7 @@
 # The git ref (tag, rev or branch, in that order) a Cargo manifest names for
 # a git dependency, on one line of the form `crate = { git = "...", branch = "..." }`.
 #
-#   scripts/manifest-ref.sh app/Cargo.toml palicanon-ui-lib   # → v0.1.1
+#   scripts/manifest-ref.sh app/Cargo.toml palicanon-ui-lib   # → v0.1.2
 #
 # The `siblings` action checks ui-lib out at the ref the
 # manifest names, so the sibling checkout the image is built from is the
