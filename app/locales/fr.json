@@ -35,6 +35,9 @@
   "legend_show": "Afficher",
   "legend_toggle": "Afficher / masquer les collections",
   "loading": "Chargement de la carte…",
+  "nav_learn": "Apprendre",
+  "nav_map": "Carte",
+  "nav_search": "Recherche",
   "no_gpu_body": "La carte a besoin de WebGPU ou de WebGL2. Mettez votre navigateur à jour (Chrome, Edge, Firefox ou Safari), ou activez l’accélération matérielle dans ses réglages.",
   "no_gpu_title": "Votre navigateur ne peut pas afficher la carte",
   "notfound_body": "Vous cherchiez une page ici et n’y avez trouvé aucun soi. Comme toute chose conditionnée, cette adresse est apparue, et a déjà disparu.",
@@ -63,17 +66,8 @@
   "texts_all": "Tout le canon",
   "texts_name": "Textes",
   "texts_translated": "{{count}} textes traduits",
-  "tooltip_links": [
-    [
-      "{{count}} lien",
-      0,
-      1
-    ],
-    [
-      "{{count}} liens",
-      "_"
-    ]
-  ],
+  "tooltip_link": "lien",
+  "tooltip_links": "liens",
   "types_full": "Parallèle complet",
   "types_mentions": "Mention",
   "types_resembling": "Ressemblant",

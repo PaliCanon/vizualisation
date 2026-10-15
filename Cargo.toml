@@ -3,7 +3,7 @@
 # dependencies and metadata, and the ui-lib [patch].
 [workspace]
 resolver = "3"
-members = ["engine", "layout", "formats"]
+members = ["app", "engine", "layout", "formats"]
 
 [workspace.package]
 version = "0.1.0"
@@ -11,6 +11,12 @@ edition = "2024"
 rust-version = "1.88"
 license = "CC-BY-NC-4.0"
 repository = "https://github.com/PaliCanon/vizualisation"
+
+[workspace.dependencies]
+leptos = "0.8"
+leptos_meta = "0.8"
+leptos_router = "0.8"
+leptos_axum = "0.8"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -22,6 +28,27 @@ pedantic = { level = "warn", priority = -1 }
 module_name_repetitions = "allow"
 must_use_candidate = "allow"
 needless_pass_by_value = "allow" # the app's components take their props by value
+
+# The service: `cargo leptos watch` serves it on http://127.0.0.1:3301 (learn-pali 3201,
+# search-front 3101; README.md).
+[[workspace.metadata.leptos]]
+name = "vizualisation"
+bin-package = "vizualisation"
+lib-package = "vizualisation"
+site-root = "target/site"
+site-pkg-dir = "pkg"
+tailwind-input-file = "app/style/main.css"
+assets-dir = "app/public"
+site-addr = "127.0.0.1:3301"
+reload-port = 4301
+bin-features = ["ssr"]
+lib-features = ["hydrate"]
+lib-profile-release = "wasm-release"
+
+# Built from ../ui-lib (a worktree reaches it through the wt/ui-lib symlink), not from
+# GitHub: a change to both repositories is seen at once.
+[patch."ssh://git@github.com/PaliCanon/ui-lib.git"]
+palicanon-ui-lib = { path = "../ui-lib" }
 
 # A member's own [profile.*] is ignored in a workspace: the engine's size-optimised wasm
 # profile lives here. `npm run build:engine` builds with it.

@@ -13,11 +13,10 @@ stdlib only, plus `rustfmt` on the PATH:
                                   values `src/components/Pages.tsx` passes.
 -> app/src/pages/types.rs         the types those modules fill.
 
-i18next plurals (`tooltip.links_one` / `_other`) become one `leptos_i18n` range key
-(`tooltip_links`): `leptos_i18n` 0.6 warns on a CLDR form a locale does not use (vi has `other`
-only, so vi's `_one` would fail a build that denies warnings), and refuses a key that is a suffix
-plural in one locale and a range in another. The arms follow CLDR, as i18next did: en `one` is 1,
-fr `one` is 0 and 1, vi has none.
+i18next plurals (`tooltip.links_one` / `_other`) become two plain keys, the word alone
+(`tooltip_link`, `tooltip_links`), as search-front's `results_one` / `results_label`: the count is
+put before it in Rust. `leptos_i18n` 0.6 deprecates range keys (a warning, which CI denies) and its
+suffix plurals need the `plurals` feature and ICU data, for one tooltip.
 
 Dropped: `settings.themes.sepia` (design v4 has no sepia theme). The key map, old -> new, and every
 `t()` call site are in app/STRINGS.md.
@@ -38,9 +37,17 @@ LANG_NAMES = {"en": "English", "fr": "French", "vi": "Vietnamese"}
 PAGES_TSX = ROOT / "src" / "components" / "Pages.tsx"
 
 DROPPED = {"settings.themes.sepia"}
+# Keys the Leptos app adds, which the React site never had: the shared rail's entries,
+# worded as learn-pali's (app/locales: nav_search, nav_learn) plus this service's own.
+ADDED = {
+    "en": {"nav_learn": "Learn", "nav_map": "Map", "nav_search": "Search"},
+    "fr": {"nav_learn": "Apprendre", "nav_map": "Carte", "nav_search": "Recherche"},
+    "vi": {"nav_learn": "Học", "nav_map": "Bản đồ", "nav_search": "Tìm kiếm"},
+}
 # i18next plural forms -> the counts CLDR gives `one` in each language (the rest is `_other`).
 PLURAL_SUFFIXES = ("_one", "_other")
-ONE_COUNTS = {"en": [1], "fr": [0, 1], "vi": []}
+# Each plural's singular key (the plural keeps the stem's name).
+SINGULAR = {"tooltip_links": "tooltip_link"}
 
 PAGE_ORDER = ("acknowledgements", "terms", "privacy", "legal", "support")
 PAGE_KEYS = {"title", "description", "intro", "sections", "app", "instagram", "web"}
@@ -213,11 +220,21 @@ def catalogue(lang: str, source: dict) -> dict:
         if new in out:
             fail(f"{lang}: two keys flatten to {new}")
         out[new] = value
+    # No plural keys: leptos_i18n 0.6 deprecates ranges and its `plurals` feature pulls ICU
+    # data in. As search-front's `results_one` / `results_label`, each form is a plain word
+    # and the count is put before it in Rust (006: `count == 1` takes the singular).
     for new, forms in plurals.items():
         if set(forms) != set(PLURAL_SUFFIXES) or new in out:
             fail(f"{lang}: plural {new} needs exactly {PLURAL_SUFFIXES}")
-        arms = [[forms["_one"], *ONE_COUNTS[lang]]] if ONE_COUNTS[lang] else []
-        out[new] = arms + [[forms["_other"], "_"]]
+        for suffix, key in ((("_one"), SINGULAR[new]), ("_other", new)):
+            word = forms[suffix].replace("{{count}}", "").strip()
+            if "{{" in word or key in out:
+                fail(f"{lang}: plural {new}{suffix} is not '{{{{count}}}} <word>'")
+            out[key] = word
+    for new, value in ADDED[lang].items():
+        if new in out:
+            fail(f"{lang}: added key {new} already exists")
+        out[new] = value
     return dict(sorted(out.items()))
 
 

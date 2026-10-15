@@ -10,11 +10,11 @@ The React site's i18next catalogues (`src/locales/<lang>.json`, nested) ported b
 
 Regenerate with `python3 scripts/port_strings.py`; check with `python3 scripts/port_strings_test.py`.
 
-**Plurals.** i18next's `tooltip.links_one` / `_other` is one range key, `tooltip_links`, called with
-`count` (an `i32` by default): en `[["{{count}} link", 1], ["{{count}} links", "_"]]`, fr arms 0 and
-1, vi the fallback only. Not `leptos_i18n`'s suffix plurals: vi (CLDR: `other` only) would carry a
-`_one` its parser warns about, and a key cannot be a suffix plural in one locale and a range in
-another (both checked with `leptos_i18n_parser` 0.6.2).
+**Plurals.** i18next's `tooltip.links_one` / `_other` become two plain keys holding the word alone,
+`tooltip_link` and `tooltip_links` (vi: the same word twice), as search-front's `results_one` /
+`results_label`: 006 writes `"{count} {word}"` in Rust, the singular when `count == 1`. Not
+`leptos_i18n` plurals: range keys are deprecated in 0.6 (a warning, which CI denies) and suffix
+plurals need the `plurals` feature and its ICU data.
 
 **Placeholders** keep i18next's spelling, `{{count}}`; `leptos_i18n` trims the braces' contents, so
 `{{count}}` and `{{ count }}` are the same variable.
@@ -94,8 +94,8 @@ a field of `content_<lang>.rs`'s `PAGES`.
 
 ### `tooltip`
 
-- `tooltip.links_one` → `tooltip_links` (range arm: en count 1, fr 0 and 1; vi has none, CLDR vi has only "other")
-- `tooltip.links_other` → `tooltip_links` (range fallback arm `"_"`)
+- `tooltip.links_one` → `tooltip_link` (the word alone; the count is added in Rust)
+- `tooltip.links_other` → `tooltip_links` (the word alone)
 
 ### `loading`
 
@@ -210,7 +210,7 @@ Every `t()` call in `src/App.tsx` and `src/components/*.tsx`, as of this commit,
 - `src/App.tsx:521` `noGpu.title` → `no_gpu_title`
 - `src/App.tsx:522` `noGpu.body` → `no_gpu_body`
 - `src/App.tsx:526` `loading` → `loading`
-- `src/App.tsx:564` `tooltip.links` → `tooltip_links` (range, `count`)
+- `src/App.tsx:564` `tooltip.links` → `tooltip_link` / `tooltip_links` (`count == 1` → singular)
 - `src/components/Legend.tsx:30` `legend.collections` → `legend_collections`
 - `src/components/Legend.tsx:31` `legend.hint` → `legend_hint`
 - `src/components/Legend.tsx:41` `legend.color` → `legend_color`

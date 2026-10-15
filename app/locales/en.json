@@ -35,6 +35,9 @@
   "legend_show": "Show",
   "legend_toggle": "Show / hide the collections",
   "loading": "Loading the map…",
+  "nav_learn": "Learn",
+  "nav_map": "Map",
+  "nav_search": "Search",
   "no_gpu_body": "The map needs WebGPU or WebGL2. Update your browser (Chrome, Edge, Firefox or Safari), or turn hardware acceleration on in its settings.",
   "no_gpu_title": "Your browser cannot draw the map",
   "notfound_body": "You looked for a page here and found no self in it. Like every conditioned thing, this address arose, and has already passed.",
@@ -63,16 +66,8 @@
   "texts_all": "The whole canon",
   "texts_name": "Texts",
   "texts_translated": "{{count}} texts translated",
-  "tooltip_links": [
-    [
-      "{{count}} link",
-      1
-    ],
-    [
-      "{{count}} links",
-      "_"
-    ]
-  ],
+  "tooltip_link": "link",
+  "tooltip_links": "links",
   "types_full": "Full parallel",
   "types_mentions": "Mention",
   "types_resembling": "Resembling",
