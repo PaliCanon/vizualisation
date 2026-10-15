@@ -4,10 +4,18 @@
 //! file missing or unreadable stops the service before it listens, naming the
 //! file. The similarity family's shared-vectors check waits for the stamps
 //! (task 007: today's files carry none).
+//!
+//! Each file's bytes are kept as read ([`RawFiles`]): the browser fetches
+//! them as committed, at the hashed URLs of [`crate::manifest`]. The
+//! `Served` bundle (the data, the manifest, the `TextIndex`) is what every
+//! route finds in its context (task 006 M1).
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use axum::body::Bytes;
 use map_formats::FormatError;
 use map_formats::blurbs::Blurbs;
 use map_formats::graph::Graph;
@@ -15,8 +23,50 @@ use map_formats::pairs::Pairs;
 use map_formats::stamp::Stamp;
 use map_formats::translations::Translations;
 
+use crate::manifest::Manifest;
+use crate::route::View;
+
 /// The variable naming the data directory; `public` (the repository's) when unset.
 pub const DATA_VAR: &str = "VIZ_DATA_DIR";
+
+/// The nine data files, in the order they are read.
+pub const FILES: [&str; 9] = [
+    "graph-sim.json",
+    "graph-sim.bin",
+    "graph.json",
+    "graph-sim-pca.json",
+    "graph-sim-umap.json",
+    "graph-sim-tsne.json",
+    "translations.json",
+    "blurbs-en.json",
+    "blurbs-fr.json",
+];
+
+/// Each data file's bytes as read at boot, by name: what `/data/…` serves.
+#[derive(Clone, Default)]
+pub struct RawFiles(BTreeMap<&'static str, Bytes>);
+
+impl RawFiles {
+    /// The bytes of the file `name`, `None` for a name not read.
+    #[must_use]
+    pub fn get(&self, name: &str) -> Option<&Bytes> {
+        self.0.get(name)
+    }
+
+    /// Every file's name and bytes, ordered by name.
+    pub fn iter(&self) -> impl Iterator<Item = (&'static str, &Bytes)> {
+        self.0.iter().map(|(name, bytes)| (*name, bytes))
+    }
+}
+
+/// Names and sizes only: the bytes are megabytes.
+impl fmt::Debug for RawFiles {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map()
+            .entries(self.0.iter().map(|(name, bytes)| (name, bytes.len())))
+            .finish()
+    }
+}
 
 /// Every data file the service reads.
 #[derive(Debug)]
@@ -33,6 +83,8 @@ pub struct Data {
     pub translations: Translations,
     /// The blurbs in English and in French.
     pub blurbs: [Blurbs; 2],
+    /// Every file's bytes, as read.
+    pub raw: RawFiles,
 }
 
 /// A data file the service could not use: which one, and why.
@@ -58,9 +110,24 @@ impl Data {
     /// # Errors
     /// [`DataError`] with the first file that is missing or unreadable.
     pub fn load(dir: &Path) -> Result<Data, DataError> {
-        let graph = |name: &str| read(dir, name, Graph::from_json);
+        let mut raw = BTreeMap::new();
+        for name in FILES {
+            let file = dir.join(name);
+            let bytes = std::fs::read(&file).map_err(|e| DataError {
+                file,
+                why: e.to_string(),
+            })?;
+            raw.insert(name, Bytes::from(bytes));
+        }
+        let raw = RawFiles(raw);
+        let parse = |name: &'static str| Parse {
+            dir,
+            raw: &raw,
+            name,
+        };
+        let graph = |name| parse(name).with(Graph::from_json);
         let sim = graph("graph-sim.json")?;
-        let pairs = read(dir, "graph-sim.bin", |bytes| {
+        let pairs = parse("graph-sim.bin").with(|bytes| {
             if let Some(info) = &sim.sim {
                 map_formats::pairs::check_sha256(info, bytes)?;
             }
@@ -77,16 +144,28 @@ impl Data {
             ],
             sim,
             pairs,
-            translations: read(dir, "translations.json", |bytes| {
+            translations: parse("translations.json").with(|bytes| {
                 let translations = Translations::from_json(bytes)?;
                 translations.check()?;
                 Ok(translations)
             })?,
             blurbs: [
-                read(dir, "blurbs-en.json", Blurbs::from_json)?,
-                read(dir, "blurbs-fr.json", Blurbs::from_json)?,
+                parse("blurbs-en.json").with(Blurbs::from_json)?,
+                parse("blurbs-fr.json").with(Blurbs::from_json)?,
             ],
+            raw,
         })
+    }
+
+    /// The graph `view` draws.
+    pub(crate) fn graph(&self, view: View) -> &Graph {
+        match view {
+            View::Parallels => &self.parallels,
+            View::Sim => &self.sim,
+            View::Pca => &self.reductions[0],
+            View::Umap => &self.reductions[1],
+            View::Tsne => &self.reductions[2],
+        }
     }
 
     /// The lines `/healthz` shows: each graph file's stamp, `none` until the
@@ -107,21 +186,107 @@ impl Data {
     }
 }
 
-/// Reads `dir/name` and parses it with `parse`; any failure names the file.
-fn read<T>(
-    dir: &Path,
-    name: &str,
-    parse: impl FnOnce(&[u8]) -> Result<T, FormatError>,
-) -> Result<T, DataError> {
-    let file = dir.join(name);
-    let bytes = std::fs::read(&file).map_err(|e| DataError {
-        file: file.clone(),
-        why: e.to_string(),
-    })?;
-    parse(&bytes).map_err(|e| DataError {
-        file,
-        why: e.to_string(),
-    })
+/// One file read at boot, about to be parsed; a failure names `dir/name`.
+struct Parse<'a> {
+    dir: &'a Path,
+    raw: &'a RawFiles,
+    name: &'static str,
+}
+
+impl Parse<'_> {
+    /// Parses the file's kept bytes with `parse`.
+    fn with<T>(self, parse: impl FnOnce(&[u8]) -> Result<T, FormatError>) -> Result<T, DataError> {
+        // Every name of `FILES` was read before any is parsed.
+        let bytes = self.raw.get(self.name).map_or(&[][..], AsRef::as_ref);
+        parse(bytes).map_err(|e| DataError {
+            file: self.dir.join(self.name),
+            why: e.to_string(),
+        })
+    }
+}
+
+/// What a text is and where it is: its names (as its graph rows give them)
+/// and, for each view that has it, its row's index there.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TextEntry {
+    /// The short name, `MN 1`.
+    pub acronym: String,
+    /// The English title, `""` when there is none.
+    pub en: String,
+    /// The Pāli title, `""` when there is none.
+    pub root: String,
+    /// Each view that has the text, in [`View::ALL`]'s order, with the
+    /// text's index in that view's nodes.
+    pub views: Vec<(View, usize)>,
+}
+
+/// Every text of every view by uid, built once at boot for the server's
+/// render and for search (task 006 M1).
+#[derive(Clone, Debug, Default)]
+pub(crate) struct TextIndex(BTreeMap<String, TextEntry>);
+
+impl TextIndex {
+    /// The index of every view's nodes.
+    pub(crate) fn build(data: &Data) -> TextIndex {
+        let mut texts = BTreeMap::<String, TextEntry>::new();
+        for view in View::ALL {
+            for (at, node) in data.graph(view).nodes.iter().enumerate() {
+                texts
+                    .entry(node.uid.clone())
+                    .or_insert_with(|| TextEntry {
+                        acronym: node.acronym.clone(),
+                        en: node.en.clone(),
+                        root: node.root.clone(),
+                        views: Vec::new(),
+                    })
+                    .views
+                    .push((view, at));
+            }
+        }
+        TextIndex(texts)
+    }
+
+    /// The text `uid`, `None` when no view has it.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "read by the map screen (006 M5)")
+    )]
+    pub(crate) fn get(&self, uid: &str) -> Option<&TextEntry> {
+        self.0.get(uid)
+    }
+
+    /// Every text, ordered by uid.
+    #[cfg_attr(not(test), expect(dead_code, reason = "read by the sitemap (006 M5)"))]
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (&str, &TextEntry)> {
+        self.0.iter().map(|(uid, entry)| (uid.as_str(), entry))
+    }
+}
+
+/// What every route finds in its context: the data, its files' manifest
+/// and the text index, each built once at boot (cheap to clone).
+#[derive(Clone, Debug)]
+pub(crate) struct Served {
+    /// Every data file, parsed and as read.
+    pub data: Arc<Data>,
+    /// Each data file's hashed URL.
+    pub manifest: Arc<Manifest>,
+    /// Every text by uid.
+    #[expect(dead_code, reason = "read by the map screen (006 M5)")]
+    pub texts: Arc<TextIndex>,
+}
+
+impl Served {
+    /// The manifest and the index of `data`.
+    pub(crate) fn new(data: Arc<Data>) -> Served {
+        let manifest =
+            Manifest::from_files(data.raw.iter().map(|(name, bytes)| (name, bytes.as_ref())));
+        let texts = TextIndex::build(&data);
+        Served {
+            data,
+            manifest: Arc::new(manifest),
+            texts: Arc::new(texts),
+        }
+    }
 }
 
 /// One stamp as a line: its sources' short commits and the vectors' digest.
@@ -211,6 +376,46 @@ mod tests {
             assert_eq!(error.file, path, "{case}: {error}");
             assert!(error.to_string().contains(file), "{case}: {error}");
         }
+    }
+
+    #[test]
+    fn the_text_index_knows_every_uid_of_every_view() {
+        let data = Data::load(&committed()).expect("the committed data");
+        let index = TextIndex::build(&data);
+        for view in View::ALL {
+            for (at, node) in data.graph(view).nodes.iter().enumerate() {
+                let entry = index.get(&node.uid);
+                assert!(entry.is_some(), "{view:?}: {} not in the index", node.uid);
+                let entry = entry.unwrap();
+                assert!(
+                    entry.views.contains(&(view, at)),
+                    "{view:?}: {} at {at}",
+                    node.uid
+                );
+                assert_eq!(
+                    (&entry.acronym, &entry.en, &entry.root),
+                    (&node.acronym, &node.en, &node.root),
+                    "{}",
+                    node.uid
+                );
+            }
+        }
+        let in_view = |view| {
+            index
+                .iter()
+                .filter(|(_, e)| e.views.iter().any(|(v, _)| *v == view))
+                .count()
+        };
+        assert_eq!(in_view(View::Sim), 7286);
+        assert_eq!(in_view(View::Parallels), data.parallels.nodes.len());
+        let mn1 = index.get("mn1").expect("mn1");
+        let order: Vec<View> = mn1.views.iter().map(|(view, _)| *view).collect();
+        assert_eq!(
+            order,
+            View::ALL,
+            "every view has mn1, in the views menu's order"
+        );
+        assert!(index.get("not-a-text").is_none());
     }
 
     #[test]

@@ -3,9 +3,15 @@
 //! gate around the pages and the files (the site's files answered first, the
 //! app for every other path). The signature takes the boot
 //! [`Config`], so `main` cannot forget a layer.
+//!
+//! The data files are served at their hashed URLs (`/data/…`,
+//! [`crate::manifest`]), behind the gate like every file.
 
 use std::sync::Arc;
 
+use axum::extract::{Path, State};
+use axum::http::{HeaderValue, StatusCode, header};
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use leptos::prelude::LeptosOptions;
 use leptos_axum::{LeptosRoutes, file_and_error_handler, generate_route_list};
@@ -13,8 +19,13 @@ use tower_http::services::ServeDir;
 
 use crate::app::{App, shell};
 use crate::boot::Config;
-use crate::data::Data;
+use crate::data::{Data, Served};
+use crate::manifest::content_type;
 use crate::{gate, origin};
+
+/// A data file's URL names its content: it never changes, any cache may keep
+/// it for good.
+const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 
 /// The short commit this build came from (`build.rs`).
 const BUILD_SHA: &str = env!("VIZUALISATION_GIT_SHA");
@@ -36,10 +47,35 @@ async fn sitemap() -> ([(axum::http::HeaderName, &'static str); 1], String) {
     )
 }
 
-/// The service's router: the pages and the static files behind the gate, the
-/// probe beside them, the origin guard around everything; `data` in every
+/// `/data/{file}`: the data file whose hashed name `file` is, as read at
+/// boot; a 404 for any other name, a stale hash included.
+async fn data_file(State(served): State<Served>, Path(file): Path<String>) -> Response {
+    let found = served
+        .manifest
+        .file_at(&file)
+        .and_then(|name| Some((name, served.data.raw.get(name)?)));
+    let Some((name, bytes)) = found else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let mut response = bytes.clone().into_response();
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(content_type(name)),
+    );
+    // Behind the dev password the gate replaces this with `private, no-store`
+    // (`gate::guard` runs after the handler): a cache must not keep what
+    // the password guards, so in dev the gate's header wins, on purpose.
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static(IMMUTABLE));
+    response
+}
+
+/// The service's router: the pages, the static files and the data files
+/// behind the gate, the probe beside them, the origin guard around
+/// everything; `Served` (the data, its manifest, the text index) in every
 /// route's context (the map screen reads it, task 006).
 pub fn router(options: LeptosOptions, config: Config, data: Arc<Data>) -> axum::Router {
+    let served = Served::new(Arc::clone(&data));
     let routes = generate_route_list(App);
     let site_root = options.site_root.to_string();
     let app = axum::Router::new()
@@ -47,8 +83,8 @@ pub fn router(options: LeptosOptions, config: Config, data: Arc<Data>) -> axum::
             &options,
             routes,
             {
-                let data = Arc::clone(&data);
-                move || leptos::prelude::provide_context(Arc::clone(&data))
+                let served = served.clone();
+                move || leptos::prelude::provide_context(served.clone())
             },
             {
                 let options = options.clone();
@@ -65,6 +101,7 @@ pub fn router(options: LeptosOptions, config: Config, data: Arc<Data>) -> axum::
         .fallback(app);
     let site = axum::Router::new()
         .route("/sitemap.xml", get(sitemap))
+        .route("/data/{file}", get(data_file).with_state(served))
         .fallback_service(files)
         .layer(axum::middleware::from_fn_with_state(
             Arc::new(config.gate),
@@ -230,6 +267,109 @@ mod tests {
         assert_eq!(lines.len(), 6, "{body}");
         assert_eq!(lines[0], format!("ok {BUILD_SHA}"), "{body}");
         assert_eq!(&lines[1..], stamps.as_slice(), "{body}");
+    }
+
+    /// The URL a data file of the committed data should be served at,
+    /// computed here from the file's bytes, not read from the manifest.
+    fn hashed(name: &str) -> (String, Vec<u8>) {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public");
+        let bytes = std::fs::read(dir.join(name)).unwrap();
+        let hash = &map_formats::pairs::sha256_hex(&bytes)[..16];
+        let (stem, ext) = name.rsplit_once('.').unwrap();
+        (format!("/data/{stem}.{hash}.{ext}"), bytes)
+    }
+
+    /// The prod router: no gate, no origin check.
+    fn prod() -> axum::Router {
+        router(
+            LeptosOptions::builder()
+                .output_name("vizualisation")
+                .build(),
+            Config {
+                gate: Gate::Off,
+                origin: Origin::Open,
+            },
+            data(),
+        )
+    }
+
+    async fn get_from(app: axum::Router, path: &str) -> axum::response::Response {
+        app.oneshot(Request::get(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_data_file_is_served_at_its_hashed_url_and_cached_for_good() {
+        for name in crate::data::FILES {
+            let (url, bytes) = hashed(name);
+            let response = get_from(prod(), &url).await;
+            assert_eq!(response.status(), StatusCode::OK, "{url}");
+            let kind = if name == "graph-sim.bin" {
+                "application/octet-stream"
+            } else {
+                "application/json"
+            };
+            assert_eq!(response.headers()[header::CONTENT_TYPE], kind, "{url}");
+            assert_eq!(
+                response.headers()[header::CACHE_CONTROL],
+                "public, max-age=31536000, immutable",
+                "{url}"
+            );
+            let body = axum::body::to_bytes(response.into_body(), 1 << 24)
+                .await
+                .unwrap();
+            assert!(
+                body.as_ref() == bytes.as_slice(),
+                "{url}: the bytes as committed"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn an_unknown_or_stale_hash_is_a_404() {
+        let (url, _) = hashed("graph.json");
+        let (sim, _) = hashed("graph-sim.bin");
+        let hash = url
+            .trim_start_matches("/data/graph.")
+            .trim_end_matches(".json");
+        assert_eq!(
+            get_from(prod(), &url).await.status(),
+            StatusCode::OK,
+            "{url}"
+        );
+        let cases = [
+            "/data/graph.json".to_owned(),
+            "/data/graph.0000000000000000.json".to_owned(),
+            format!("/data/graph.{}.json", &hash[..15]),
+            format!("/data/graph.{}.json", hash.to_uppercase()),
+            format!("/data/graph.{hash}.bin"),
+            format!("/data/nope.{hash}.json"),
+            format!("{url}.gz"),
+            sim.replace("graph-sim.", "graph."),
+            format!("/data/x/{}", url.trim_start_matches("/data/")),
+        ];
+        for path in cases {
+            assert_eq!(
+                get_from(prod(), &path).await.status(),
+                StatusCode::NOT_FOUND,
+                "{path}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn the_data_routes_are_behind_the_gate() {
+        let (url, _) = hashed("graph-sim.bin");
+        let (code, _) = status(&url, false, true).await;
+        assert_eq!(code, StatusCode::FORBIDDEN, "no origin header");
+        let (code, _) = status(&url, true, false).await;
+        assert_eq!(code, StatusCode::UNAUTHORIZED, "no password");
+        let (code, headers) = status(&url, true, true).await;
+        assert_eq!(code, StatusCode::OK, "{headers}");
+        // Behind the password the gate's header wins over the immutable one.
+        assert!(headers.contains("private, no-store"), "{headers}");
+        assert!(!headers.contains("immutable"), "{headers}");
     }
 
     #[tokio::test]
