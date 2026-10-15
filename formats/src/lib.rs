@@ -7,6 +7,7 @@
 
 pub mod error;
 pub mod graph;
+pub mod pairs;
 pub mod stamp;
 
 pub use error::FormatError;
