@@ -9,7 +9,7 @@
 
 use leptos::prelude::*;
 use leptos_i18n::td_string;
-use leptos_meta::{MetaTags, Stylesheet, provide_meta_context};
+use leptos_meta::{HashedStylesheet, MetaTags, provide_meta_context};
 use leptos_router::components::{Route, Router, Routes};
 use leptos_router::hooks::use_location;
 use leptos_router::path;
@@ -51,7 +51,11 @@ pub(crate) const BADGE: EnvBadgeInfo = EnvBadgeInfo {
 /// one element of `<body>` the server renders, which the browser's entry
 /// (`palicanon_ui_lib::hydrate`, in `lib.rs`) hydrates from: what
 /// Cloudflare adds to `<body>` (a decoy link first, scripts after) stays
-/// outside it (search-front 017, ui-lib 063).
+/// outside it (search-front 017, ui-lib 063). The stylesheet is linked
+/// here by [`HashedStylesheet`], under the name `cargo-leptos` gave it: a
+/// release build hashes the files (`hash-files`), so the CSS is
+/// `/pkg/vizualisation.<hash>.css`, which a fixed `href` would miss
+/// (learn-pali/app/src/app.rs).
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     view! {
         <!DOCTYPE html>
@@ -60,6 +64,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <meta charset="utf-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1" />
                 <AutoReload options=options.clone() />
+                <HashedStylesheet id="leptos" options=options.clone() />
                 <HydrationScripts options />
                 <MetaTags />
             </head>
@@ -80,7 +85,6 @@ pub fn App() -> impl IntoView {
     provide_language();
     provide_meta_context();
     view! {
-        <Stylesheet id="leptos" href="/pkg/vizualisation.css" />
         <SiteHead />
         <Router>
             <Layout />
@@ -304,13 +308,19 @@ mod tests {
     /// (learn-pali/app/src/app.rs's `render_document`).
     #[cfg(feature = "ssr")]
     fn render_document(path: &str) -> String {
+        let options = LeptosOptions::builder()
+            .output_name("vizualisation")
+            .build();
+        render_document_with(options, path)
+    }
+
+    /// [`render_document`] with the given options.
+    #[cfg(feature = "ssr")]
+    fn render_document_with(options: LeptosOptions, path: &str) -> String {
         use futures::StreamExt;
         use leptos_meta::ServerMetaContext;
         use leptos_router::location::RequestUrl;
 
-        let options = LeptosOptions::builder()
-            .output_name("vizualisation")
-            .build();
         let (server, output) = ServerMetaContext::new();
         let body = Owner::new().with(|| {
             let request = axum::http::Request::builder().uri(path);
@@ -377,6 +387,50 @@ mod tests {
                 "{path}: {head}"
             );
         }
+    }
+
+    /// The shell's `<head>` links the stylesheet once, by the name the
+    /// build gave it (`/pkg/vizualisation.css` when files are not hashed).
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn the_head_links_the_stylesheet() {
+        let html = render_document("/");
+        let head = &html[..html.find("</head>").expect(&html)];
+        assert!(
+            head.contains(r#"rel="stylesheet" href="/pkg/vizualisation.css""#),
+            "{head}"
+        );
+        assert_eq!(html.matches("vizualisation.css").count(), 1, "{html}");
+    }
+
+    /// With `hash-files` on (the release build), the shell links the
+    /// stylesheet by its hashed name, read from the hash file `cargo-leptos`
+    /// writes: the unhashed name is a 404 there (006 M3, the page had no
+    /// style). The hash file here is a temporary one, named by an absolute
+    /// path (learn-pali's `the_stylesheet_is_linked_by_its_hashed_name`).
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn the_head_links_the_stylesheet_by_its_hashed_name() {
+        let hash_file = std::env::temp_dir().join("vizualisation-test-hash.txt");
+        std::fs::write(&hash_file, "js: aaa111\nwasm: bbb222\ncss: ccc333\n").expect("hash file");
+        let options = LeptosOptions::builder()
+            .output_name("vizualisation")
+            .hash_files(true)
+            .hash_file(hash_file.to_string_lossy().as_ref().into())
+            .build();
+        let html = render_document_with(options, "/");
+        let head = &html[..html.find("</head>").expect(&html)];
+        assert!(
+            head.contains(r#"href="/pkg/vizualisation.ccc333.css""#),
+            "{head}"
+        );
+        assert!(!html.contains(r#"href="/pkg/vizualisation.css""#), "{html}");
+        assert_eq!(
+            html.matches("vizualisation.ccc333.css").count(),
+            1,
+            "{html}"
+        );
+        let _ = std::fs::remove_file(hash_file);
     }
 
     /// The 404 asks not to be indexed (`<meta name="robots"

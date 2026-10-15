@@ -36,7 +36,8 @@
 #
 # Checks, each named in the output: `healthz` (/healthz is 200 and says ok),
 # `gate` (as above), `root` (/ is 200 and names the page), `wasm` (the .wasm
-# the page links is served), `guard` (direct mode: without the header, or
+# the page links is served), `css` (the stylesheet the page links, by its
+# hashed name in a release build, is 200 and text/css), `guard` (direct mode: without the header, or
 # with a wrong one, / is 403; /healthz without it is 403), `refused`, and,
 # through the Worker only (Chrome cannot add the origin header), `hydrate`:
 # headless Chrome loads /, /sim/mn10 and /privacy (ui-lib 063: the page
@@ -240,6 +241,14 @@ wasm="$(grep -aEo '/pkg/[^"'"'"' <>]*\.wasm' "$work/root.body" | head -n 1)"
 status="$(fetch "$wasm" wasm "$who")"
 expect wasm wasm "$wasm" "$status" 200
 echo "rollout-check: wasm ok"
+
+css="$(grep -aEo '/pkg/[^"'"'"' <>]*\.css' "$work/root.body" | head -n 1)"
+[ -n "$css" ] || fail css "the page links no stylesheet"
+status="$(fetch "$css" css "$who")"
+expect css css "$css" "$status" 200
+grep -iq '^content-type:[[:space:]]*text/css' "$work/css.head" \
+  || fail css "$css is not served as text/css"
+echo "rollout-check: css ok"
 
 if [ "$mode" = direct ]; then
   status="$(fetch / open anon)"

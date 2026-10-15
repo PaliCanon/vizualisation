@@ -195,6 +195,10 @@ fn answer(mut stream: TcpStream, handler: &impl Fn(&Req) -> Resp, seen: &Mutex<V
 }
 
 const WASM: &str = "/pkg/vizualisation.wasm";
+/// The stylesheet the page links (a release build links it by its hashed
+/// name, `/pkg/vizualisation.<hash>.css`; the scripts read whichever the
+/// page names).
+const CSS: &str = "/pkg/vizualisation.css";
 
 /// The probe's body as the real service writes it: the commit, then each
 /// graph file's stamp (`app/src/data.rs`, `stamp_lines`).
@@ -207,13 +211,15 @@ fn page(extra: &str) -> String {
         "<!DOCTYPE html><html><head><title>Suttas Map — PaliCanon</title>\
          <link rel=\"modulepreload\" href=\"/pkg/vizualisation.js\">\
          <link rel=\"preload\" href=\"{WASM}\" as=\"fetch\" type=\"application/wasm\">\
+         <link id=\"leptos\" rel=\"stylesheet\" href=\"{CSS}\">\
          </head><body>{extra}</body></html>"
     )
 }
 
 /// A healthy deployment, in the design's order: the origin guard on every
 /// path (403, empty body), `/healthz` behind it alone, then the password
-/// gate when `gated` (401 asking for it), then the page and the wasm.
+/// gate when `gated` (401 asking for it), then the page, the wasm and the
+/// stylesheet.
 fn serve(req: &Req, gated: bool) -> Resp {
     if !req.authed() {
         return Resp::new(403, "").with("cache-control", "no-store");
@@ -228,6 +234,9 @@ fn serve(req: &Req, gated: bool) -> Resp {
     }
     if req.path == WASM {
         return Resp::new(200, "\0asm").with("content-type", "application/wasm");
+    }
+    if req.path == CSS {
+        return Resp::new(200, "body{}").with("content-type", "text/css");
     }
     if req.path == "/" {
         return Resp::new(200, &page("")).with("content-type", "text/html");
@@ -269,7 +278,8 @@ impl Drop for Service {
 /// A site root holding a fake wasm under both names the page may link: a
 /// debug build links `/pkg/vizualisation_bg.wasm` (search-front's test site
 /// root holds `search-front_bg.wasm` for the same reason), a release one
-/// `/pkg/vizualisation.wasm`.
+/// `/pkg/vizualisation.wasm`; and, with it, the stylesheet the shell links
+/// when files are not hashed, `/pkg/vizualisation.css`.
 fn site_root(name: &str, with_wasm: bool) -> PathBuf {
     let dir = temp(&format!("site-{name}"));
     let _ = std::fs::remove_dir_all(&dir);
@@ -278,6 +288,7 @@ fn site_root(name: &str, with_wasm: bool) -> PathBuf {
         for file in ["pkg/vizualisation_bg.wasm", "pkg/vizualisation.wasm"] {
             std::fs::write(dir.join(file), b"\0asm\x01\0\0\0").expect("wasm");
         }
+        std::fs::write(dir.join("pkg/vizualisation.css"), b"body{}").expect("css");
     }
     dir
 }
@@ -451,7 +462,7 @@ fn origin_cases() -> Vec<Case> {
     ]
 }
 
-/// The password gate, the page and the wasm.
+/// The password gate, the page, the wasm and the stylesheet.
 fn gate_and_page_cases() -> Vec<Case> {
     vec![
         (
@@ -483,6 +494,26 @@ fn gate_and_page_cases() -> Vec<Case> {
             answering("/", 200, "<html><title>nginx</title></html>"),
         ),
         ("wasm", "the wasm is a 404", answering(WASM, 404, "")),
+        // The page links a stylesheet the site does not hold (a release
+        // build's hashed file, linked by its unhashed name): no style.
+        ("css", "the stylesheet is a 404", answering(CSS, 404, "")),
+        (
+            "css",
+            "the stylesheet is served as text",
+            answering(CSS, 200, "body{}"),
+        ),
+        (
+            "css",
+            "the page links no stylesheet",
+            answering(
+                "/",
+                200,
+                &format!(
+                    "<html><head><title>Suttas Map</title>\
+                     <link rel=\"preload\" href=\"{WASM}\"></head></html>"
+                ),
+            ),
+        ),
     ]
 }
 
@@ -519,6 +550,7 @@ fn smoke_passes_on_the_real_binary_and_leaves_no_service_behind() {
         "gate ok",
         "root ok",
         "wasm ok",
+        "css ok",
         "prod ok",
         "boot ok",
         "leak ok",
@@ -533,6 +565,17 @@ fn smoke_fails_naming_the_wasm_when_it_is_not_served() {
     let site = site_root("smoke-nowasm", false);
     let out = smoke_binary(env!("CARGO_BIN_EXE_vizualisation"), &site);
     assert_fails_naming(&out, "wasm", "no wasm in the site root");
+    let _ = std::fs::remove_dir_all(site);
+}
+
+/// The page links a stylesheet the site root does not hold (what a release
+/// build with hashed files did while the app linked the unhashed name).
+#[test]
+fn smoke_fails_naming_the_css_when_it_is_not_served() {
+    let site = site_root("smoke-nocss", true);
+    std::fs::remove_file(site.join("pkg/vizualisation.css")).expect("the css is removed");
+    let out = smoke_binary(env!("CARGO_BIN_EXE_vizualisation"), &site);
+    assert_fails_naming(&out, "css", "no stylesheet in the site root");
     let _ = std::fs::remove_dir_all(site);
 }
 
@@ -784,7 +827,14 @@ fn rollout_check_passes_on_the_real_dev_binary() {
         Some(0),
         "dev, secret from the env: {text}"
     );
-    for check in ["healthz ok", "gate ok", "root ok", "wasm ok", "guard ok"] {
+    for check in [
+        "healthz ok",
+        "gate ok",
+        "root ok",
+        "wasm ok",
+        "css ok",
+        "guard ok",
+    ] {
         assert!(text.contains(check), "{check} is reported: {text}");
     }
     let out = run(

@@ -32,12 +32,14 @@
 # without it is 403), `gate` (/ and the .wasm without the password are 401,
 # the 401 asks for it with WWW-Authenticate, a wrong password is 401), `root`
 # (/ with both is 200 and names the page), `wasm` (the .wasm the page links is
-# served as application/wasm), `prod` (BINARY mode: with the gate off and
-# LEPTOS_ENV=PROD, /healthz is 200 with the header, / is 403 without it, /
-# and the .wasm are 200 with it and no password, no response carries
-# WWW-Authenticate, the binary stops), `boot` (BINARY mode: VIZ_GATE unset →
-# exit 2, never listening), `leak` (no response and, in BINARY mode, no log
-# holds the secret or the password).
+# served as application/wasm), `css` (the stylesheet the page links, by its
+# hashed name in a release build, is 200 and text/css: a page whose link
+# names a file the site does not hold has no style), `prod` (BINARY mode: with
+# the gate off and LEPTOS_ENV=PROD, /healthz is 200 with the header, / is 403
+# without it, / and the .wasm and the stylesheet are 200 with it and no
+# password, no response carries WWW-Authenticate, the binary stops), `boot`
+# (BINARY mode: VIZ_GATE unset → exit 2, never listening), `leak` (no
+# response and, in BINARY mode, no log holds the secret or the password).
 # Exit 0 all good, 1 a check failed (named), 2 usage. Only status codes are
 # printed, never a secret.
 # SMOKE_WAIT: seconds to wait for the binary to listen, or to exit (default 30).
@@ -141,6 +143,15 @@ run_checks() { # port secret password
     || fail wasm "$wasm is not served as application/wasm"
   echo "smoke: wasm ok"
 
+  local css
+  css="$(grep -aEo '/pkg/[^"'"'"' <>]*\.css' "$work/root" | head -n 1)"
+  [ -n "$css" ] || fail css "the page links no stylesheet"
+  get "$port" "$css" "$work/css" "$secret" "$basic" || fail css "no answer for $css"
+  expect_status css "$work/css" 200 "$css"
+  headers_of "$work/css" | grep -iq '^content-type:[[:space:]]*text/css' \
+    || fail css "$css is not served as text/css"
+  echo "smoke: css ok"
+
   get "$port" "$wasm" "$work/wasm-nopass" "$secret" || fail gate "no answer for $wasm without the password"
   expect_status gate "$work/wasm-nopass" 401 "$wasm without the password"
   echo "smoke: gate ok"
@@ -196,7 +207,7 @@ random_port() {
 # image, VIZ_GATE=off, LEPTOS_ENV=PROD, the origin secret and no password)
 # guards the origin and never asks for a password.
 check_prod() {
-  local binary=$1 secret=$2 port wasm f
+  local binary=$1 secret=$2 port wasm css f
   port="$(random_port)"
   env -u DEV_PASSWORD VIZ_GATE=off LEPTOS_ENV=PROD ORIGIN_SECRET="$secret" \
     LEPTOS_SITE_ADDR="127.0.0.1:$port" "$binary" >"$work/prod.log" 2>&1 &
@@ -209,6 +220,10 @@ check_prod() {
   if [ -n "$wasm" ]; then
     get "$port" "$wasm" "$work/prod-wasm" "$secret" || fail prod "no answer for $wasm"
   fi
+  css="$(grep -aEo '/pkg/[^"'"'"' <>]*\.css' "$work/prod-root" | head -n 1)"
+  if [ -n "$css" ]; then
+    get "$port" "$css" "$work/prod-css" "$secret" || fail prod "no answer for $css"
+  fi
   for f in "$work"/prod-*; do
     if headers_of "$f" | grep -iq '^www-authenticate:'; then
       fail prod "a response asks for a password with the gate off ($(basename "$f"))"
@@ -220,6 +235,10 @@ check_prod() {
   grep -aEq '<title>[^<]*Suttas Map' "$work/prod-root" || fail prod "/ does not name the page (prod)"
   [ -n "$wasm" ] || fail prod "the page links no .wasm (prod)"
   expect_status prod "$work/prod-wasm" 200 "$wasm without the password (prod)"
+  [ -n "$css" ] || fail prod "the page links no stylesheet (prod)"
+  expect_status prod "$work/prod-css" 200 "$css without the password (prod)"
+  headers_of "$work/prod-css" | grep -iq '^content-type:[[:space:]]*text/css' \
+    || fail prod "$css is not served as text/css (prod)"
   stop prod
   echo "smoke: prod ok"
 }
