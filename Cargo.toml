@@ -1,0 +1,33 @@
+# From learn-pali/Cargo.toml (workspace package, lints, wasm-release profile) and
+# search-front/Cargo.toml. Task 005 adds the `app` member, the leptos workspace
+# dependencies and metadata, and the ui-lib [patch].
+[workspace]
+resolver = "3"
+members = ["engine", "layout", "formats"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "CC-BY-NC-4.0"
+repository = "https://github.com/PaliCanon/vizualisation"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+# Every public item is documented; CI denies warnings, so this is enforced.
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+needless_pass_by_value = "allow" # the app's components take their props by value
+
+# A member's own [profile.*] is ignored in a workspace: the engine's size-optimised wasm
+# profile lives here. `npm run build:engine` builds with it.
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"

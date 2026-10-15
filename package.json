@@ -11,7 +11,7 @@
     "build-graph:all": "node scripts/build-graph.mjs",
     "build-sim": "VEC_BIN=../pali-embedder/out/pali-lsa-kept-512.bin VEC_DOCS=../pali-embedder/out/pali-lsa-kept-512.json DIM=512 OUT=public/graph-sim node scripts/build-similarity.mjs",
     "build-translations": "node scripts/build-translations.mjs",
-    "build:engine": "cd engine && cargo build --target wasm32-unknown-unknown --release && wasm-bindgen --target web --out-dir pkg target/wasm32-unknown-unknown/release/map_engine.wasm"
+    "build:engine": "cargo build -p map-engine --target wasm32-unknown-unknown --profile wasm-release && wasm-bindgen --target web --out-dir engine/pkg target/wasm32-unknown-unknown/wasm-release/map_engine.wasm"
   },
   "keywords": [],
   "author": "",

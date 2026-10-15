@@ -1,0 +1,11 @@
+[package]
+name = "map-formats"
+description = "The types of every data file of the map (graph, similarity pairs, translations, blurbs) and their stamp: the only reader (app) and writer (tools)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
