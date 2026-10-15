@@ -120,10 +120,6 @@ impl Route {
     }
 
     /// The route's path, the one [`Route::parse`] reads back.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the head's canonical links read it (005 S4)")
-    )]
     pub(crate) fn path(&self) -> String {
         match self {
             Self::Page(kind) => kind.path().to_owned(),

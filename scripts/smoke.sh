@@ -116,7 +116,7 @@ run_checks() { # port secret password
 
   get "$port" / "$work/root" "$secret" "$basic" || fail root "no answer with the header and the password"
   expect_status root "$work/root" 200 "/ with the header and the password"
-  grep -aEq '<title>[^<]*PaliCanon' "$work/root" || fail root "/ does not name the page"
+  grep -aEq '<title>[^<]*Suttas Map' "$work/root" || fail root "/ does not name the page"
   echo "smoke: root ok"
 
   local wasm

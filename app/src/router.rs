@@ -166,6 +166,15 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_sitemap_is_served_as_xml_behind_the_gate() {
+        let (status, headers) = status("/sitemap.xml", true, true).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(headers.contains("application/xml"), "{headers}");
+        let (status, _) = status("/sitemap.xml", true, false).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
     async fn a_page_behind_the_password_is_not_cached() {
         let (_, headers) = status("/", true, true).await;
         assert!(headers.contains("private, no-store"), "{headers}");

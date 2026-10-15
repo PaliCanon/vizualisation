@@ -9,7 +9,7 @@
 
 use leptos::prelude::*;
 use leptos_i18n::td_string;
-use leptos_meta::{MetaTags, Stylesheet, Title, provide_meta_context};
+use leptos_meta::{MetaTags, Stylesheet, provide_meta_context};
 use leptos_router::components::{Route, Router, Routes};
 use leptos_router::hooks::use_location;
 use leptos_router::path;
@@ -22,6 +22,7 @@ use crate::catalogue::strings;
 use crate::components::map_placeholder::MapPlaceholder;
 use crate::components::not_found::NotFoundPage;
 use crate::components::site_footer::SiteFooter;
+use crate::head::SiteHead;
 use crate::pages::FooterPage;
 use crate::route;
 
@@ -53,7 +54,6 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
             <head>
                 <meta charset="utf-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1" />
-                <link rel="icon" href="/favicon.ico" />
                 <AutoReload options=options.clone() />
                 <HydrationScripts options />
                 <MetaTags />
@@ -74,7 +74,7 @@ pub fn App() -> impl IntoView {
     provide_meta_context();
     view! {
         <Stylesheet id="leptos" href="/pkg/vizualisation.css" />
-        <Title text="Suttas Map — PaliCanon" />
+        <SiteHead />
         <Router>
             <Layout />
         </Router>
@@ -325,6 +325,51 @@ mod tests {
                 .collect::<String>()
                 .await
         })
+    }
+
+    /// Each indexable route's head has its title, its canonical link at the
+    /// production origin, the `og:url` mirroring it, and the site-wide share
+    /// image (`head.rs`; React's `useHead` and `index.html`).
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn each_route_has_its_title_and_canonical() {
+        let home = "Suttas Map — the links between the suttas of the Pāli Canon";
+        for (path, title) in [
+            ("/", home),
+            ("/sim", home),
+            ("/sim/mn10", home),
+            ("/terms", "Terms of use — Suttas Map"),
+        ] {
+            let html = render_document(path);
+            let head = &html[..html.find("</head>").expect(&html)];
+            let url = format!("{}{path}", crate::head::CANONICAL_BASE);
+            assert!(
+                head.contains(&format!("<title>{title}</title>")),
+                "{path}: {head}"
+            );
+            assert!(
+                head.contains(&format!(r#"<link href="{url}" rel="canonical">"#)),
+                "{path}: {head}"
+            );
+            assert!(
+                head.contains(&format!(r#"<meta property="og:url" content="{url}">"#)),
+                "{path}: {head}"
+            );
+            assert!(
+                head.contains(r#"<meta name="description""#),
+                "{path}: {head}"
+            );
+            assert!(
+                head.contains(
+                    r#"<meta property="og:image" content="https://viz.palicanon.app/og.png">"#
+                ),
+                "{path}: {head}"
+            );
+            assert!(
+                head.contains(r#""@type":"WebApplication""#),
+                "{path}: {head}"
+            );
+        }
     }
 
     /// The 404 asks not to be indexed (`<meta name="robots"

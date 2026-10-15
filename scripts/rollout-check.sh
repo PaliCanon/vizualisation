@@ -210,7 +210,7 @@ fi
 
 status="$(fetch / root "$who")"
 expect root root / "$status" 200
-grep -aEq '<title>[^<]*PaliCanon' "$work/root.body" || fail root "/ does not name the page"
+grep -aEq '<title>[^<]*Suttas Map' "$work/root.body" || fail root "/ does not name the page"
 if [ -z "$password_file" ]; then
   for name in healthz root; do
     ! asks_password "$name" || fail gate "the $name response asks for a password (WWW-Authenticate): the gate is on"

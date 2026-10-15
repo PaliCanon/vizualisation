@@ -19,13 +19,13 @@
 
 use leptos::prelude::*;
 use leptos_i18n::{td, td_string};
-use leptos_meta::{Meta, Title};
 use palicanon_ui_lib::Carousel;
 
 use super::rich::{Span, spans};
 use super::{AppBlock, InstagramBlock, PageKind, PageText, Section, SiteBlock, Table, UPDATED};
 use crate::catalogue::{Strings, strings};
 use crate::components::site_footer::{INSTAGRAM, InstagramIcon};
+use crate::head::PageHead;
 
 const H2: &str = "mt-10 font-serif text-xl font-semibold text-heading";
 const P: &str = "mt-3 max-w-[66ch] text-[15px] leading-7 text-ink";
@@ -72,8 +72,11 @@ pub(crate) fn FooterPage(kind: PageKind) -> impl IntoView {
         let locale = t.locale();
         let page = kind.text(locale);
         view! {
-            <Title text=format!("{} — Suttas Map", page.title) />
-            <Meta name="description" content=page.description />
+            <PageHead
+                title=format!("{} — Suttas Map", page.title)
+                description=page.description.to_owned()
+                path=kind.path().to_owned()
+            />
             <div class="mx-auto w-full max-w-[64rem] px-6 pb-20">
                 <Header t=t />
                 <PagesNav t=t current=kind />

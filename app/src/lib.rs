@@ -13,6 +13,7 @@ mod catalogue;
 mod components;
 #[cfg(feature = "ssr")]
 pub mod gate;
+pub mod head;
 #[cfg(feature = "ssr")]
 pub mod origin;
 mod pages;
