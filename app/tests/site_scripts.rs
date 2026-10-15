@@ -13,7 +13,9 @@
 //! and no token shape: the `search` and `token` checks and the
 //! `token-pattern` file are gone; `smoke.sh` checks instead that no
 //! response and no log of the binary holds its throwaway secret or password
-//! (`leak`), and runs the binary as prod does too (`prod`).
+//! (`leak`), and runs the binary as prod does too (`prod`). The `hydrate`
+//! check (search-front 017) drives a fake Chrome; in dev it must reach the
+//! page through a launcher page, the password off Chrome's command line.
 #![cfg(feature = "ssr")]
 
 use std::fmt::Write as _;
@@ -842,11 +844,17 @@ fn rollout_check_passes_on_the_real_prod_binary_and_through_the_worker() {
         let open_url = open.url();
         let mut all = args.clone();
         all.push(&open_url);
-        let out = run(&check_script(), &all, &[]);
+        let chrome = FakeChrome::new(&format!("real-{gate}"));
+        let out = run(&check_script(), &all, &chrome.env("ok"));
         assert_eq!(
             out.status.code(),
             Some(0),
             "via the Worker, gate {gate}: {}",
+            printed(&out)
+        );
+        assert!(
+            printed(&out).contains("hydrate ok"),
+            "the Worker mode checks hydration, gate {gate}: {}",
             printed(&out)
         );
     }
@@ -1073,6 +1081,405 @@ fn rollout_check_direct_mode_has_no_worker_500() {
         &[("ORIGIN_SECRET", SECRET)],
     );
     assert_fails_naming(&out, "healthz", "direct mode");
+}
+
+// ------------------------------------------------- rollout-check.sh: hydrate
+
+/// The DOM a hydrated page dumps: `<html data-hydrated>` (ui-lib's
+/// `hydrate` sets it), Cloudflare's decoy first in `<body>`, the app's root
+/// after it.
+const HYDRATED_DOM: &str = "<html lang=\"en\" data-hydrated=\"\"><head></head><body>\
+     <a href=\"/cdn-cgi/content?id=x\" style=\"display:none\"></a>\
+     <div id=\"pc-app\"></div></body></html>";
+/// The same page that never hydrated: no marker.
+const BARE_DOM: &str =
+    "<html lang=\"en\"><head></head><body><div id=\"pc-app\"></div></body></html>";
+/// Cloudflare's managed challenge, as Chrome dumps it.
+const CHALLENGE_DOM: &str = "<html><head><title>Just a moment...</title></head><body>\
+     <script>window._cf_chl_opt={cType:'managed'};</script></body></html>";
+/// What Chrome's `--enable-logging=stderr` prints for the panic of ui-lib
+/// 063; the fake adds `, source: <a URL>` (in dev, the popup's URL, which
+/// holds the password: the script must not print it).
+const PANIC_LINE: &str =
+    "[1:2:INFO:CONSOLE(1)] \"panicked at tachys-0.2.19/src/hydration.rs:227:9\"";
+/// The pages the check loads.
+const HYDRATE_PAGES: [&str; 3] = ["/", "/sim/mn10", "/privacy"];
+
+/// A `chrome` that logs its arguments and plays `FAKE_CHROME_MODE` per page:
+/// `ok`, `panic` (the panic on stderr, the marker still dumped: stderr is
+/// read on its own), `runtime` (a wasm `RuntimeError`), `bare` (no marker),
+/// `challenge`, `hang` (never answers), `privacy-panic` (`ok` but on
+/// `/privacy`, which panics), `stuck` (dumps the launcher page itself, as
+/// when its popup never opens). Given a `file://` page (dev: the launcher
+/// that carries the password), it reads the URL the launcher's popup opens
+/// (with the password) and the one it then goes to, logs them in
+/// `targets.log` as `popup -> page`, and plays the page.
+struct FakeChrome {
+    dir: PathBuf,
+    bin: PathBuf,
+    log: PathBuf,
+    targets: PathBuf,
+}
+
+impl FakeChrome {
+    fn new(name: &str) -> FakeChrome {
+        let dir = temp(&format!("fake-chrome-{name}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("a fake chrome dir");
+        let log = dir.join("argv.log");
+        let targets = dir.join("targets.log");
+        let bin = dir.join("chrome");
+        let body = format!(
+            r#"#!/bin/bash
+printf '%s\n' "$@" >> '{log}'
+url="${{!#}}"
+target="$url"
+source="$url"
+case "$url" in
+  file://*)
+    launcher="${{url#file://}}"
+    source="$(sed -n 's/.*window\.open("\([^"]*\)").*/\1/p' "$launcher")"
+    target="$(sed -n 's/.*location\.replace("\([^"]*\)").*/\1/p' "$launcher")"
+    printf '%s -> %s\n' "$source" "$target" >> '{targets}'
+    ;;
+esac
+mode="${{FAKE_CHROME_MODE:-ok}}"
+if [ "$mode" = privacy-panic ]; then
+  if [ "${{target%/privacy}}" != "$target" ]; then mode=panic; else mode=ok; fi
+fi
+case "$mode" in
+  ok) printf '%s\n' '{HYDRATED_DOM}' ;;
+  panic) printf '%s, source: %s\n' '{PANIC_LINE}' "$source" >&2; printf '%s\n' '{HYDRATED_DOM}' ;;
+  runtime) printf '%s\n' 'Uncaught RuntimeError: unreachable' >&2; printf '%s\n' '{BARE_DOM}' ;;
+  bare) printf '%s\n' '{BARE_DOM}' ;;
+  challenge) printf '%s\n' '{CHALLENGE_DOM}' ;;
+  hang) exec sleep 30 ;;
+  stuck) cat "$launcher" ;;
+esac
+"#,
+            log = log.display(),
+            targets = targets.display(),
+        );
+        std::fs::write(&bin, body).expect("a fake chrome");
+        Command::new("chmod")
+            .args(["+x", utf8(&bin)])
+            .status()
+            .expect("chmod");
+        FakeChrome {
+            dir,
+            bin,
+            log,
+            targets,
+        }
+    }
+
+    /// The environment that makes `rollout-check.sh` run this Chrome in
+    /// `mode`, with a limit of 3 s for `hang` and 30 s for the others (a
+    /// loaded machine must not turn a pass into a timeout; 60 s in a
+    /// deploy).
+    fn env(&self, mode: &'static str) -> Vec<(&'static str, &str)> {
+        let limit = if mode == "hang" { "3" } else { "30" };
+        vec![
+            ("CHROME", utf8(&self.bin)),
+            ("FAKE_CHROME_MODE", mode),
+            ("ROLLOUT_CHROME_TIMEOUT", limit),
+        ]
+    }
+
+    /// Every argument Chrome was given, one per line.
+    fn argv(&self) -> String {
+        std::fs::read_to_string(&self.log).unwrap_or_default()
+    }
+
+    /// The URLs the launcher pages went to, one per line.
+    fn targets(&self) -> String {
+        std::fs::read_to_string(&self.targets).unwrap_or_default()
+    }
+}
+
+impl Drop for FakeChrome {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+/// The public host of prod as the Worker serves it: healthy without the
+/// header.
+fn prod_through_the_worker(req: &Req) -> Resp {
+    prod(&req.through_worker())
+}
+
+/// The public host of dev: the same, behind the password.
+fn dev_through_the_worker(req: &Req) -> Resp {
+    dev(&req.through_worker())
+}
+
+/// T3 (search-front 017, ui-lib 063): through the Worker, a page that
+/// hydrates on `/`, a map route and `/privacy` passes, and Chrome ran
+/// headless, with its console on stderr, a virtual-time budget, its DOM
+/// dumped, on the three pages.
+#[test]
+fn rollout_check_hydrate_passes_when_every_page_hydrates() {
+    let fake = Fake::start(prod_through_the_worker);
+    let chrome = FakeChrome::new("ok");
+    let out = run(
+        &check_script(),
+        &["--via-worker", &fake.url()],
+        &chrome.env("ok"),
+    );
+    let text = printed(&out);
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(text.contains("rollout-check: hydrate ok"), "{text}");
+    let argv = chrome.argv();
+    for flag in [
+        "--headless=new",
+        "--dump-dom",
+        "--virtual-time-budget=15000",
+        "--enable-logging=stderr",
+    ] {
+        assert_eq!(
+            argv.lines().filter(|l| *l == flag).count(),
+            3,
+            "{flag}: {argv}"
+        );
+    }
+    for page in HYDRATE_PAGES {
+        let url = format!("{}{page}", fake.url());
+        assert!(argv.lines().any(|l| l == url), "{url} visited: {argv}");
+    }
+}
+
+/// Dev: Chrome passes the password gate through a launcher page (in the
+/// script's private directory, gone when it exits) that opens the page with
+/// the password in its URL in a popup (Chrome keeps it), then loads the
+/// page without it (a page whose URL holds credentials cannot `fetch` its
+/// .wasm); the password is on no command line and in no output.
+#[test]
+fn rollout_check_hydrate_passes_the_dev_gate_off_the_command_line() {
+    let fake = Fake::start(dev_through_the_worker);
+    let pass = password_file("hydrate-dev");
+    let basic = STANDARD.encode(format!("deploy:{PASSWORD}"));
+    let chrome = FakeChrome::new("dev");
+    let url = fake.url();
+    let out = run(
+        &check_script(),
+        &["--via-worker", "--password-file", utf8(&pass), &url],
+        &chrome.env("ok"),
+    );
+    let text = printed(&out);
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(text.contains("rollout-check: hydrate ok"), "{text}");
+    let host = url.trim_start_matches("http://");
+    let wanted: Vec<String> = HYDRATE_PAGES
+        .iter()
+        .map(|page| format!("http://deploy:{PASSWORD}@{host}{page} -> {url}{page}"))
+        .collect();
+    assert_eq!(
+        chrome.targets().lines().collect::<Vec<_>>(),
+        wanted,
+        "the launchers' targets"
+    );
+    let argv = chrome.argv();
+    let launchers: Vec<&str> = argv.lines().filter(|l| l.starts_with("file://")).collect();
+    assert_eq!(launchers.len(), 3, "{argv}");
+    assert_eq!(
+        argv.lines()
+            .filter(|l| *l == "--disable-popup-blocking")
+            .count(),
+        3,
+        "the launcher's popup is let through: {argv}"
+    );
+    for launcher in launchers {
+        assert!(
+            !Path::new(launcher.trim_start_matches("file://")).exists(),
+            "{launcher} is left behind"
+        );
+    }
+    for secret in [PASSWORD, basic.as_str()] {
+        assert!(!argv.contains(secret), "on Chrome's command line: {argv}");
+        assert!(!text.contains(secret), "printed: {text}");
+    }
+    let _ = std::fs::remove_file(pass);
+}
+
+/// The launcher's URL percent-encodes the user and the password: a
+/// password with `@`, `:`, `/`, quotes, `%`, `<` or `\` neither breaks the
+/// URL nor the page's script.
+#[test]
+fn rollout_check_hydrate_encodes_an_odd_password() {
+    const ODD: &str = "p@ss:w/rd \"+'%<\\";
+    let basic = STANDARD.encode(format!("deploy:{ODD}"));
+    let want = format!("Basic {basic}");
+    let fake = Fake::start(move |r| {
+        if r.path != "/healthz" && r.header("authorization") != Some(want.as_str()) {
+            return Resp::new(401, "")
+                .with("www-authenticate", "Basic realm=\"PaliCanon viz dev\"");
+        }
+        prod_through_the_worker(r)
+    });
+    let pass = temp("password-header-odd");
+    std::fs::write(&pass, format!("authorization: Basic {basic}\n")).expect("a password file");
+    let chrome = FakeChrome::new("odd");
+    let url = fake.url();
+    let out = run(
+        &check_script(),
+        &["--via-worker", "--password-file", utf8(&pass), &url],
+        &chrome.env("ok"),
+    );
+    let text = printed(&out);
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    let host = url.trim_start_matches("http://");
+    let first = chrome
+        .targets()
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .to_owned();
+    assert_eq!(
+        first,
+        format!("http://deploy:p%40ss%3Aw%2Frd%20%22%2B%27%25%3C%5C@{host}/ -> {url}/")
+    );
+    let _ = std::fs::remove_file(pass);
+}
+
+/// A launcher whose popup never opened leaves Chrome on the launcher page:
+/// a fail that says so, not a page that "never hydrated".
+#[test]
+fn rollout_check_hydrate_fails_when_chrome_stays_on_the_launcher() {
+    let fake = Fake::start(dev_through_the_worker);
+    let pass = password_file("hydrate-stuck");
+    let chrome = FakeChrome::new("stuck");
+    let out = run(
+        &check_script(),
+        &["--via-worker", "--password-file", utf8(&pass), &fake.url()],
+        &chrome.env("stuck"),
+    );
+    assert_fails_naming(&out, "hydrate: /: Chrome never left the launcher", "stuck");
+    let _ = std::fs::remove_file(pass);
+}
+
+/// A panic (or a wasm `RuntimeError`) in Chrome's console fails the
+/// `hydrate` check, even when the marker is in the DOM; in dev, the line
+/// printed has no password (Chrome names the page's URL in it).
+#[test]
+fn rollout_check_hydrate_fails_on_a_panic_in_the_browser() {
+    let fake = Fake::start(prod_through_the_worker);
+    for mode in ["panic", "runtime"] {
+        let chrome = FakeChrome::new(mode);
+        let out = run(
+            &check_script(),
+            &["--via-worker", &fake.url()],
+            &chrome.env(mode),
+        );
+        assert_fails_naming(&out, "hydrate", mode);
+        assert!(
+            printed(&out).contains("panicked in the browser"),
+            "{mode}: {}",
+            printed(&out)
+        );
+    }
+    let chrome = FakeChrome::new("privacy-panic");
+    let out = run(
+        &check_script(),
+        &["--via-worker", &fake.url()],
+        &chrome.env("privacy-panic"),
+    );
+    assert_fails_naming(
+        &out,
+        "hydrate: /privacy: the page panicked",
+        "only /privacy panics",
+    );
+    let gated = Fake::start(dev_through_the_worker);
+    let pass = password_file("hydrate-panic");
+    let chrome = FakeChrome::new("dev-panic");
+    let out = run(
+        &check_script(),
+        &["--via-worker", "--password-file", utf8(&pass), &gated.url()],
+        &chrome.env("panic"),
+    );
+    assert_fails_naming(&out, "hydrate: /: the page panicked", "dev");
+    assert!(!printed(&out).contains("deploy:"), "{}", printed(&out));
+    let _ = std::fs::remove_file(pass);
+}
+
+/// A page whose dumped DOM has no `data-hydrated` never hydrated: a fail,
+/// and so is a Chrome stopped by the time limit.
+#[test]
+fn rollout_check_hydrate_fails_without_the_marker_or_on_a_timeout() {
+    let fake = Fake::start(prod_through_the_worker);
+    for (mode, why) in [
+        ("bare", "the page never hydrated"),
+        ("hang", "Chrome stopped"),
+    ] {
+        let chrome = FakeChrome::new(mode);
+        let started = Instant::now();
+        let out = run(
+            &check_script(),
+            &["--via-worker", &fake.url()],
+            &chrome.env(mode),
+        );
+        assert_fails_naming(&out, "hydrate", mode);
+        assert!(
+            printed(&out).contains(&format!("no data-hydrated on <html>: {why}")),
+            "{mode}: {}",
+            printed(&out)
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "{mode}: the limit holds"
+        );
+    }
+}
+
+/// A Cloudflare challenge in the dumped page says nothing about the
+/// service: exit 3 (a skip the orchestrator re-runs by hand), never 0.
+#[test]
+fn rollout_check_hydrate_tells_a_challenge_from_a_pass() {
+    let fake = Fake::start(prod_through_the_worker);
+    let chrome = FakeChrome::new("challenge");
+    let out = run(
+        &check_script(),
+        &["--via-worker", &fake.url()],
+        &chrome.env("challenge"),
+    );
+    let text = printed(&out);
+    assert_eq!(out.status.code(), Some(3), "{text}");
+    assert!(text.contains("challenge"), "{text}");
+    assert!(!text.contains("hydrate ok"), "{text}");
+}
+
+/// No usable Chrome is the runner's fault, not the service's: exit 2.
+#[test]
+fn rollout_check_hydrate_needs_a_chrome() {
+    let fake = Fake::start(prod_through_the_worker);
+    let out = run(
+        &check_script(),
+        &["--via-worker", &fake.url()],
+        &[("CHROME", "/nonexistent/chrome")],
+    );
+    let text = printed(&out);
+    assert_eq!(out.status.code(), Some(2), "{text}");
+    assert!(text.contains("Chrome"), "{text}");
+}
+
+/// Chrome cannot send the origin header, so a revision URL (direct mode)
+/// is never driven by it.
+#[test]
+fn rollout_check_hydrate_runs_through_the_worker_only() {
+    let fake = Fake::start(prod);
+    let chrome = FakeChrome::new("direct");
+    let out = run(
+        &check_script(),
+        &[&fake.url()],
+        &[
+            ("ORIGIN_SECRET", SECRET),
+            ("CHROME", utf8(&chrome.bin)),
+            ("FAKE_CHROME_MODE", "panic"),
+        ],
+    );
+    let text = printed(&out);
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert_eq!(chrome.argv().len(), 0, "Chrome ran: {}", chrome.argv());
 }
 
 /// A directory holding a `curl` that logs its arguments, then runs the real

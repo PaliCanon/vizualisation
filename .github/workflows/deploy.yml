@@ -208,8 +208,15 @@ jobs:
           gcloud run services update-traffic "$SERVICE" --project "$PROJECT" --region "$REGION" --to-latest --quiet
           echo "vizualisation: $SERVICE now serves $IMAGE_HASH"
 
+      # The public-host check drives a headless Chrome (rollout-check.sh's
+      # `hydrate`: the page hydrates past the nodes Cloudflare injects,
+      # search-front 017, ui-lib 063); its path goes to the script as CHROME.
+      - uses: browser-actions/setup-chrome@v2
+        id: chrome
+
       - name: Check the public host, and that the bare origin refuses
         env:
+          CHROME: ${{ steps.chrome.outputs.chrome-path }}
           # The revision that served before this run moved the traffic, and
           # whether this run moved it at all (nothing to undo when the image
           # was already served).
@@ -254,8 +261,10 @@ jobs:
           # 1. Through Cloudflare and the Worker (which adds the origin
           #    header; this script sends none and is given none; on dev it
           #    sends the password, which the Worker relays): /healthz, the
-          #    gate, the page, the wasm. Exit 1 is a refusal or a failed
-          #    content check: a few tries (the new revision and the edge
+          #    gate, the page, the wasm, and the page hydrating in Chrome on
+          #    /, a map route and /privacy (`hydrate`: a panic or no
+          #    data-hydrated is exit 1). Exit 1 is a refusal or a failed
+          #    check: a few tries (the new revision and the edge
           #    settle), then the traffic goes back. Exit 4 is the Worker
           #    itself answering 500 (it lost its secret): the rollout is not
           #    at fault, so no rollback, the job fails naming the remedy.
@@ -270,8 +279,11 @@ jobs:
             # Ruling R6 (search-front): Cloudflare (Bot Fight, a managed
             # challenge) turned the runner away; that is not the service
             # failing. The decision is the user's (a WAF skip rule for the
-            # runner, or drop this check).
-            echo "::warning::Cloudflare challenged the runner on https://$HOST/ (R6, infra/README.md): the public-host check did not run"
+            # runner, or drop this check). It may come from Chrome's
+            # `hydrate` step, after the curl checks passed: hydration is then
+            # unchecked, which is not a pass. The orchestrator runs the check
+            # by hand before any prod tag.
+            echo "::warning::Cloudflare challenged the runner on https://$HOST/ (R6, infra/README.md): the public-host check did not complete (hydration unchecked): run scripts/rollout-check.sh --via-worker https://$HOST (on dev with --password-file) by hand before a prod tag"
           elif [ "$RC" = 4 ]; then
             echo "::error::the Worker answered 500 — run infra/scripts/origin-secret push $ENV"
             exit "$RC"
