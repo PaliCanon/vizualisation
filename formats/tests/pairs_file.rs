@@ -2,7 +2,7 @@
 
 use map_formats::{
     graph::Graph,
-    pairs::{Pairs, RECORD, range_of},
+    pairs::{Pairs, RECORD, check_sha256, range_of, sha256_hex},
 };
 use std::path::PathBuf;
 
@@ -63,4 +63,28 @@ fn the_graph_carries_the_bin_digest_once_the_tools_stamp_it() {
         sha.is_none_or(|s| s.len() == 64),
         "a sha256 is 64 hex digits"
     );
+}
+
+#[test]
+fn the_committed_bin_has_the_digest_python_computes() {
+    let bytes = public("graph-sim.bin");
+    // hashlib.sha256(open("public/graph-sim.bin", "rb").read()).hexdigest()
+    assert_eq!(
+        sha256_hex(&bytes),
+        "088fa87fcb3990b03c2143c7aa0d8af9c6a2d0ae4a0bf467564694b9eee93856"
+    );
+}
+
+#[test]
+fn a_graph_listing_the_bins_digest_passes_and_one_listing_another_fails() {
+    let bytes = public("graph-sim.bin");
+    let mut sim = Graph::from_json(&public("graph-sim.json"))
+        .unwrap()
+        .sim
+        .unwrap();
+    sim.sha256 = Some(sha256_hex(&bytes));
+    check_sha256(&sim, &bytes).unwrap();
+    sim.sha256 = Some("f".repeat(64));
+    let err = check_sha256(&sim, &bytes).unwrap_err().to_string();
+    assert!(err.contains("graph-sim.bin"), "{err}");
 }

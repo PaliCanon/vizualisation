@@ -29,8 +29,8 @@ pub fn segments(ends: &[u32], colors: &[f32], n_points: usize) -> Result<(), Str
     }
 }
 
-/// Links for a layout: pairs of point indices, one finite rest length per pair, every index a
-/// point.
+/// Links for a layout: pairs of point indices, one finite non-negative rest length per pair,
+/// every index a point.
 pub fn links(ends: &[u32], lengths: &[f32], n_points: usize) -> Result<(), String> {
     if !ends.len().is_multiple_of(2) {
         return Err(format!("links: {} ends, expected pairs", ends.len()));
@@ -43,6 +43,9 @@ pub fn links(ends: &[u32], lengths: &[f32], n_points: usize) -> Result<(), Strin
     }
     if lengths.iter().any(|l| !l.is_finite()) {
         return Err("rest lengths must be finite numbers".into());
+    }
+    if lengths.iter().any(|&l| l < 0.0) {
+        return Err("rest lengths must not be negative".into());
     }
     Ok(())
 }
@@ -138,6 +141,16 @@ mod tests {
                 .contains("rest lengths")
         );
         assert!(links(&[0, 3], &[1.0], 3).unwrap_err().contains("point 3"));
+        assert!(links(&[0, 1], &[-1.0], 3).unwrap_err().contains("negative"));
+        assert!(
+            links(&[0, 1], &[0.0], 3).is_ok(),
+            "a zero rest length is allowed"
+        );
+        assert!(
+            links(&[0, 1], &[f32::NEG_INFINITY], 3)
+                .unwrap_err()
+                .contains("finite")
+        );
         assert!(
             links(&[0, 1], &[f32::NAN], 3)
                 .unwrap_err()

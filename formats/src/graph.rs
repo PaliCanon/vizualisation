@@ -38,6 +38,12 @@ struct Coord(f64);
 impl Serialize for Coord {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         let v = self.0;
+        if !v.is_finite() {
+            // serde_json would write `null`, which the page reads back as 0.
+            return Err(serde::ser::Error::custom(
+                "a coordinate is not a finite number",
+            ));
+        }
         if v.fract() == 0.0 && v.abs() < 1e15 {
             #[allow(
                 clippy::cast_possible_truncation,
@@ -196,8 +202,20 @@ impl Graph {
     /// The file's JSON, compact.
     ///
     /// # Errors
-    /// When serialisation fails (a non-finite position).
+    /// When a position or a similarity threshold is not a finite number (JSON would turn it
+    /// into `null`).
     pub fn to_json(&self) -> Result<String, FormatError> {
+        if let Some(sim) = &self.sim {
+            let range = sim.range.iter().flatten();
+            let numbers = [sim.min, sim.max, sim.default]
+                .into_iter()
+                .chain(range.copied());
+            if numbers.into_iter().any(|x| !x.is_finite()) {
+                return Err(FormatError::Invalid(
+                    "sim: a threshold or range is not a finite number".into(),
+                ));
+            }
+        }
         Ok(serde_json::to_string(self)?)
     }
 
@@ -358,5 +376,30 @@ mod tests {
         assert!(bad("1,2,0,-11|9,2,0,-11", "").contains("collection 9"));
         assert!(bad("1,2,0,-11|1,7,0,-11", "").contains("group 7"));
         assert!(bad("1,2,0,-11|1,2,5,-11", "").contains("pitaka 5"));
+    }
+
+    #[test]
+    fn to_json_refuses_a_coordinate_that_is_not_finite() {
+        for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let mut g = Graph::from_json(graph("").as_bytes()).unwrap();
+            g.nodes[1].y = bad;
+            let err = g
+                .to_json()
+                .expect_err(&format!("{bad} must not be written"));
+            assert!(err.to_string().contains("finite"), "{err}");
+        }
+    }
+
+    #[test]
+    fn to_json_refuses_a_similarity_range_that_is_not_finite() {
+        let mut g = Graph::from_json(
+            graph(r#","sim":{"url":"b.bin","min":0.1,"max":0.9,"default":0.5}"#).as_bytes(),
+        )
+        .unwrap();
+        g.sim.as_mut().unwrap().max = f64::NAN;
+        assert!(g.to_json().is_err());
+        g.sim.as_mut().unwrap().max = 0.9;
+        g.sim.as_mut().unwrap().range = Some([0.1, f64::INFINITY]);
+        assert!(g.to_json().is_err());
     }
 }

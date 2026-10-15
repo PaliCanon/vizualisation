@@ -8,7 +8,6 @@
 
 use crate::check;
 use map_layout::{Layout, Link, Params};
-use wasm_bindgen::prelude::*;
 
 /// The layout without the JavaScript shell: errors are plain strings, so it runs in tests.
 #[derive(Debug)]
@@ -48,14 +47,14 @@ impl Core {
         Ok(Core { layout, steps: 0 })
     }
 
-    /// Run `count` steps; returns the movement of the last one (0 when `count` is 0).
+    /// Run `count` steps; returns the movement of the last step run so far (so `step(0)` leaves
+    /// it, and the positions, as they were; 0 before any step).
     pub fn step(&mut self, count: u32) -> f64 {
-        let mut movement = 0.0;
         for _ in 0..count {
-            movement = self.layout.step();
+            self.layout.step();
         }
         self.steps = self.steps.saturating_add(count);
-        movement
+        self.layout.movement()
     }
 
     /// The positions, x, y, z per point.
@@ -75,43 +74,58 @@ impl Core {
     }
 }
 
-/// A live layout for the page.
-#[wasm_bindgen]
-pub struct LiveLayout {
-    core: Core,
+/// The JavaScript side, in the wasm build only (like the view and the GPU code); `Core` above
+/// stays native and tested.
+#[cfg(target_arch = "wasm32")]
+mod shell {
+    use super::Core;
+    use wasm_bindgen::prelude::*;
+
+    /// A live layout for the page.
+    #[wasm_bindgen]
+    pub struct LiveLayout {
+        core: Core,
+    }
+
+    #[wasm_bindgen]
+    impl LiveLayout {
+        /// Start a layout from `positions` (x, y, z per point), with the links `ends` (two point
+        /// indices per link) and their rest `lengths`, and the map's parameters.
+        ///
+        /// # Errors
+        /// When `positions` is not a whole number of (x, y, z) triples, the lengths are not one per
+        /// link, a link names a point that does not exist, or a number is not finite.
+        #[wasm_bindgen(constructor)]
+        pub fn new(
+            positions: &[f32],
+            ends: &[u32],
+            lengths: &[f32],
+        ) -> Result<LiveLayout, JsError> {
+            Core::new(positions, ends, lengths)
+                .map(|core| LiveLayout { core })
+                .map_err(|e| JsError::new(&e))
+        }
+
+        /// Run `count` steps; returns the movement of the last one, which falls as the layout
+        /// settles.
+        pub fn step(&mut self, count: u32) -> f64 {
+            self.core.step(count)
+        }
+
+        /// The positions, x, y, z per point, in the order given.
+        pub fn positions(&self) -> Vec<f32> {
+            self.core.positions()
+        }
+
+        /// Steps run so far.
+        pub fn steps(&self) -> u32 {
+            self.core.steps()
+        }
+    }
 }
 
-#[wasm_bindgen]
-impl LiveLayout {
-    /// Start a layout from `positions` (x, y, z per point), with the links `ends` (two point
-    /// indices per link) and their rest `lengths`, and the map's parameters.
-    ///
-    /// # Errors
-    /// When `positions` is not a whole number of (x, y, z) triples, the lengths are not one per
-    /// link, a link names a point that does not exist, or a number is not finite.
-    #[wasm_bindgen(constructor)]
-    pub fn new(positions: &[f32], ends: &[u32], lengths: &[f32]) -> Result<LiveLayout, JsError> {
-        Core::new(positions, ends, lengths)
-            .map(|core| LiveLayout { core })
-            .map_err(|e| JsError::new(&e))
-    }
-
-    /// Run `count` steps; returns the movement of the last one, which falls as the layout
-    /// settles.
-    pub fn step(&mut self, count: u32) -> f64 {
-        self.core.step(count)
-    }
-
-    /// The positions, x, y, z per point, in the order given.
-    pub fn positions(&self) -> Vec<f32> {
-        self.core.positions()
-    }
-
-    /// Steps run so far.
-    pub fn steps(&self) -> u32 {
-        self.core.steps()
-    }
-}
+#[cfg(target_arch = "wasm32")]
+pub use shell::LiveLayout;
 
 #[cfg(test)]
 mod tests {
@@ -204,5 +218,52 @@ mod tests {
         let mut core = Core::new(&[], &[], &[]).unwrap();
         assert_eq!(core.step(3), 0.0);
         assert_eq!(core.positions().len(), 0);
+    }
+
+    #[test]
+    fn a_position_or_a_length_that_is_not_usable_is_an_error() {
+        for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let pos = [0.0, bad, 0.0, 1.0, 1.0, 1.0];
+            assert!(Core::new(&pos, &[], &[]).unwrap_err().contains("finite"));
+            assert!(
+                Core::new(&START, &[0, 1], &[bad])
+                    .unwrap_err()
+                    .contains("finite")
+            );
+        }
+        assert!(
+            Core::new(&START, &[0, 1], &[-0.5])
+                .unwrap_err()
+                .contains("negative")
+        );
+    }
+
+    #[test]
+    fn step_zero_twice_changes_nothing() {
+        let mut core = Core::new(&START, &[0, 1, 1, 2], &[30.0, 30.0]).unwrap();
+        let moved = core.step(4);
+        let positions = core.positions();
+        assert!(moved > 0.0);
+        for _ in 0..2 {
+            assert_eq!(core.step(0), moved, "the movement is the last step's");
+            assert_eq!(core.positions(), positions);
+            assert_eq!(core.steps(), 4);
+        }
+    }
+
+    #[test]
+    fn the_wasm_class_is_gated_to_wasm32_like_the_view() {
+        // The JavaScript shell exists only in the wasm build; `Core` stays native and tested.
+        let source = include_str!("live_layout.rs");
+        let production = source.split("#[cfg(test)]").next().unwrap();
+        let gate = "#[cfg(target_arch = \"wasm32\")]\nmod shell";
+        let (native, shell) = production
+            .split_once(gate)
+            .expect("the shell module is gated");
+        assert!(
+            !native.contains("wasm_bindgen"),
+            "wasm_bindgen outside the gated module"
+        );
+        assert!(shell.contains("#[wasm_bindgen]") && shell.contains("pub struct LiveLayout"));
     }
 }

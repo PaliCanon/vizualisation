@@ -103,4 +103,12 @@ mod tests {
         assert!(Translations::from_json(b"[]").is_err());
         assert!(Translations::from_json(br#"{"en":{"titles":{}}}"#).is_err());
     }
+
+    #[test]
+    fn credits_with_no_translators_are_an_error() {
+        let file = r#"{"en":{"titles":{"dn1":"The Net"},"by":{"dn1":0},"translators":[]}}"#;
+        let err = Translations::from_json(file.as_bytes()).unwrap_err();
+        assert!(matches!(err, FormatError::Invalid(_)), "{err}");
+        assert!(err.to_string().contains("dn1"), "{err}");
+    }
 }

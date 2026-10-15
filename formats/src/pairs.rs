@@ -6,6 +6,7 @@
 //! highest first. The page reads it with exactly this arithmetic (`src/map/data.ts`).
 
 use crate::{FormatError, graph::SimInfo};
+use sha2::{Digest, Sha256};
 
 /// Bytes per record.
 pub const RECORD: usize = 6;
@@ -69,6 +70,38 @@ pub fn dequantise(t: u16, range: [f64; 2]) -> f32 {
     )]
     let sim = (lo + (f64::from(t) / 65535.0) * (hi - lo)) as f32;
     sim
+}
+
+/// SHA-256 of `bytes`, as lower-case hex.
+#[must_use]
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    Sha256::digest(bytes)
+        .iter()
+        .fold(String::with_capacity(64), |mut hex, byte| {
+            let _ = write!(hex, "{byte:02x}");
+            hex
+        })
+}
+
+/// The digest a view's [`SimInfo`] lists for its pair list must be the list's own: a pair list
+/// rebuilt without re-stamping its graph file is caught here. A view without a digest passes
+/// (transitional: task 007's tools write it, and then it becomes required).
+///
+/// # Errors
+/// When the listed digest is not the digest of `bytes`; the error names the pair list.
+pub fn check_sha256(sim: &SimInfo, bytes: &[u8]) -> Result<(), FormatError> {
+    let Some(listed) = &sim.sha256 else {
+        return Ok(());
+    };
+    let actual = sha256_hex(bytes);
+    if *listed == actual {
+        return Ok(());
+    }
+    Err(FormatError::Invalid(format!(
+        "{}: its sha256 is {actual}, the graph file lists {listed}: rebuilt without re-stamping?",
+        sim.url
+    )))
 }
 
 impl Pairs {
@@ -269,5 +302,50 @@ mod tests {
             records: vec![Pair { a: 2, b: 2, t: 5 }],
         };
         assert!(bad.check(9).unwrap_err().to_string().contains("a < b"));
+    }
+
+    fn sim_with(sha: Option<&str>) -> SimInfo {
+        SimInfo {
+            url: "graph-sim.bin".into(),
+            min: 0.29,
+            max: 0.95,
+            default: 0.56,
+            range: Some(RANGE),
+            sha256: sha.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn sha256_matches_the_standard_vector() {
+        assert_eq!(
+            sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(
+            sha256_hex(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+
+    #[test]
+    fn the_listed_digest_of_the_pair_list_passes() {
+        let bytes = [1, 0, 2, 0, 3, 0];
+        check_sha256(&sim_with(Some(&sha256_hex(&bytes))), &bytes).unwrap();
+    }
+
+    #[test]
+    fn a_wrong_digest_is_an_error_naming_the_file() {
+        let err = check_sha256(&sim_with(Some(&"0".repeat(64))), &[1, 0, 2, 0, 3, 0])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("graph-sim.bin"), "{err}");
+        assert!(err.contains("sha256"), "{err}");
+    }
+
+    #[test]
+    fn transitional_a_view_without_a_digest_passes() {
+        // Task 007's tools write `sim.sha256`; when they do, this test is replaced by one that
+        // requires it.
+        check_sha256(&sim_with(None), &[1, 0, 2, 0, 3, 0]).unwrap();
     }
 }

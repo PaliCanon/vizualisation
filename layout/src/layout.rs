@@ -344,4 +344,17 @@ mod tests {
             }
         );
     }
+
+    #[test]
+    fn a_link_in_an_empty_layout_is_an_error() {
+        let err = Layout::new(Params::map(), &[], &[Link::plain(0, 1)]).unwrap_err();
+        assert_eq!(
+            err,
+            LayoutError::LinkOutOfRange {
+                link: 0,
+                body: 0,
+                bodies: 0
+            }
+        );
+    }
 }
