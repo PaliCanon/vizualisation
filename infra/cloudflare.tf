@@ -1,56 +1,55 @@
-# The map is a static site (vite build -> dist/), deployed by CI with `wrangler pages deploy`
-# (direct upload): a tag pushes the virtual branch `release` (production, viz.palicanon.app),
-# main is the preview that dev.viz.palicanon.app points at. Dev (every preview deployment) asks
-# for a password: functions/_middleware.js, the Pages secret DEV_PASSWORD on the preview
-# environment only, set through the Cloudflare API from the keychain (never tofu).
+# From search-front/infra/cloudflare.tf. What differs: the names
+# (`vizualisation-<env>`) and the zone read through `var.zone` (this
+# directory's variable of before task 005; pages.tf reads the same data
+# source).
+#
+# The public name of the site: <host> → a Worker that relays to Cloud Run.
+# Cloudflare sits in front (WAF, rate limits). The zone itself is the site's
+# (palisearch infra).
 
 data "cloudflare_zone" "site" {
   name = var.zone
 }
 
-locals {
-  # "viz.palicanon.app" -> "viz", "dev.viz.palicanon.app" -> "dev.viz"
-  record = { for k, h in var.hosts : k => trimsuffix(h, ".${var.zone}") }
+resource "cloudflare_workers_script" "proxy" {
+  for_each   = var.envs
+  account_id = var.cloudflare_account_id
+  name       = "vizualisation-${each.key}"
+  content    = file("${path.module}/worker/proxy.js")
+  module     = true
+  # Pins the Workers runtime behaviour the script was written against.
+  compatibility_date = "2026-10-08"
+
+  plain_text_binding {
+    name = "ORIGIN"
+    text = google_cloud_run_v2_service.app[each.key].uri
+  }
+
+  # The public origin of the host this Worker serves: the Worker rewrites a
+  # `Location` on the run.app origin onto it, and never trusts the request's
+  # own Host for that. Not a secret; https (the Worker answers 500 otherwise).
+  plain_text_binding {
+    name = "PUBLIC_ORIGIN"
+    text = "https://${each.value.host}"
+  }
+
+  # NO secret binding here (search-front 007, design v4 and ruling R4): a
+  # secret declared in tofu lands in its state. The Worker's `ORIGIN_AUTH` is
+  # set through the Cloudflare API by `infra/scripts/origin-secret push <env>`.
+  # The provider cannot keep bindings it does not declare, so an apply that
+  # re-uploads the script (a change to worker/proxy.js, to the compatibility
+  # date or to ORIGIN) can drop that secret: push again after such an apply.
+  # Until then the Worker answers 500 (a loud failure, never a silent one).
 }
 
-# ---------------------------------------------------------------- Pages
-
-resource "cloudflare_pages_project" "viz" {
-  account_id        = var.cloudflare_account_id
-  name              = var.project
-  production_branch = "release"
+# The Worker is served on each host by a Workers Custom Domain. Cloudflare
+# creates the proxied DNS record itself and issues the certificate for the
+# exact host, so there is no record and no route to declare.
+resource "cloudflare_workers_domain" "app" {
+  for_each    = var.envs
+  account_id  = var.cloudflare_account_id
+  zone_id     = data.cloudflare_zone.site.id
+  hostname    = each.value.host
+  service     = cloudflare_workers_script.proxy[each.key].name
+  environment = "production"
 }
-
-resource "cloudflare_pages_domain" "prod" {
-  account_id   = var.cloudflare_account_id
-  project_name = cloudflare_pages_project.viz.name
-  domain       = var.hosts.prod
-}
-
-# A branch alias only serves a hostname Pages knows: the dev hostname is registered too.
-resource "cloudflare_pages_domain" "dev" {
-  account_id   = var.cloudflare_account_id
-  project_name = cloudflare_pages_project.viz.name
-  domain       = var.hosts.dev
-}
-
-# ---------------------------------------------------------------- DNS
-
-resource "cloudflare_record" "prod" {
-  zone_id = data.cloudflare_zone.site.id
-  name    = local.record.prod
-  type    = "CNAME"
-  content = "${cloudflare_pages_project.viz.name}.pages.dev"
-  proxied = true
-}
-
-resource "cloudflare_record" "dev" {
-  zone_id = data.cloudflare_zone.site.id
-  name    = local.record.dev
-  type    = "CNAME"
-  content = "main.${cloudflare_pages_project.viz.name}.pages.dev"
-  proxied = true
-}
-
-# dev.viz is two levels deep: outside the zone's universal certificate, but a Pages custom domain
-# gets its own certificate from Pages (docs/conventions/deploy.md), so no certificate pack.

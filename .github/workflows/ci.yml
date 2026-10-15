@@ -1,91 +1,177 @@
+# The README's checks, one job each. Every job that runs cargo has two
+# checkouts side by side, because the root workspace (app, engine, layout,
+# formats) reaches `../ui-lib` (its [patch], app/style/main.css,
+# app/build.rs) and ui-lib is private: this repository goes into
+# `vizualisation/` and the `siblings` action puts ui-lib beside it with a
+# short-lived GitHub App token (no deploy key, no credential left in any
+# .git/config). Cargo steps run in `vizualisation/` (`defaults.run`).
+#
+# From search-front/.github/workflows/ci.yml, merged with this repository's
+# own jobs of before task 005 (the engine's: learn-pali's matrix, host and
+# wasm32). What differs from search-front: one sibling; the app is
+# `-p vizualisation`; the engine, layout and formats crates keep their jobs,
+# each beside the app's (they build for wasm32 too); MSRV 1.88; the coverage
+# keeps this repository's job-level CODECOV_TOKEN and its summary; no token
+# check in the bundle job (this service holds no API token, Dockerfile); the
+# React site job stays until task 008. Every cargo step names its packages
+# with `-p`, never `--workspace` or `--all-features`: the app's `ssr` and
+# `hydrate` do not build together.
+#
+# Repository secrets used: APP_ID, APP_PRIVATE_KEY (the GitHub App, Contents:
+# read on ui-lib and vizualisation), CODECOV_TOKEN (optional).
 name: CI
-
-# The Rust workspace (root Cargo.toml: engine, layout, formats) gets learn-pali's jobs, run for the
-# host and for wasm32 (the GPU view, the layout and the formats also build there); the site is
-# type-checked and built on top. Every cargo step names its packages with `-p`, never
-# `--workspace`: the app crate (task 005) has ssr and hydrate features that do not build together.
 
 on:
   push:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
+  # The engine and its crates, checked together as before task 005.
+  MAP_CRATES: -p map-engine -p map-layout -p map-formats
+
+defaults:
+  run:
+    working-directory: vizualisation
 
 jobs:
   fmt:
-    name: rustfmt
+    name: rustfmt + leptosfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          path: vizualisation
+          persist-credentials: false
+      # rustfmt walks the modules, `#[path]` ones included: app/build.rs includes
+      # ../../ui-lib/build/placeholders.rs, so fmt needs the sibling too.
+      - uses: ./vizualisation/.github/actions/siblings
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - run: cargo fmt --check
+      - run: cargo fmt --all --check
+      - run: cargo install leptosfmt --locked
+      # The app holds the `view!` macros; the engine has none.
+      - run: leptosfmt --check app
 
   clippy:
-    name: clippy (${{ matrix.target }})
+    name: clippy (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
-            args: --all-targets
+          - name: app ssr
+            args: -p vizualisation --features ssr --all-targets
+          - name: app hydrate wasm32
+            args: -p vizualisation --lib --features hydrate --target wasm32-unknown-unknown
+          - name: map host
+            args: -p map-engine -p map-layout -p map-formats --all-targets --target x86_64-unknown-linux-gnu
           # The inline tests are host-only (learn-pali's "core-wasm" entry is --lib too).
-          - target: wasm32-unknown-unknown
-            args: --lib
+          - name: map wasm32
+            args: -p map-engine -p map-layout -p map-formats --lib --target wasm32-unknown-unknown
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          path: vizualisation
+          persist-credentials: false
+      - uses: ./vizualisation/.github/actions/siblings
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-          targets: ${{ matrix.target }}
-      - run: cargo clippy --locked -p map-engine -p map-layout -p map-formats ${{ matrix.args }} --target ${{ matrix.target }} -- -D warnings
+          targets: wasm32-unknown-unknown
+      - run: cargo clippy --locked ${{ matrix.args }} -- -D warnings
 
   test:
     name: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          path: vizualisation
+          persist-credentials: false
+      - uses: ./vizualisation/.github/actions/siblings
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --locked -p map-engine -p map-layout -p map-formats
+      - run: cargo test --locked -p vizualisation --features ssr
+      - run: cargo test --locked $MAP_CRATES
 
   docs:
-    name: rustdoc (${{ matrix.target }})
+    name: rustdoc (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [x86_64-unknown-linux-gnu, wasm32-unknown-unknown]
+        include:
+          - name: app ssr
+            args: -p vizualisation --features ssr
+          - name: map host
+            args: -p map-engine -p map-layout -p map-formats --target x86_64-unknown-linux-gnu
+          - name: map wasm32
+            args: -p map-engine -p map-layout -p map-formats --target wasm32-unknown-unknown
     env:
       RUSTDOCFLAGS: -D warnings
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          path: vizualisation
+          persist-credentials: false
+      - uses: ./vizualisation/.github/actions/siblings
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
-      - run: cargo doc --no-deps --locked -p map-engine -p map-layout -p map-formats --target ${{ matrix.target }}
+          targets: wasm32-unknown-unknown
+      - run: cargo doc --locked --no-deps ${{ matrix.args }}
 
   msrv:
     name: msrv (1.88)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          path: vizualisation
+          persist-credentials: false
+      - uses: ./vizualisation/.github/actions/siblings
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - uses: dtolnay/rust-toolchain@1.88
         with:
           targets: wasm32-unknown-unknown
-      # --locked: the MSRV claim is verified against the committed Cargo.lock.
-      - run: cargo check --locked -p map-engine -p map-layout -p map-formats
-      - run: cargo check --locked -p map-engine -p map-layout -p map-formats --target wasm32-unknown-unknown
+      # --locked: the committed Cargo.lock is what the MSRV claim is verified
+      # against; a fresh resolution could pull a dependency with a higher MSRV.
+      - run: cargo check --locked -p vizualisation --features ssr
+      - run: cargo check --locked $MAP_CRATES
+      - run: cargo check --locked $MAP_CRATES --target wasm32-unknown-unknown
 
   deny:
     name: cargo-deny
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          path: vizualisation
+          persist-credentials: false
+      # cargo-deny loads the workspace's metadata, which follows the [patch].
+      - uses: ./vizualisation/.github/actions/siblings
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          manifest-path: Cargo.toml
+          manifest-path: vizualisation/Cargo.toml
           command: check advisories bans sources licenses
           arguments: --locked
 
@@ -95,28 +181,127 @@ jobs:
     env:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          path: vizualisation
+          persist-credentials: false
+      - uses: ./vizualisation/.github/actions/siblings
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
       - uses: taiki-e/install-action@cargo-llvm-cov
-      # The coverage table goes to the job summary; Codecov only once a CODECOV_TOKEN exists
-      # (none of the organisation's repositories has one yet).
+      # The coverage table goes to the job summary; Codecov only once a CODECOV_TOKEN exists.
+      # One run over the app (its `ssr` feature named by package: several -p) and the map crates.
       - run: |
-          cargo llvm-cov --locked -p map-engine -p map-layout -p map-formats --lcov --output-path lcov.info
+          cargo llvm-cov --locked -p vizualisation --features vizualisation/ssr $MAP_CRATES --lcov --output-path lcov.info
           { echo '```'; cargo llvm-cov report --summary-only; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: codecov/codecov-action@v5
         if: env.CODECOV_TOKEN != ''
         with:
           files: lcov.info
+          working-directory: vizualisation
           fail_ci_if_error: true
 
+  bundle:
+    # `cargo leptos build --release` as the Dockerfile runs it, on pull
+    # requests too: the image build would fail later and only on main.
+    # search-front ran its no-token check here; this service holds no token.
+    name: bundle (cargo leptos build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: vizualisation
+          persist-credentials: false
+      - uses: ./vizualisation/.github/actions/siblings
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      # The tools, cached by the versions that shape them: cargo-leptos as the
+      # Dockerfile pins it, wasm-bindgen-cli read from the lock (it must match
+      # the crate to the patch version).
+      - name: Read the wasm-bindgen version of the lock
+        id: wbg
+        run: echo "version=$(awk '/^name = "wasm-bindgen"$/ {getline; gsub(/[^0-9.]/, ""); print; exit}' Cargo.lock)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: tools
+        with:
+          path: ~/.cargo/bin
+          key: leptos-tools-0.3.11-wbg-${{ steps.wbg.outputs.version }}
+      - if: steps.tools.outputs.cache-hit != 'true'
+        run: |
+          cargo install cargo-leptos --version 0.3.11 --locked
+          cargo install wasm-bindgen-cli --version "${{ steps.wbg.outputs.version }}" --locked
+      - run: cargo leptos build --release --cargo-locked
+
   site:
+    # The React site, until task 008 removes it: the engine through
+    # wasm-bindgen, then tsc and vite. Its cargo build loads the workspace,
+    # hence the sibling.
     name: site (tsc + build)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: .
     steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/build
+      - uses: actions/checkout@v7
+        with:
+          path: vizualisation
+          persist-credentials: false
+      - uses: ./vizualisation/.github/actions/siblings
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      - uses: ./vizualisation/.github/actions/build
+        with:
+          working-directory: vizualisation
+
+  scripts:
+    # The shell, Python and Node tests that guard the deploy. Every test file
+    # has its step here (scripts/check_workflows.py checks it).
+    name: scripts, workflows, Worker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: vizualisation
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - run: python3 scripts/infra_probe_test.py
+      - run: python3 scripts/check_workflows_test.py
+      - run: python3 scripts/check_workflows.py
+      - run: python3 scripts/port_strings_test.py
+      - run: bash scripts/manifest-ref.test.sh
+      - run: bash scripts/serving-revision.test.sh
+      - run: bash infra/scripts/origin-secret.test.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # A quoted glob, not the directory: node 22 (the job's) runs a directory
+      # argument as a module and fails with "Cannot find module" (search-front
+      # 007 F3).
+      - run: node --test 'infra/worker/*.test.mjs'
+
+  tofu:
+    name: tofu (fmt, validate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: vizualisation
+          persist-credentials: false
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.12.6
+      - run: tofu fmt -check -recursive
+        working-directory: vizualisation/infra
+      - run: tofu init -backend=false -input=false
+        working-directory: vizualisation/infra
+      - run: tofu validate
+        working-directory: vizualisation/infra

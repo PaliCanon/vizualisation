@@ -1,0 +1,126 @@
+//! The axum router (design v4, the server's layers): the origin guard
+//! outermost, on every path; `/healthz` behind it alone; then the password
+//! gate around the pages and the files. The signature takes the boot
+//! [`Config`], so `main` cannot forget a layer.
+
+use std::sync::Arc;
+
+use axum::routing::get;
+use leptos::prelude::LeptosOptions;
+use leptos_axum::{LeptosRoutes, file_and_error_handler, generate_route_list};
+
+use crate::app::{App, shell};
+use crate::boot::Config;
+use crate::{gate, origin};
+
+/// The short commit this build came from (`build.rs`).
+const BUILD_SHA: &str = env!("VIZUALISATION_GIT_SHA");
+
+/// The health probe: behind the origin guard only, so the rollout check
+/// reaches it through the Worker without the dev password. Public data only.
+async fn healthz() -> String {
+    format!("ok {BUILD_SHA}\n")
+}
+
+/// The service's router: the pages and the static files behind the gate, the
+/// probe beside them, the origin guard around everything.
+pub fn router(options: LeptosOptions, config: Config) -> axum::Router {
+    let routes = generate_route_list(App);
+    let site = axum::Router::new()
+        .leptos_routes(&options, routes, {
+            let options = options.clone();
+            move || shell(options.clone())
+        })
+        .fallback(file_and_error_handler(shell))
+        .with_state(options)
+        .layer(axum::middleware::from_fn_with_state(
+            Arc::new(config.gate),
+            gate::guard,
+        ));
+    axum::Router::new()
+        .route("/healthz", get(healthz))
+        .merge(site)
+        .layer(axum::middleware::from_fn_with_state(
+            Arc::new(config.origin),
+            origin::guard,
+        ))
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode, header};
+    use base64::Engine as _;
+    use base64::engine::general_purpose::STANDARD;
+    use tower::ServiceExt as _;
+
+    use super::*;
+    use crate::gate::{Gate, Password};
+    use crate::origin::{ORIGIN_HEADER, Origin, OriginSecret};
+
+    const PASSWORD: &str = "gate_canary_router_1b7c";
+    const SECRET: &str = "origin_canary_router_9a4d";
+
+    fn dev() -> axum::Router {
+        router(
+            LeptosOptions::builder()
+                .output_name("vizualisation")
+                .build(),
+            Config {
+                gate: Gate::Password(Password::new(PASSWORD)),
+                origin: Origin::Checked(OriginSecret::new(SECRET)),
+            },
+        )
+    }
+
+    async fn status(path: &str, origin: bool, password: bool) -> (StatusCode, String) {
+        let mut request = Request::get(path);
+        if origin {
+            request = request.header(ORIGIN_HEADER, SECRET);
+        }
+        if password {
+            let pair = STANDARD.encode(format!("dev:{PASSWORD}"));
+            request = request.header(header::AUTHORIZATION, format!("Basic {pair}"));
+        }
+        let response = dev()
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let headers = format!("{:?}", response.headers());
+        (status, headers)
+    }
+
+    #[tokio::test]
+    async fn the_layers_answer_in_the_designs_order() {
+        // (path, with the origin header, with the password, status)
+        let cases = [
+            ("/healthz", false, false, StatusCode::FORBIDDEN),
+            ("/healthz", false, true, StatusCode::FORBIDDEN),
+            ("/healthz", true, false, StatusCode::OK),
+            ("/", false, true, StatusCode::FORBIDDEN),
+            ("/", true, false, StatusCode::UNAUTHORIZED),
+            (
+                "/pkg/vizualisation.wasm",
+                true,
+                false,
+                StatusCode::UNAUTHORIZED,
+            ),
+            ("/", true, true, StatusCode::OK),
+        ];
+        for (path, origin, password, expected) in cases {
+            let (status, headers) = status(path, origin, password).await;
+            assert_eq!(
+                status, expected,
+                "{path} origin={origin} password={password}"
+            );
+            assert!(!headers.contains(PASSWORD) && !headers.contains(SECRET));
+        }
+    }
+
+    #[tokio::test]
+    async fn a_page_behind_the_password_is_not_cached() {
+        let (_, headers) = status("/", true, true).await;
+        assert!(headers.contains("private, no-store"), "{headers}");
+    }
+}

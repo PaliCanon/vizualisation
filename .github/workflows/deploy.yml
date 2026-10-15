@@ -1,8 +1,30 @@
 name: deploy
 
-# Push to main → dev (the `main` preview, dev.viz.palicanon.app, behind Access);
-# tag v* → prod (the virtual branch `release`, Pages production, viz.palicanon.app).
-# Infra (the Pages project, domains, DNS, certificate, Access) is infra/, applied by hand.
+# Push to main → dev (vizualisation-dev, viz.dev.palicanon.app); tag v* →
+# prod (vizualisation-prod, viz.palicanon.app). The image is
+# content-addressed: built only when its inputs changed, rolled out with no
+# traffic first, checked through the revision's tagged URL with the origin
+# header, then given the traffic, then checked again through the public host
+# and (it must refuse) the bare Cloud Run URL.
+#
+# From search-front/.github/workflows/deploy.yml. What differs: one sibling
+# (ui-lib), the service and image names, and the dev password: dev runs the
+# password gate (VIZ_GATE=password, infra/gcp.tf), so its checks send the
+# password (read from Secret Manager, `vizualisation-dev-password-dev`, into
+# a 0600 header file) and check the 401 without it; prod's checks send none
+# and check that nothing asks for one (scripts/rollout-check.sh). Replaces
+# the Cloudflare Pages deploy of the React site (task 005, assumption A1: the
+# Pages site keeps its last build until task 008 removes it).
+#
+# CI never sets the service's env or secrets: tofu does (infra/).
+#
+# Repository variables (not secrets, no value here):
+#   WIF_PROVIDER, DEPLOYER_SA, GCP_PROJECT — the workload identity of the
+#   `github-deployer` service account (the site's infra, palisearch).
+# Repository secrets: APP_ID, APP_PRIVATE_KEY — the GitHub App (Contents:
+#   read on ui-lib and vizualisation) that the `siblings` action mints its
+#   token from. Nothing else is a secret here: the image build takes no
+#   credential (Dockerfile).
 
 on:
   push:
@@ -15,19 +37,271 @@ concurrency:
 
 permissions:
   contents: read
+  id-token: write
 
 env:
-  PAGES_PROJECT: palicanon-viz
-  PAGES_BRANCH: ${{ startsWith(github.ref, 'refs/tags/') && 'release' || 'main' }}
+  ENV: ${{ startsWith(github.ref, 'refs/tags/') && 'prod' || 'dev' }}
+  HOST: ${{ startsWith(github.ref, 'refs/tags/') && 'viz.palicanon.app' || 'viz.dev.palicanon.app' }}
+  REGION: europe-west1
+  PROJECT: ${{ vars.GCP_PROJECT }}
+
+# Two checkouts side by side: the build context is the folder holding
+# vizualisation/ and ui-lib/. Commands run in vizualisation/.
+defaults:
+  run:
+    working-directory: vizualisation
 
 jobs:
   site:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/build
-      - uses: cloudflare/wrangler-action@v3
+      - uses: actions/checkout@v7
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name ${{ env.PAGES_PROJECT }} --branch ${{ env.PAGES_BRANCH }} --commit-dirty=true
+          path: vizualisation
+          persist-credentials: false
+      - uses: ./vizualisation/.github/actions/siblings
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOYER_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+
+      # The tag is computed ONCE, after both checkouts, and used by the
+      # build, the existence check and the rollout (scripts/image-hash.sh:
+      # the tracked inputs, the Dockerfile text and scripts/ included, plus
+      # the ui-lib commit built against).
+      - name: Compute the input hash and image refs
+        id: vars
+        run: |
+          set -euo pipefail
+          TAG=$(scripts/image-hash.sh ../ui-lib)
+          IMAGE="$REGION-docker.pkg.dev/$PROJECT/palicanon/vizualisation"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "image_hash=$IMAGE:$TAG" >> "$GITHUB_OUTPUT"
+          echo "vizualisation: input hash $TAG (ui-lib $(git -C ../ui-lib rev-parse --short HEAD))"
+
+      - name: Check whether that image already exists
+        id: check-image
+        env:
+          IMAGE_HASH: ${{ steps.vars.outputs.image_hash }}
+        run: |
+          set -euo pipefail
+          if gcloud artifacts docker images describe "$IMAGE_HASH" --project "$PROJECT" --quiet >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "vizualisation: $IMAGE_HASH already built, skipped"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.check-image.outputs.exists != 'true'
+      - uses: docker/build-push-action@v6
+        if: steps.check-image.outputs.exists != 'true'
+        with:
+          # `working-directory` does not apply to `uses:` steps: the context
+          # is the workspace root, the folder holding the two checkouts.
+          context: .
+          file: vizualisation/Dockerfile
+          # No `secrets:`, no `ssh:`: the build takes no credential (the
+          # sibling is COPYed and the lock holds no git source).
+          push: true
+          tags: |
+            ${{ steps.vars.outputs.image_hash }}
+            ${{ steps.vars.outputs.image }}:${{ github.sha }}
+          # The footer badge shows these, read at compile time (the image
+          # has no .git): the branch or tag, the commit that was pushed.
+          build-args: |
+            BUILD_BRANCH=${{ github.ref_name }}
+            BUILD_SHA=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # What runs is the revision that SERVES the traffic, not the service's
+      # template: after a rollout that built a revision and never moved the
+      # traffic (a failed check, a cancelled job) the template already holds
+      # the new image while the old revision still serves, and comparing the
+      # template would report that as done. The serving revision is also
+      # recorded (`serving`), for the rollback of a failed public check.
+      - name: Is that image already running?
+        id: current
+        env:
+          IMAGE_HASH: ${{ steps.vars.outputs.image_hash }}
+        run: |
+          set -euo pipefail
+          SERVICE="vizualisation-$ENV"
+          # The 100% entry of a service that follows the latest revision (what
+          # tofu creates) names none: scripts/serving-revision.sh then reads
+          # the latest ready one. An empty answer would silently disable the
+          # rollback, so it fails the job.
+          SERVING=$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format json \
+            | scripts/serving-revision.sh) \
+            || { echo "::error::no revision serves $SERVICE: the rollback would have nowhere to go"; exit 1; }
+          CURRENT=$(gcloud run revisions describe "$SERVING" --project "$PROJECT" --region "$REGION" \
+            --format='value(spec.containers[0].image)')
+          echo "serving=$SERVING" >> "$GITHUB_OUTPUT"
+          if [ "$CURRENT" = "$IMAGE_HASH" ]; then
+            echo "running=true" >> "$GITHUB_OUTPUT"
+            echo "vizualisation: $SERVICE already serves $IMAGE_HASH (revision $SERVING), nothing to deploy"
+          else
+            echo "running=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Dev only: the password the gate asks for, read from Secret Manager
+      # (the deployer has secretAccessor on that one secret, infra/gcp.tf)
+      # into a 0600 header file that curl reads with `-H @file`: on no
+      # command line and in no log (masked). Both checks below use it; prod
+      # has no password and its checks send none.
+      - name: Read the dev password
+        if: env.ENV == 'dev'
+        run: |
+          set -euo pipefail
+          umask 077
+          VALUE=$(gcloud secrets versions access latest --secret "vizualisation-dev-password-$ENV" --project "$PROJECT")
+          test -n "$VALUE" || { echo "::error::vizualisation-dev-password-$ENV has no value (infra/README.md, Order)"; exit 1; }
+          echo "::add-mask::$VALUE"
+          BASIC=$(printf 'deploy:%s' "$VALUE" | base64 -w0)
+          echo "::add-mask::$BASIC"
+          printf 'authorization: Basic %s\n' "$BASIC" > "$RUNNER_TEMP/password-header"
+          unset VALUE BASIC
+
+      - name: Roll out without traffic, check, then serve
+        if: steps.current.outputs.running != 'true'
+        env:
+          IMAGE_HASH: ${{ steps.vars.outputs.image_hash }}
+        run: |
+          set -euo pipefail
+          SERVICE="vizualisation-$ENV"
+          TAG="sha-${GITHUB_SHA::7}"
+          gcloud run deploy "$SERVICE" --project "$PROJECT" --region "$REGION" --image "$IMAGE_HASH" \
+            --no-traffic --tag "$TAG" --quiet
+          URL=$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format json \
+            | jq -r --arg t "$TAG" '[.status.traffic[] | select(.tag == $t) | .url] | .[0] // empty')
+          test -n "$URL" || { echo "no URL for the revision tag $TAG on $SERVICE"; exit 1; }
+
+          # The origin secret, into a 0600 header file that curl reads with
+          # `-H @file`: it is on no command line and in no log (masked).
+          umask 077
+          HEADER_FILE="$RUNNER_TEMP/origin-header"
+          trap 'rm -f "$HEADER_FILE"' EXIT
+          VALUE=$(gcloud secrets versions access latest --secret "vizualisation-origin-secret-$ENV" --project "$PROJECT")
+          test -n "$VALUE" || { echo "vizualisation-origin-secret-$ENV has no value (infra/README.md, Order)"; exit 1; }
+          echo "::add-mask::$VALUE"
+          printf 'x-origin-auth: %s\n' "$VALUE" > "$HEADER_FILE"
+          unset VALUE
+
+          # Dev checks the gate with the password; prod checks there is none.
+          GATE=()
+          if [ "$ENV" = dev ]; then
+            GATE=(--password-file "$RUNNER_TEMP/password-header")
+          fi
+
+          # /healthz, the gate, the page, the wasm it links, the guard on:
+          # on the tagged revision, before it has any traffic.
+          scripts/rollout-check.sh "${GATE[@]}" "$URL" "$HEADER_FILE"
+
+          gcloud run services update-traffic "$SERVICE" --project "$PROJECT" --region "$REGION" --to-latest --quiet
+          echo "vizualisation: $SERVICE now serves $IMAGE_HASH"
+
+      - name: Check the public host, and that the bare origin refuses
+        env:
+          # The revision that served before this run moved the traffic, and
+          # whether this run moved it at all (nothing to undo when the image
+          # was already served).
+          PREVIOUS: ${{ steps.current.outputs.serving }}
+          MOVED: ${{ steps.current.outputs.running != 'true' }}
+        run: |
+          set -euo pipefail
+          SERVICE="vizualisation-$ENV"
+          GATE=()
+          if [ "$ENV" = dev ]; then
+            GATE=(--password-file "$RUNNER_TEMP/password-header")
+          fi
+
+          # Puts the traffic back on the revision that served before, when
+          # this run moved it, so a bad rollout does not stay public (D11).
+          # Only the public-host check calls it: a bare origin that answers
+          # is the service's env, which a rollback does not change.
+          # It may itself fail: that must not end the step with gcloud's
+          # exit code (set -e) in place of the check's, so a failed update
+          # only reports. Then the traffic is read back (status.traffic):
+          # when the previous revision does not serve 100%, whatever the
+          # reason, the job exits 5 (the rollback did not restore it); when
+          # it does, the function returns and the caller exits with the
+          # check's own code.
+          rollback() {
+            if [ "$MOVED" != true ] || [ -z "$PREVIOUS" ]; then
+              echo "vizualisation: this run moved no traffic, nothing to put back"
+              return 0
+            fi
+            gcloud run services update-traffic "$SERVICE" --project "$PROJECT" --region "$REGION" \
+              --to-revisions="$PREVIOUS=100" --quiet \
+              || echo "::error::rollback to $PREVIOUS failed"
+            NOW=$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format json \
+              | scripts/serving-revision.sh) || NOW=""
+            if [ "$NOW" != "$PREVIOUS" ]; then
+              echo "::error::rollback did not restore $PREVIOUS"
+              exit 5
+            fi
+            echo "::error::vizualisation: traffic of $SERVICE moved back to $PREVIOUS"
+          }
+
+          # 1. Through Cloudflare and the Worker (which adds the origin
+          #    header; this script sends none and is given none; on dev it
+          #    sends the password, which the Worker relays): /healthz, the
+          #    gate, the page, the wasm. Exit 1 is a refusal or a failed
+          #    content check: a few tries (the new revision and the edge
+          #    settle), then the traffic goes back. Exit 4 is the Worker
+          #    itself answering 500 (it lost its secret): the rollout is not
+          #    at fault, so no rollback, the job fails naming the remedy.
+          RC=1
+          for _ in 1 2 3 4 5; do
+            RC=0
+            scripts/rollout-check.sh --via-worker "${GATE[@]}" "https://$HOST" || RC=$?
+            [ "$RC" = 1 ] || break
+            sleep 3
+          done
+          if [ "$RC" = 3 ]; then
+            # Ruling R6 (search-front): Cloudflare (Bot Fight, a managed
+            # challenge) turned the runner away; that is not the service
+            # failing. The decision is the user's (a WAF skip rule for the
+            # runner, or drop this check).
+            echo "::warning::Cloudflare challenged the runner on https://$HOST/ (R6, infra/README.md): the public-host check did not run"
+          elif [ "$RC" = 4 ]; then
+            echo "::error::the Worker answered 500 — run infra/scripts/origin-secret push $ENV"
+            exit "$RC"
+          elif [ "$RC" != 0 ]; then
+            echo "https://$HOST/ failed rollout-check.sh --via-worker (exit $RC: the service refused it, or a content check failed)"
+            # A refusal or a failed content check (exit 1, after the retries):
+            # put the traffic back, and fail the job (D11).
+            if [ "$RC" = 1 ]; then rollback; fi
+            exit "$RC"
+          fi
+
+          # 2. The bare Cloud Run URL, as anyone who learned it would call it:
+          #    403 with an empty body, with no header and with a wrong one.
+          SERVICE_URL=$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" \
+            --format='value(status.url)')
+          RC=0
+          scripts/rollout-check.sh --refused "$SERVICE_URL" || RC=$?
+          if [ "$RC" != 0 ]; then
+            # A bare origin that answers is open to anyone who learned the
+            # URL. NO rollback: both revisions boot from the same env, so the
+            # previous one answers too and moving the traffic restores
+            # nothing (D13). The cause is the service's ORIGIN_SECRET env.
+            echo "rollout-check.sh --refused on $SERVICE_URL: exit $RC"
+            echo "::error::the bare origin answers — the service's ORIGIN_SECRET env is missing or empty (infra: the secret reference); traffic left as is"
+            exit "$RC"
+          fi
+          echo "vizualisation: https://$HOST is served and the origin refuses a direct call"
+
+      - name: Remove the dev password file
+        if: always()
+        # The workspace root: it exists even when the checkout failed.
+        working-directory: .
+        run: rm -f "$RUNNER_TEMP/password-header"
