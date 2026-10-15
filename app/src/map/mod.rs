@@ -19,6 +19,7 @@ pub mod open_text;
 pub mod search;
 pub mod texts_lang;
 pub mod theme;
+pub mod ui;
 
 /// A small graph for the unit tests: three collections, five texts, three links of two
 /// types; `snp1.1` has no link.
