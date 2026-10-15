@@ -24,6 +24,14 @@ async fn healthz() -> String {
     format!("ok {BUILD_SHA}\n")
 }
 
+/// `sitemap.xml`, as [`crate::head::sitemap`] writes it.
+async fn sitemap() -> ([(axum::http::HeaderName, &'static str); 1], String) {
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/xml")],
+        crate::head::sitemap(),
+    )
+}
+
 /// The service's router: the pages and the static files behind the gate, the
 /// probe beside them, the origin guard around everything.
 pub fn router(options: LeptosOptions, config: Config) -> axum::Router {
@@ -42,13 +50,13 @@ pub fn router(options: LeptosOptions, config: Config) -> axum::Router {
         .append_index_html_on_directories(false)
         .call_fallback_on_method_not_allowed(true)
         .fallback(app);
-    let site =
-        axum::Router::new()
-            .fallback_service(files)
-            .layer(axum::middleware::from_fn_with_state(
-                Arc::new(config.gate),
-                gate::guard,
-            ));
+    let site = axum::Router::new()
+        .route("/sitemap.xml", get(sitemap))
+        .fallback_service(files)
+        .layer(axum::middleware::from_fn_with_state(
+            Arc::new(config.gate),
+            gate::guard,
+        ));
     axum::Router::new()
         .route("/healthz", get(healthz))
         .merge(site)
