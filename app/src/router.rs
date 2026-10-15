@@ -13,15 +13,19 @@ use tower_http::services::ServeDir;
 
 use crate::app::{App, shell};
 use crate::boot::Config;
+use crate::data::Data;
 use crate::{gate, origin};
 
 /// The short commit this build came from (`build.rs`).
 const BUILD_SHA: &str = env!("VIZUALISATION_GIT_SHA");
 
 /// The health probe: behind the origin guard only, so the rollout check
-/// reaches it through the Worker without the dev password. Public data only.
-async fn healthz() -> String {
-    format!("ok {BUILD_SHA}\n")
+/// reaches it through the Worker without the dev password. Public data only:
+/// the build's commit and what each data file was built from.
+async fn healthz(axum::extract::State(data): axum::extract::State<Arc<Data>>) -> String {
+    let mut lines = vec![format!("ok {BUILD_SHA}")];
+    lines.extend(data.stamp_lines());
+    lines.join("\n") + "\n"
 }
 
 /// `sitemap.xml`, as [`crate::head::sitemap`] writes it.
@@ -33,15 +37,24 @@ async fn sitemap() -> ([(axum::http::HeaderName, &'static str); 1], String) {
 }
 
 /// The service's router: the pages and the static files behind the gate, the
-/// probe beside them, the origin guard around everything.
-pub fn router(options: LeptosOptions, config: Config) -> axum::Router {
+/// probe beside them, the origin guard around everything; `data` in every
+/// route's context (the map screen reads it, task 006).
+pub fn router(options: LeptosOptions, config: Config, data: Arc<Data>) -> axum::Router {
     let routes = generate_route_list(App);
     let site_root = options.site_root.to_string();
     let app = axum::Router::new()
-        .leptos_routes(&options, routes, {
-            let options = options.clone();
-            move || shell(options.clone())
-        })
+        .leptos_routes_with_context(
+            &options,
+            routes,
+            {
+                let data = Arc::clone(&data);
+                move || leptos::prelude::provide_context(Arc::clone(&data))
+            },
+            {
+                let options = options.clone();
+                move || shell(options.clone())
+            },
+        )
         .fallback(file_and_error_handler(shell))
         .with_state(options);
     // The site's files first, the app for everything else: `/:uid` (an open
@@ -58,7 +71,7 @@ pub fn router(options: LeptosOptions, config: Config) -> axum::Router {
             gate::guard,
         ));
     axum::Router::new()
-        .route("/healthz", get(healthz))
+        .route("/healthz", get(healthz).with_state(data))
         .merge(site)
         .layer(axum::middleware::from_fn_with_state(
             Arc::new(config.origin),
@@ -78,6 +91,15 @@ mod tests {
     use crate::gate::{Gate, Password};
     use crate::origin::{ORIGIN_HEADER, Origin, OriginSecret};
 
+    /// The committed data, read once for every test of this module.
+    fn data() -> Arc<Data> {
+        static DATA: std::sync::OnceLock<Arc<Data>> = std::sync::OnceLock::new();
+        Arc::clone(DATA.get_or_init(|| {
+            let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public");
+            Arc::new(Data::load(&dir).expect("the committed data"))
+        }))
+    }
+
     const PASSWORD: &str = "gate_canary_router_1b7c";
     const SECRET: &str = "origin_canary_router_9a4d";
 
@@ -90,6 +112,7 @@ mod tests {
                 gate: Gate::Password(Password::new(PASSWORD)),
                 origin: Origin::Checked(OriginSecret::new(SECRET)),
             },
+            data(),
         )
     }
 
@@ -160,6 +183,7 @@ mod tests {
                 gate: Gate::Off,
                 origin: Origin::Open,
             },
+            data(),
         );
         let response = app
             .oneshot(Request::get("/lotus.png").body(Body::empty()).unwrap())

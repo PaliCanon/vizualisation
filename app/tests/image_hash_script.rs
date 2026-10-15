@@ -82,6 +82,8 @@ impl Workspace {
         write(&viz, "README.md", "# readme\n");
         write(&viz, "src/main.tsx", "// react\n");
         write(&viz, "public/graph.json", "{}\n");
+        write(&viz, "public/graph-sim.bin", "bin\n");
+        write(&viz, "public/sitemap.xml", "<urlset/>\n");
         commit(&viz, "vizualisation");
         write(&dir.join("ui-lib"), "src/lib.rs", "// ui\n");
         commit(&dir.join("ui-lib"), "ui-lib");
@@ -137,7 +139,7 @@ fn the_same_inputs_give_the_same_hash() {
 
 #[test]
 fn each_input_changes_the_hash() {
-    let cases: [(&str, &str, &str); 9] = [
+    let cases: [(&str, &str, &str); 11] = [
         ("vizualisation", "app/src/lib.rs", "pub fn b() {}\n"),
         ("vizualisation", "engine/src/lib.rs", "// engine 2\n"),
         ("vizualisation", "layout/src/lib.rs", "// layout 2\n"),
@@ -151,6 +153,9 @@ fn each_input_changes_the_hash() {
             "[workspace]\nresolver = \"3\"\n",
         ),
         ("ui-lib", "src/lib.rs", "// ui 2\n"),
+        // The data the image carries (Dockerfile, `./data/`).
+        ("vizualisation", "public/graph.json", "[]\n"),
+        ("vizualisation", "public/graph-sim.bin", "bin 2\n"),
     ];
     for (i, (repo, file, text)) in cases.iter().enumerate() {
         let w = Workspace::new(&format!("input-{i}"));
@@ -167,7 +172,7 @@ fn files_outside_the_inputs_do_not() {
         (".task/005.md", "# task 2\n"),
         ("README.md", "# readme 2\n"),
         ("src/main.tsx", "// react 2\n"),
-        ("public/graph.json", "[]\n"),
+        ("public/sitemap.xml", "<urlset></urlset>\n"),
     ]
     .iter()
     .enumerate()

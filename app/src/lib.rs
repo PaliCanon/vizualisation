@@ -12,8 +12,10 @@ pub mod boot;
 mod catalogue;
 mod components;
 #[cfg(feature = "ssr")]
+pub mod data;
+#[cfg(feature = "ssr")]
 pub mod gate;
-pub mod head;
+mod head;
 #[cfg(feature = "ssr")]
 pub mod origin;
 mod pages;

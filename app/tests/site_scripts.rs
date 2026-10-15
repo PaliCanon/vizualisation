@@ -293,6 +293,7 @@ fn start_service(site: &Path, setup: &Setup) -> Service {
         .env("VIZ_GATE", setup.gate)
         .env("LEPTOS_OUTPUT_NAME", "vizualisation")
         .env("LEPTOS_SITE_ROOT", site)
+        .env("VIZ_DATA_DIR", DATA_DIR)
         .env("LEPTOS_SITE_ADDR", format!("127.0.0.1:{port}"))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -477,6 +478,9 @@ fn gate_and_page_cases() -> Vec<Case> {
     ]
 }
 
+/// The committed data files the binary reads at boot.
+const DATA_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../public");
+
 // ------------------------------------------------------------------- smoke.sh
 
 /// The smoke test's environment for a binary: the site root it serves.
@@ -484,6 +488,7 @@ fn smoke_env(site: &Path) -> Vec<(&'static str, String)> {
     vec![
         ("LEPTOS_OUTPUT_NAME", "vizualisation".to_owned()),
         ("LEPTOS_SITE_ROOT", site.to_str().expect("utf-8").to_owned()),
+        ("VIZ_DATA_DIR", DATA_DIR.to_owned()),
     ]
 }
 

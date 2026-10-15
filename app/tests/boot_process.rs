@@ -67,6 +67,10 @@ fn command(port: u16, env: &[(&str, &str)]) -> Command {
         .env_remove("LEPTOS_ENV")
         .env_remove("K_SERVICE")
         .env("LEPTOS_OUTPUT_NAME", "vizualisation")
+        .env(
+            "VIZ_DATA_DIR",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../public"),
+        )
         .env("LEPTOS_SITE_ADDR", format!("127.0.0.1:{port}"))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -178,6 +182,17 @@ fn an_unset_or_half_configured_gate_refuses_to_start_and_names_the_variable() {
     assert_refuses(
         &[("VIZ_GATE", "password"), ("DEV_PASSWORD", "  ")],
         "DEV_PASSWORD",
+    );
+}
+
+#[test]
+fn missing_data_refuses_to_start_and_names_the_file() {
+    let empty = std::env::temp_dir().join(format!("viz-no-data-{}", std::process::id()));
+    std::fs::create_dir_all(&empty).unwrap();
+    let dir = empty.to_str().expect("utf-8");
+    assert_refuses(
+        &[("VIZ_GATE", "off"), ("VIZ_DATA_DIR", dir)],
+        "graph-sim.json",
     );
 }
 

@@ -14,9 +14,10 @@
 # Inputs: the tracked files (git blob ids) of `app`, `engine`, `layout`,
 # `formats`, `Cargo.toml`, `Cargo.lock`, `Dockerfile` and `scripts` of this
 # repository (the Dockerfile text, so a base image or a tool version, and the
-# smoke test are in the hash), and the HEAD commit of ui-lib. Not `infra/`,
-# `.task/`, the docs or the React site (`src/`, `public/`): they do not change
-# the image.
+# smoke test are in the hash), the data files the image carries
+# (`public/*.json`, `public/graph-sim.bin`, Dockerfile `./data/`), and the
+# HEAD commit of ui-lib. Not `infra/`, `.task/`, the docs or the React site
+# (`src/`, the rest of `public/`): they do not change the image.
 set -euo pipefail
 
 if [ "$#" -ne 1 ]; then
@@ -39,7 +40,8 @@ fi
 
 hash=$(
   {
-    git -C "$root" ls-files -s app engine layout formats Cargo.toml Cargo.lock Dockerfile scripts
+    git -C "$root" ls-files -s app engine layout formats Cargo.toml Cargo.lock Dockerfile scripts \
+      'public/*.json' public/graph-sim.bin
     echo "ui-lib $ui_lib_head"
   } | sha | cut -c1-16
 )

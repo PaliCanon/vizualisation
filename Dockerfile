@@ -101,6 +101,20 @@ COPY --from=builder --chown=app:app /out/vizualisation /out/smoke.sh ./
 # site/ is LEPTOS_SITE_ROOT. The bundle is not hash-named (the workspace sets
 # no `hash-files`): there is no hash.txt to ship.
 COPY --from=builder --chown=app:app /out/site ./site
+# The data files, read once at boot (app/src/data.rs, VIZ_DATA_DIR): the
+# image carries the very files the commit holds (design v4: baked in, loaded
+# at boot). Named one by one, as every COPY here.
+COPY --chown=app:app \
+    vizualisation/public/graph.json \
+    vizualisation/public/graph-sim.json \
+    vizualisation/public/graph-sim.bin \
+    vizualisation/public/graph-sim-pca.json \
+    vizualisation/public/graph-sim-umap.json \
+    vizualisation/public/graph-sim-tsne.json \
+    vizualisation/public/translations.json \
+    vizualisation/public/blurbs-en.json \
+    vizualisation/public/blurbs-fr.json \
+    ./data/
 # `get_configuration(None)` reads these and nothing else: no Cargo.toml in
 # the image. Cloud Run sends its traffic to 8080. The runtime settings that
 # differ per deployment (VIZ_GATE, and the secrets ORIGIN_SECRET and, on dev,
@@ -112,6 +126,7 @@ ENV LEPTOS_OUTPUT_NAME=vizualisation \
     LEPTOS_SITE_PKG_DIR=pkg \
     LEPTOS_SITE_ADDR=0.0.0.0:8080 \
     LEPTOS_ENV=PROD \
+    VIZ_DATA_DIR=data \
     RUST_LOG=info \
     PORT=8080
 USER app

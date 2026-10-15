@@ -5,11 +5,13 @@
 //! paths. Every canonical is built from [`CANONICAL_BASE`]: there is only ever
 //! one production host.
 
+#[cfg(feature = "ssr")]
 use std::fmt::Write as _;
 
 use leptos::prelude::*;
 use leptos_meta::{Link, Meta, Script, Title};
 
+#[cfg(feature = "ssr")]
 use crate::pages::PageKind;
 
 /// The production origin every canonical and `og:url` starts with.
@@ -70,6 +72,7 @@ const JSON_LD: &str = concat!(
 
 /// `sitemap.xml`: the map's home and the footer pages (the texts come with the
 /// map screen, task 006), each at its canonical URL.
+#[cfg(feature = "ssr")]
 #[must_use]
 pub fn sitemap() -> String {
     let paths = std::iter::once("/").chain(PageKind::ALL.map(PageKind::path));
@@ -90,6 +93,7 @@ pub fn sitemap() -> String {
 mod tests {
     use super::*;
 
+    #[cfg(feature = "ssr")]
     #[test]
     fn the_sitemap_lists_the_home_and_every_page_once() {
         let xml = sitemap();

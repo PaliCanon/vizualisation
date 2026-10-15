@@ -320,6 +320,54 @@ fn the_image_runs_in_production_mode_as_a_non_root_user() {
     );
 }
 
+/// The data files `app/src/data.rs` reads at boot (design v4: baked into the
+/// image, loaded at boot).
+const DATA_FILES: [&str; 9] = [
+    "graph.json",
+    "graph-sim.json",
+    "graph-sim.bin",
+    "graph-sim-pca.json",
+    "graph-sim-umap.json",
+    "graph-sim-tsne.json",
+    "translations.json",
+    "blurbs-en.json",
+    "blurbs-fr.json",
+];
+
+#[test]
+fn the_image_carries_the_data_and_points_the_service_at_it() {
+    let text = dockerfile();
+    let all = instructions(&text);
+    let runtime = all
+        .iter()
+        .rposition(|i| i.starts_with("FROM "))
+        .expect("a runtime stage");
+    let copies: Vec<&String> = all[runtime..]
+        .iter()
+        .filter(|i| i.starts_with("COPY ") && !i.contains("--from"))
+        .collect();
+    for file in DATA_FILES {
+        assert!(
+            repo_root().join("public").join(file).is_file(),
+            "public/{file} is committed"
+        );
+        let source = format!("vizualisation/public/{file}");
+        assert!(
+            copies
+                .iter()
+                .any(|c| c.split_whitespace().any(|w| w == source)
+                    && c.trim_end().ends_with("./data/")),
+            "the runtime stage copies {source} into ./data/: {copies:?}"
+        );
+    }
+    assert!(
+        all[runtime..]
+            .iter()
+            .any(|i| i.contains("VIZ_DATA_DIR=data")),
+        "the image sets VIZ_DATA_DIR=data"
+    );
+}
+
 #[test]
 fn the_dockerfile_holds_no_credential() {
     let text = dockerfile();
