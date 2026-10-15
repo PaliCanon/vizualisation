@@ -41,6 +41,32 @@ tower-http = { version = "0.6", features = ["fs"], optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 
+# `EngineView` (map/engine_view.rs) in the browser: the map engine (wgpu, task 004) and the
+# DOM it is driven through (the canvas, pointer, wheel and key events, ResizeObserver,
+# requestAnimationFrame). `hydrate` only, and wasm32 only: the server renders the empty canvas.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+map-engine = { version = "0.1.0", path = "../engine", optional = true }
+web-sys = { version = "0.3", optional = true, features = [
+  "AddEventListenerOptions",
+  "CssStyleDeclaration",
+  "Document",
+  "DomRect",
+  "DomStringMap",
+  "Element",
+  "Event",
+  "EventTarget",
+  "HtmlCanvasElement",
+  "HtmlElement",
+  "KeyboardEvent",
+  "MouseEvent",
+  "Performance",
+  "PointerEvent",
+  "ResizeObserver",
+  "WheelEvent",
+  "Window",
+  "console",
+] }
+
 [build-dependencies]
 # As in ui-lib's build.rs: the parser's diagnostics fail the build on a missing key.
 leptos_i18n_parser = "=0.6.2"
@@ -64,6 +90,8 @@ hydrate = [
   "palicanon-ui-lib/hydrate",
   "dep:console_error_panic_hook",
   "dep:wasm-bindgen",
+  "dep:map-engine",
+  "dep:web-sys",
 ]
 ssr = [
   "dep:axum",

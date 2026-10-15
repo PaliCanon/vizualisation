@@ -2999,6 +2999,7 @@ dependencies = [
  "leptos_i18n_parser",
  "leptos_meta",
  "leptos_router",
+ "map-engine",
  "map-formats",
  "palicanon-ui-lib",
  "serde_json",
@@ -3008,6 +3009,7 @@ dependencies = [
  "tower-http",
  "unicode-normalization",
  "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]

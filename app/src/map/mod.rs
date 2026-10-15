@@ -12,6 +12,7 @@
 //! - [`draw`]: the buffers the engine is given (points, segments, highlight, camera).
 
 pub mod draw;
+pub mod engine_view;
 pub mod legend;
 pub mod model;
 pub mod open_text;
