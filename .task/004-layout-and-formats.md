@@ -79,3 +79,6 @@ S1 (1a then 1b) alone first, merged; then three lanes in parallel (layout L1-L2,
 | Define | done | design v4 validated by the user 2026-10-14 |
 | Plan | done | 5 slices (S1 workspace + engine lints, L layout, F formats, E engine wrapper) in `## Lanes`; no open branch overlaps (005 has no commits) |
 | S1 | done | 1a f7890fb: clippy pedantic RED host 101 (6) / wasm32 101 (35) -> GREEN 0/0, engine tests 10 -> 14; 1b 12cc4a3: root workspace; fmt, clippy host+wasm32, test, rustdoc host+wasm32 (-Dwarnings), cargo-deny, MSRV 1.88 host+wasm32 all exit 0; build:engine (wasm-bindgen-cli 0.2.129), tsc, npm run build exit 0 |
+| F1-F4 | done | formats crate: 496b1fa graph + stamp, d9e9abd pair list, 9abc38e translations + blurbs, 9ae3494 stamp sidecar + family check; every committed file in public/ parses, graph.json / graph-sim.bin / translations.json / blurbs-*.json are rewritten byte for byte; red on stubs first each time |
+| L1-L2 | done | layout crate: 3a35173 the port; 0ad1224 parity: worst node gap vs ngraph 8.9e-14 (step 1), 9.2e-13 (5), 1.4e-10 (20), 3.4e-11 (400), bounds were 1e-3 and 1 % of the radius; ngraph ignores spring.weight (confirmed by a run); 11.9 ms/step native at 7286 bodies |
+| E1 | done | b55a95b engine::live_layout::LiveLayout (wasm class), rust-engine.ts not switched |
