@@ -9,7 +9,7 @@ use leptos_i18n::td_string;
 use crate::catalogue::{Locale, strings};
 use crate::map::model::Translations;
 use crate::map::texts_lang::TextsLang;
-use crate::map::ui::{ChipMenu, ChipOption, interpolate};
+use crate::map::ui::{ChipMenu, ChipOption};
 
 /// How many texts each language of `translations.json` has a title for, by code (App.tsx
 /// line 400, `Object.keys(translations?.[value]?.titles ?? {}).length`).
@@ -31,7 +31,7 @@ pub(crate) fn texts_options(counts: &BTreeMap<String, usize>, locale: Locale) ->
                 TextsLang::Pali => td_string!(locale, texts_all).to_owned(),
                 TextsLang::Translated(language) => {
                     let count = counts.get(language.code()).copied().unwrap_or(0);
-                    interpolate(locale, "texts_translated", &[("count", &count.to_string())])
+                    td_string!(locale, texts_translated, count = count).to_string()
                 }
             };
             ChipOption {

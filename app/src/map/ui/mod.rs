@@ -179,47 +179,6 @@ pub(crate) fn type_label(name: &str, locale: Locale) -> &str {
     }
 }
 
-/// The catalogue's `key` in `locale`, its `{{name}}` placeholders replaced by `values`.
-///
-/// `td_string!` takes no arguments in this crate: `build.rs` generates the catalogue without
-/// `leptos_i18n`'s `interpolate_display` option (learn-pali's `build.rs` enables it). Until it
-/// does, the three sentences with a placeholder the map shows (`credits_translated`,
-/// `sim_stats`, `texts_translated`) read their template from the catalogue files themselves,
-/// the very files `build.rs` checks; a missing key reads as the key.
-pub(crate) fn interpolate(locale: Locale, key: &str, values: &[(&str, &str)]) -> String {
-    let file = match locale {
-        Locale::en => include_str!("../../../locales/en.json"),
-        Locale::fr => include_str!("../../../locales/fr.json"),
-        Locale::vi => include_str!("../../../locales/vi.json"),
-    };
-    let mut text = template(file, key).unwrap_or_else(|| key.to_owned());
-    for (name, value) in values {
-        text = text
-            .replace(&format!("{{{{{name}}}}}"), value)
-            .replace(&format!("{{{{ {name} }}}}"), value);
-    }
-    text
-}
-
-/// The string value of `key` in a flat JSON object as the catalogue files write it
-/// (`"key": "value"`), its escapes (`\"`, `\\`, `\n`, `\/`) read.
-fn template(file: &str, key: &str) -> Option<String> {
-    let start = file.find(&format!("\"{key}\": \""))? + key.len() + 5;
-    let mut out = String::new();
-    let mut chars = file[start..].chars();
-    while let Some(c) = chars.next() {
-        match c {
-            '"' => return Some(out),
-            '\\' => match chars.next()? {
-                'n' => out.push('\n'),
-                other => out.push(other),
-            },
-            _ => out.push(c),
-        }
-    }
-    None
-}
-
 /// `s` as a URL path segment (`encodeURIComponent`): every byte but the unreserved ones
 /// (`A–Z a–z 0–9 - _ . ! ~ * ' ( )`) percent-encoded.
 pub fn encode_component(s: &str) -> String {
@@ -414,35 +373,6 @@ mod tests {
         assert_eq!(links_label(1, Locale::from(Language::Fr)), "1 lien");
         assert_eq!(links_label(2, Locale::from(Language::Fr)), "2 liens");
         assert_eq!(links_label(2, Locale::from(Language::Vi)), "2 liên kết");
-    }
-
-    #[test]
-    fn placeholders_are_filled_from_the_catalogue() {
-        // Credits.tsx:15 `t("credits.translated", { names })`
-        assert_eq!(
-            interpolate(
-                Locale::from(Language::Fr),
-                "credits_translated",
-                &[("names", "A et B")]
-            ),
-            "Traduit par A et B."
-        );
-        assert_eq!(
-            interpolate(
-                Locale::from(Language::En),
-                "sim_stats",
-                &[("links", "1,234"), ("alone", "7")]
-            ),
-            "1,234 links · 7 texts without a neighbour"
-        );
-        assert_eq!(
-            interpolate(Locale::from(Language::En), "no_such_key", &[]),
-            "no_such_key"
-        );
-        assert_eq!(
-            template(r#"{"a": "say \"hi\"\\n"}"#, "a").as_deref(),
-            Some("say \"hi\"\\n")
-        );
     }
 
     #[test]

@@ -10,7 +10,7 @@ use leptos_i18n::td_string;
 use palicanon_ui_lib::{Slider, language_signal};
 
 use crate::catalogue::strings;
-use crate::map::ui::{interpolate, number};
+use crate::map::ui::number;
 
 /// `x` in hundredths, rounded; negative or not a number → 0.
 pub fn hundredths(x: f64) -> u32 {
@@ -71,14 +71,13 @@ pub fn SimControls(
     let (low, high) = slider_range(min, max);
     let stats = move || {
         let language = language_signal().get();
-        interpolate(
+        td_string!(
             t.locale(),
-            "sim_stats",
-            &[
-                ("links", &number(links.get(), language)),
-                ("alone", &number(alone.get(), language)),
-            ],
+            sim_stats,
+            links = number(links.get(), language),
+            alone = number(alone.get(), language)
         )
+        .to_string()
     };
     view! {
         <div class="mt-3 px-2">

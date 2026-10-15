@@ -18,7 +18,7 @@ use crate::map::draw::Scene;
 use crate::map::model::{panel_translators, place};
 use crate::map::ui::section::Section;
 use crate::map::ui::text_ref::{ReadLink, RefChip, RefVariant, SuttaRef, TextCard};
-use crate::map::ui::{TextItem, Texts, conjunction, encode_component, interpolate, type_label};
+use crate::map::ui::{TextItem, Texts, conjunction, encode_component, type_label};
 
 /// How many texts of the trail the header shows, the last ones (TextPanel.tsx line 53,
 /// `trail.slice(-6)`).
@@ -277,7 +277,7 @@ pub fn Credits(
     let names = move || {
         (!translators.is_empty()).then(|| {
             let names = conjunction(&translators, language_signal().get());
-            interpolate(t.locale(), "credits_translated", &[("names", &names)])
+            td_string!(t.locale(), credits_translated, names = names).to_string()
         })
     };
     view! {
