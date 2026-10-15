@@ -28,10 +28,14 @@ pub mod router;
 #[allow(dead_code)]
 mod git_info;
 
-/// Browser entry point: hydrate the server-rendered page.
+/// Browser entry point: hydrate the server-rendered page from its root
+/// (`<div id="pc-app">`, written by [`app::shell`]), not from `<body>`,
+/// whose first child behind Cloudflare is an injected decoy link
+/// (search-front 017, ui-lib 063); `<html>` then carries `data-hydrated`,
+/// which `scripts/rollout-check.sh` reads.
 #[cfg(feature = "hydrate")]
 #[wasm_bindgen::prelude::wasm_bindgen]
 pub fn hydrate() {
     console_error_panic_hook::set_once();
-    leptos::mount::hydrate_body(app::App);
+    palicanon_ui_lib::hydrate(app::App);
 }

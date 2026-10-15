@@ -107,4 +107,7 @@ image is built with no credential (`Dockerfile`): ui-lib is COPYed as a sibling 
 checkouts use a GitHub App token (`.github/actions/siblings`); the repository secrets are `APP_ID`
 and `APP_PRIVATE_KEY`, the variables `WIF_PROVIDER`, `DEPLOYER_SA` and `GCP_PROJECT`. The infra, the
 Worker and the ordered first-time commands are in `infra/README.md` (OpenTofu, applied from the
-laptop, state prefix `vizualisation`).
+laptop, state prefix `vizualisation`). The public-host check (`scripts/rollout-check.sh
+--via-worker`) also loads `/`, `/sim/mn10` and `/privacy` in headless Chrome (`$CHROME`; on dev
+through a launcher page that carries the password, never on Chrome's command line) and fails on a
+hydration panic or a page without `<html data-hydrated>` (search-front 017, ui-lib 063).
