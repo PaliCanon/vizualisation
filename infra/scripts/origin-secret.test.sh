@@ -110,6 +110,11 @@ check "push: the value is on no argv and not on screen" no_value_anywhere
 check "push: the Cloudflare token is on no argv and not on screen" no_cf_token_in_argv
 
 reset
+# Cloudflare answers 201 Created when the secret is new on the Worker (the
+# first push after an apply): a success, as 200 is (search-front's task 014).
+STUB_PUT_CODE=201 run push dev
+check "push: exits 0 on HTTP 201 (a new secret)" test "$code" -eq 0
+
 STUB_PUT_CODE=403 run push dev
 check "push: exits non-zero when Cloudflare refuses" test "$code" -ne 0
 check "push: says the status, not the value" out_has 403
