@@ -1,6 +1,6 @@
 //! The data files, fetched by the browser at the manifest's hashed URLs (`src/map/data.ts`'s
 //! `loadGraph`, `loadPairs`, `loadTranslations`, `loadBlurbs`) and read through the
-//! `formats` crate, as the server reads them. Hydrate only, wasm32 only.
+//! `formats` crate, as the server reads them. The browser only (hydrate or csr), wasm32 only.
 
 use std::sync::Arc;
 

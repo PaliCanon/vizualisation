@@ -1,0 +1,15 @@
+[package]
+name = "vizualisation-i18n-check"
+description = "The app's build-time placeholder-parity check: ui-lib's build/placeholders.rs when ui-lib sits beside this repository, nothing in a cargo git checkout (task 012, until ui-lib v0.3.1's palicanon-i18n-check)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# ui-lib's placeholders.rs reads the locale files as JSON.
+[dependencies]
+serde_json = "1"
+
+[lints]
+workspace = true

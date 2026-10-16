@@ -3,7 +3,7 @@
 # dependencies and metadata, and the ui-lib [patch].
 [workspace]
 resolver = "3"
-members = ["app", "engine", "layout", "formats"]
+members = ["app", "engine", "layout", "formats", "i18n-check"]
 
 [workspace.package]
 version = "0.1.0"

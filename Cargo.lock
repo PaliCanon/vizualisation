@@ -3010,9 +3010,17 @@ dependencies = [
  "tower",
  "tower-http",
  "unicode-normalization",
+ "vizualisation-i18n-check",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "vizualisation-i18n-check"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]

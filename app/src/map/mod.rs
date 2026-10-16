@@ -25,7 +25,7 @@ pub(crate) mod address;
 pub(crate) mod cookies;
 pub mod draw;
 pub mod engine_view;
-#[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
 mod fetch;
 pub(crate) mod first;
 pub mod legend;

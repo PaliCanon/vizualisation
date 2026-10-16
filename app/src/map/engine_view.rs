@@ -582,7 +582,7 @@ impl Start {
 /// What the component tells the page.
 #[derive(Clone, Copy)]
 #[cfg_attr(
-    not(all(feature = "hydrate", target_arch = "wasm32")),
+    not(all(feature = "browser", target_arch = "wasm32")),
     allow(dead_code, reason = "read by the browser part only")
 )]
 struct Outputs {
@@ -630,9 +630,9 @@ pub fn EngineView(
         ready: on_ready,
         no_gpu: on_no_gpu,
     };
-    #[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
+    #[cfg(all(feature = "browser", target_arch = "wasm32"))]
     browser::start(canvas, input, outputs, no_gpu);
-    #[cfg(not(all(feature = "hydrate", target_arch = "wasm32")))]
+    #[cfg(not(all(feature = "browser", target_arch = "wasm32")))]
     let _ = (input, outputs);
     let t = strings();
     view! {
@@ -655,7 +655,7 @@ pub fn EngineView(
 }
 
 /// The browser side: the engine, the DOM events, the frame loop.
-#[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
 mod browser {
     use std::sync::Arc;
 

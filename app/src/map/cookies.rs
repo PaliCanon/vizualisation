@@ -36,7 +36,7 @@ fn cookie_header() -> Option<String> {
 }
 
 /// `document.cookie`.
-#[cfg(all(feature = "hydrate", not(feature = "ssr")))]
+#[cfg(all(feature = "browser", not(feature = "ssr")))]
 fn cookie_header() -> Option<String> {
     use wasm_bindgen::JsCast;
     leptos::prelude::document()
@@ -47,21 +47,21 @@ fn cookie_header() -> Option<String> {
 }
 
 /// Neither a request nor a page (a plain test).
-#[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+#[cfg(not(any(feature = "ssr", feature = "browser")))]
 fn cookie_header() -> Option<String> {
     None
 }
 
 /// Stores `value` under `name`, in the browser; nothing on the server.
 pub(crate) fn write(name: &str, value: &str) {
-    #[cfg(all(feature = "hydrate", not(feature = "ssr")))]
+    #[cfg(all(feature = "browser", not(feature = "ssr")))]
     {
         use wasm_bindgen::JsCast;
         if let Ok(document) = leptos::prelude::document().dyn_into::<web_sys::HtmlDocument>() {
             let _ = document.set_cookie(&assignment(name, value));
         }
     }
-    #[cfg(not(all(feature = "hydrate", not(feature = "ssr"))))]
+    #[cfg(not(all(feature = "browser", not(feature = "ssr"))))]
     let _ = (name, value);
 }
 

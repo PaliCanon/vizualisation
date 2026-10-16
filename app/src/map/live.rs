@@ -99,7 +99,7 @@ fn map_route(path: &str) -> (View, Option<String>) {
 /// navigation, a chip's list). The map then takes the key, and stops it: ui-lib's shell does
 /// not also fold its rail. Otherwise the key is the shell's, as on every other page.
 #[cfg_attr(
-    not(all(feature = "hydrate", target_arch = "wasm32")),
+    not(all(feature = "browser", target_arch = "wasm32")),
     allow(dead_code, reason = "read by the browser part only")
 )]
 pub(crate) fn escape_closes_text(
@@ -114,7 +114,7 @@ pub(crate) fn escape_closes_text(
 /// Whether the slider's `value` (hundredths) is to be applied once it settles: it differs
 /// from the `applied` threshold, and the view did not just change (`view_changed`).
 #[cfg_attr(
-    not(all(feature = "hydrate", target_arch = "wasm32")),
+    not(all(feature = "browser", target_arch = "wasm32")),
     allow(dead_code, reason = "read by the browser part only")
 )]
 pub(crate) fn threshold_settles(view_changed: bool, applied: Option<f64>, value: u32) -> bool {
@@ -150,18 +150,18 @@ pub(crate) fn LiveMap() -> impl IntoView {
 
 /// The trail kept in the current history entry, in the browser.
 fn history_state() -> Option<String> {
-    #[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
+    #[cfg(all(feature = "browser", target_arch = "wasm32"))]
     {
         window().history().ok()?.state().ok()?.as_string()
     }
-    #[cfg(not(all(feature = "hydrate", target_arch = "wasm32")))]
+    #[cfg(not(all(feature = "browser", target_arch = "wasm32")))]
     None
 }
 
 /// The device prefers a light page (`prefers-color-scheme`), in the browser; the server
 /// cannot know.
 fn prefers_light() -> bool {
-    #[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
+    #[cfg(all(feature = "browser", target_arch = "wasm32"))]
     {
         window()
             .match_media("(prefers-color-scheme: light)")
@@ -169,7 +169,7 @@ fn prefers_light() -> bool {
             .flatten()
             .is_some_and(|query| query.matches())
     }
-    #[cfg(not(all(feature = "hydrate", target_arch = "wasm32")))]
+    #[cfg(not(all(feature = "browser", target_arch = "wasm32")))]
     false
 }
 
@@ -530,7 +530,7 @@ fn MapView(first: Arc<FirstRender>) -> impl IntoView {
         now
     });
 
-    #[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
+    #[cfg(all(feature = "browser", target_arch = "wasm32"))]
     browser::start(&browser::Wiring {
         manifest: Arc::new(first.manifest.clone()),
         view,
@@ -839,7 +839,7 @@ impl Loaded {
 }
 
 /// The browser's part: the data fetched, the threshold's debounce, Escape.
-#[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
 mod browser {
     use std::collections::HashMap;
     use std::sync::Arc;

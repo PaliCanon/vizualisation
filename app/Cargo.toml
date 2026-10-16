@@ -51,8 +51,8 @@ js-sys = { version = "0.3", optional = true }
 # `EngineView` (map/engine_view.rs) in the browser: the map engine (wgpu, task 004) and the
 # DOM it is driven through (the canvas, pointer, wheel and key events, ResizeObserver,
 # requestAnimationFrame); the map's wiring (`map/live.rs`): its cookies, the history entry's
-# trail, the device's colour scheme, the data files' responses. `hydrate` only, and wasm32
-# only: the server renders the empty canvas.
+# trail, the device's colour scheme, the data files' responses. `browser` only (hydrate or
+# csr), and wasm32 only: the server renders the empty canvas.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 map-engine = { version = "0.1.0", path = "../engine", optional = true }
 web-sys = { version = "0.3", optional = true, features = [
@@ -85,8 +85,9 @@ web-sys = { version = "0.3", optional = true, features = [
 # As in ui-lib's build.rs: the parser's diagnostics fail the build on a missing key.
 leptos_i18n_parser = "=0.6.2"
 leptos_i18n_codegen = "=0.6.2"
-# Reads the locale files for the placeholder-parity check (ui-lib's build/placeholders.rs).
-serde_json = "1"
+# ui-lib's build/placeholders.rs when ui-lib sits beside this repository; `None` in a cargo
+# git checkout (the PaliCanon app's), where the check is skipped with a warning (task 012).
+vizualisation-i18n-check = { version = "0.1.0", path = "../i18n-check" }
 
 [dev-dependencies]
 serde_json = "1"
@@ -99,16 +100,29 @@ any_spawner = { version = "0.3", features = ["tokio"] }
 tower = { version = "0.5", features = ["util"] }
 
 [features]
-hydrate = [
-  "leptos/hydrate",
-  "palicanon-ui-lib/hydrate",
-  "dep:console_error_panic_hook",
+# The site (map.palicanon.app) is built with `ssr` (the server) and `hydrate` (the browser
+# takes the server's page over); the PaliCanon app with `csr` alone (the browser builds the
+# map from an empty document, no server: `MapRoutes` and `MapProvider`, task 012). Exactly
+# one of the three per build (ci.yml has a clippy entry each; never `--all-features`).
+#
+# Private: the code that needs a browser — EngineView's engine and DOM wiring, the live map's
+# data loads, history, colour scheme and listeners, the folded sections' storage, the search
+# shortcut —, shared by the two client modes. Never gate it on `hydrate`.
+browser = [
   "dep:wasm-bindgen",
   "dep:wasm-bindgen-futures",
   "dep:js-sys",
   "dep:map-engine",
   "dep:web-sys",
 ]
+hydrate = [
+  "leptos/hydrate",
+  "palicanon-ui-lib/hydrate",
+  "browser",
+  "dep:console_error_panic_hook",
+]
+# The PaliCanon app: no server, the preferences in localStorage (ui-lib's `csr::mount`).
+csr = ["leptos/csr", "palicanon-ui-lib/csr", "browser"]
 ssr = [
   "dep:axum",
   "dep:tokio",
