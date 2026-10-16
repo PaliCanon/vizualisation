@@ -7,7 +7,10 @@
 //! (or surplus in) any locale fails the build: `leptos_i18n` only warns
 //! and falls back to English, which would ship a mixed-language page.
 //! So does a `{{ name }}` placeholder dropped or renamed in a translation
-//! (`placeholders.rs`): `leptos_i18n` would render it without its value.
+//! (ui-lib's `placeholders.rs`, through `vizualisation-i18n-check`):
+//! `leptos_i18n` would render it without its value. Without ui-lib beside
+//! this repository (a cargo git checkout) that one check is skipped, with a
+//! build warning.
 //!
 //! **The build's git identity** ([`capture_git_info`]): captures the git
 //! branch and short commit this service was built from (or `BUILD_BRANCH` /
@@ -37,9 +40,6 @@ use std::process::Command;
 
 use leptos_i18n_parser::parse_locales::options::{Config, ParseOptions};
 use leptos_i18n_parser::parse_locales::parse_locales;
-
-#[path = "../../ui-lib/build/placeholders.rs"]
-mod placeholders;
 
 /// The default locale, then the others: every `Language` code.
 const LOCALES: [&str; 3] = ["en", "fr", "vi"];
@@ -84,7 +84,11 @@ fn generate_catalogue() {
 }
 
 /// Every locale's `{{ name }}` placeholders match the default locale's,
-/// key by key.
+/// key by key: ui-lib's check (`build/placeholders.rs`, through
+/// `vizualisation-i18n-check`) when ui-lib sits beside this repository, as
+/// today in development, the site's CI and its Docker build; skipped with a
+/// warning in a cargo git checkout (the PaliCanon app pins this repository
+/// by tag), where that file is absent.
 fn assert_placeholder_parity() {
     let texts: Vec<(&str, String)> = LOCALES
         .iter()
@@ -97,7 +101,13 @@ fn assert_placeholder_parity() {
         })
         .collect();
     let locales: Vec<(&str, &str)> = texts.iter().map(|(c, t)| (*c, t.as_str())).collect();
-    let mismatches = placeholders::placeholder_mismatches(&locales);
+    let Some(mismatches) = vizualisation_i18n_check::placeholder_mismatches(&locales) else {
+        println!(
+            "cargo:warning=the placeholder-parity check is skipped: ui-lib's \
+             build/placeholders.rs is not beside this repository (a cargo git checkout)"
+        );
+        return;
+    };
     assert!(
         mismatches.is_empty(),
         "the catalogues' placeholders disagree:\n{}",

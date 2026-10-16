@@ -1,5 +1,7 @@
 //! vizualisation: the 3D map of the Pāli canon, Leptos SSR + hydrate on
-//! `palicanon-ui-lib` (task 005; the map screen is task 006).
+//! `palicanon-ui-lib` (task 005; the map screen is task 006), and the Map
+//! fragment the PaliCanon app mounts client side ([`fragment`], `csr`, task
+//! 012).
 
 // `AppShell`'s nested `Option<ViewFn>` markup builds a type deep enough that
 // rustc's default query-depth limit can overflow (search-front/app/src/lib.rs,
@@ -13,6 +15,7 @@ mod catalogue;
 mod components;
 #[cfg(feature = "ssr")]
 pub mod data;
+pub mod fragment;
 #[cfg(feature = "ssr")]
 pub mod gate;
 mod head;

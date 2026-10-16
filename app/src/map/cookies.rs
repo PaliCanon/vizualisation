@@ -1,11 +1,20 @@
-//! The map's own cookies, `viz_legend` and `viz_textlang` (design v4): read by the server for
-//! the first render (from the request) and by the browser when it hydrates (from
-//! `document.cookie`), so both start alike; written by the browser only. Host-only, unlike
-//! ui-lib's `pc_*` cookies shared across PaliCanon's subdomains: they are this map's.
+//! The map's own preferences, `viz_legend` and `viz_textlang` (design v4), where ui-lib's
+//! `Store` says ([`read_in`], [`write_in`]; task 012). On the web (`Store::Cookie`) they are
+//! cookies: read by the server for the first render (from the request) and by the browser
+//! when it hydrates (from `document.cookie`), so both start alike; written by the browser
+//! only. Host-only, unlike ui-lib's `pc_*` cookies shared across PaliCanon's subdomains:
+//! they are this map's (never `Store::Cookie.write`, which adds `Domain=palicanon.app`). In
+//! the PaliCanon app (`Store::Local`, `csr::mount`) they are `localStorage` entries under the
+//! same names.
+
+use palicanon_ui_lib::Store;
 
 /// A year, as ui-lib keeps its preferences.
 #[cfg_attr(
-    all(feature = "ssr", not(test)),
+    not(any(
+        test,
+        all(feature = "browser", target_arch = "wasm32", not(feature = "ssr"))
+    )),
     expect(dead_code, reason = "the browser writes the cookies")
 )]
 const MAX_AGE_SECONDS: u32 = 365 * 24 * 3600;
@@ -13,7 +22,10 @@ const MAX_AGE_SECONDS: u32 = 365 * 24 * 3600;
 /// The `document.cookie` assignment storing `value` under `name`: a year, the whole site,
 /// sent on same-site navigation, for this host only.
 #[cfg_attr(
-    all(feature = "ssr", not(test)),
+    not(any(
+        test,
+        all(feature = "browser", target_arch = "wasm32", not(feature = "ssr"))
+    )),
     expect(dead_code, reason = "the browser writes the cookies")
 )]
 pub(crate) fn assignment(name: &str, value: &str) -> String {
@@ -36,7 +48,7 @@ fn cookie_header() -> Option<String> {
 }
 
 /// `document.cookie`.
-#[cfg(all(feature = "hydrate", not(feature = "ssr")))]
+#[cfg(all(feature = "browser", target_arch = "wasm32", not(feature = "ssr")))]
 fn cookie_header() -> Option<String> {
     use wasm_bindgen::JsCast;
     leptos::prelude::document()
@@ -47,21 +59,41 @@ fn cookie_header() -> Option<String> {
 }
 
 /// Neither a request nor a page (a plain test).
-#[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+#[cfg(not(any(feature = "ssr", all(feature = "browser", target_arch = "wasm32"))))]
 fn cookie_header() -> Option<String> {
     None
 }
 
+/// The preference `name` kept in `store` (`Store::current()` of the map): the cookie
+/// ([`read`]), or the `localStorage` entry; `None` when there is none.
+pub(crate) fn read_in(store: Store, name: &str) -> Option<String> {
+    match store {
+        Store::Cookie => read(name),
+        Store::Local => Store::Local.read(name),
+    }
+}
+
+/// Keeps the preference `value` under `name` in `store`: the host-only cookie ([`write`]), or
+/// the `localStorage` entry (storage that refuses it keeps the choice for the page only).
+pub(crate) fn write_in(store: Store, name: &str, value: &str) {
+    match store {
+        Store::Cookie => write(name, value),
+        Store::Local => {
+            let _ = Store::Local.write(name, value);
+        }
+    }
+}
+
 /// Stores `value` under `name`, in the browser; nothing on the server.
-pub(crate) fn write(name: &str, value: &str) {
-    #[cfg(all(feature = "hydrate", not(feature = "ssr")))]
+fn write(name: &str, value: &str) {
+    #[cfg(all(feature = "browser", target_arch = "wasm32", not(feature = "ssr")))]
     {
         use wasm_bindgen::JsCast;
         if let Ok(document) = leptos::prelude::document().dyn_into::<web_sys::HtmlDocument>() {
             let _ = document.set_cookie(&assignment(name, value));
         }
     }
-    #[cfg(not(all(feature = "hydrate", not(feature = "ssr"))))]
+    #[cfg(not(all(feature = "browser", target_arch = "wasm32", not(feature = "ssr"))))]
     let _ = (name, value);
 }
 

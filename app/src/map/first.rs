@@ -108,18 +108,13 @@ impl FirstRender {
     /// What the browser runs on when the page holds no first render (a `SharedValue` lost:
     /// the page cut, a serialization failure): the empty decisions, and an error in the
     /// console, not a silently empty map.
-    #[cfg_attr(
-        feature = "ssr",
-        allow(
-            dead_code,
-            reason = "app.rs's first_render calls it in the browser only"
-        )
-    )]
+    #[cfg(feature = "hydrate")]
     pub(crate) fn not_in_page() -> FirstRender {
         Self::not_in_page_with(|message| leptos::logging::error!("{message}"))
     }
 
-    /// [`FirstRender::not_in_page`], the error given to `log`.
+    /// `FirstRender::not_in_page`, the error given to `log`.
+    #[cfg(any(feature = "hydrate", test))]
     fn not_in_page_with(log: impl FnOnce(&str)) -> FirstRender {
         log(
             "vizualisation: the page holds no first render (its SharedValue is missing): \

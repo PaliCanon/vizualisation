@@ -1,7 +1,8 @@
 //! The document head of every route (from the React site's `src/head.ts` and
 //! `index.html`): [`PageHead`] sets a route's title, description, canonical
 //! link and their Open Graph mirrors; [`SiteHead`] holds what every page shares
-//! (icons, the share image, the JSON-LD). [`sitemap`] lists the indexable
+//! (icons, the share image, the JSON-LD); [`site_map_head`] renders the Map
+//! fragment's head the site's way. [`sitemap`] lists the indexable
 //! paths. Every canonical is built from [`CANONICAL_BASE`]: there is only ever
 //! one production host.
 
@@ -10,6 +11,10 @@ use std::fmt::Write as _;
 
 use leptos::prelude::*;
 use leptos_meta::{Link, Meta, Script, Title};
+
+use crate::catalogue::strings;
+use crate::components::not_found::NotFoundHead;
+use crate::fragment::MapHead;
 
 #[cfg(feature = "ssr")]
 use crate::pages::PageKind;
@@ -29,6 +34,23 @@ pub(crate) fn PageHead(title: String, description: String, path: String) -> impl
         <Meta property="og:title" content=title />
         <Meta property="og:description" content=description />
         <Meta property="og:url" content=url />
+    }
+}
+
+/// The site's renderer of the Map fragment's head (task 012, `MapProvider`'s `head`): a map
+/// address's [`PageHead`], at its canonical path (the site mounts the map at the root); the
+/// 404's title and `noindex`, as the site's own not-found page.
+pub(crate) fn site_map_head(head: MapHead) -> AnyView {
+    match head {
+        MapHead::Page {
+            title,
+            description,
+            path,
+        } => view! { <PageHead title=title description=description path=path /> }.into_any(),
+        MapHead::NotFound => {
+            let locale = strings().locale();
+            view! { <NotFoundHead locale=locale /> }.into_any()
+        }
     }
 }
 

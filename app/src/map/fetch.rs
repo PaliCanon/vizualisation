@@ -1,41 +1,34 @@
-//! The data files, fetched by the browser at the manifest's hashed URLs (`src/map/data.ts`'s
-//! `loadGraph`, `loadPairs`, `loadTranslations`, `loadBlurbs`) and read through the
-//! `formats` crate, as the server reads them. Hydrate only, wasm32 only.
+//! The data files, read by the browser through the host's [`MapData`] (`src/map/data.ts`'s
+//! `loadGraph`, `loadPairs`, `loadTranslations`, `loadBlurbs`; the site fetches them at the
+//! manifest's hashed URLs, the app reads its bundle) and parsed through the `formats` crate,
+//! as the server reads them. The browser only (hydrate or csr), wasm32 only.
 
 use std::sync::Arc;
 
-use wasm_bindgen::JsCast;
-use wasm_bindgen_futures::JsFuture;
+use palicanon_ui_lib::Language;
 
-use crate::manifest::Manifest;
+use crate::fragment::MapData;
 use crate::map::model::{Blurbs, Graph, Pairs, Translations};
 
-/// The bytes of the data file `name`, at its URL in `manifest`; `None` when the manifest
-/// lacks it or the request fails (the map then stays on "Loading…", as the React page did).
-async fn bytes(manifest: &Manifest, name: &str) -> Option<Vec<u8>> {
-    let url = manifest.url(name)?;
-    let window = web_sys::window()?;
-    let response: web_sys::Response = JsFuture::from(window.fetch_with_str(url))
-        .await
-        .ok()?
-        .dyn_into()
-        .ok()?;
-    if !response.ok() {
-        log(&format!("{name}: HTTP {}", response.status()));
-        return None;
-    }
-    let buffer = JsFuture::from(response.array_buffer().ok()?).await.ok()?;
-    Some(js_sys::Uint8Array::new(&buffer).to_vec())
-}
-
 /// An error on the console: the map shows nothing for it.
-fn log(message: &str) {
+pub(crate) fn log(message: &str) {
     web_sys::console::error_1(&format!("map data: {message}").into());
 }
 
+/// The name of the similarity pairs' file a graph names (`sim.url`): one of the names
+/// [`MapData`] is asked for, `None` (logged) for any other.
+pub(crate) fn pairs_name(url: &str) -> Option<&'static str> {
+    const PAIRS: [&str; 1] = ["graph-sim.bin"];
+    let name = PAIRS.into_iter().find(|name| *name == url);
+    if name.is_none() {
+        log(&format!("{url}: not a data file the map reads"));
+    }
+    name
+}
+
 /// A view's graph file.
-pub(crate) async fn graph(manifest: &Manifest, file: &str) -> Option<Arc<Graph>> {
-    let bytes = bytes(manifest, file).await?;
+pub(crate) async fn graph(data: Arc<dyn MapData>, file: &'static str) -> Option<Arc<Graph>> {
+    let bytes = data.file(file).await?;
     Graph::from_json(&bytes)
         .map_err(|e| log(&format!("{file}: {e}")))
         .ok()
@@ -43,8 +36,8 @@ pub(crate) async fn graph(manifest: &Manifest, file: &str) -> Option<Arc<Graph>>
 }
 
 /// The similarity pairs of the vectorial views (`graph-sim.bin`).
-pub(crate) async fn pairs(manifest: &Manifest, file: &str) -> Option<Arc<Pairs>> {
-    let bytes = bytes(manifest, file).await?;
+pub(crate) async fn pairs(data: Arc<dyn MapData>, file: &'static str) -> Option<Arc<Pairs>> {
+    let bytes = data.file(file).await?;
     Pairs::from_bytes(&bytes)
         .map_err(|e| log(&format!("{file}: {e}")))
         .ok()
@@ -52,24 +45,31 @@ pub(crate) async fn pairs(manifest: &Manifest, file: &str) -> Option<Arc<Pairs>>
 }
 
 /// The translations (`translations.json`).
-pub(crate) async fn translations(manifest: &Manifest) -> Option<Arc<Translations>> {
-    let bytes = bytes(manifest, "translations.json").await?;
+pub(crate) async fn translations(data: Arc<dyn MapData>) -> Option<Arc<Translations>> {
+    let bytes = data.file("translations.json").await?;
     Translations::from_json(&bytes)
         .map_err(|e| log(&format!("translations.json: {e}")))
         .ok()
         .map(Arc::new)
 }
 
-/// The summaries in `code` (`blurbs-<code>.json`); empty when there is no such file
-/// (data.ts's `loadBlurbs` answers `{}`).
-pub(crate) async fn blurbs(manifest: &Manifest, code: &str) -> Arc<Blurbs> {
-    let file = format!("blurbs-{code}.json");
-    let Some(bytes) = bytes(manifest, &file).await else {
-        return Arc::new(Blurbs::default());
-    };
-    Arc::new(
-        Blurbs::from_json(&bytes)
-            .map_err(|e| log(&format!("{file}: {e}")))
-            .unwrap_or_default(),
-    )
+/// The summaries' file of `language`.
+const fn blurbs_file(language: Language) -> &'static str {
+    match language {
+        Language::En => "blurbs-en.json",
+        Language::Fr => "blurbs-fr.json",
+        Language::Vi => "blurbs-vi.json",
+    }
+}
+
+/// The summaries in `language` (`blurbs-<code>.json`); `None` when the file is absent or
+/// unreadable (logged). The caller decides: English's absent is the map's error, another
+/// language's gives its texts no summary of their own (data.ts's `loadBlurbs` answered `{}`).
+pub(crate) async fn blurbs(data: Arc<dyn MapData>, language: Language) -> Option<Arc<Blurbs>> {
+    let file = blurbs_file(language);
+    let bytes = data.file(file).await?;
+    Blurbs::from_json(&bytes)
+        .map_err(|e| log(&format!("{file}: {e}")))
+        .ok()
+        .map(Arc::new)
 }

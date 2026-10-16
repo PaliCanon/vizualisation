@@ -4,10 +4,10 @@
 //!
 //! From search-front/app/tests/image_hash_script.rs. What differs: one
 //! sibling (ui-lib; this service has no API client), and the inputs hold
-//! the workspace's other members, `engine`, `layout` and `formats`, which
-//! the Dockerfile copies too.
+//! the workspace's other members, `engine`, `layout`, `formats` and
+//! `i18n-check`, which the Dockerfile copies too.
 //!
-//! The inputs are the tracked files of `app`, `engine`, `layout`, `formats`,
+//! The inputs are the tracked files of `app`, `engine`, `layout`, `formats`, `i18n-check`,
 //! `Cargo.toml`, `Cargo.lock`, `Dockerfile` and `scripts` (the Dockerfile's
 //! text and the smoke test are in the hash, so a fix to either changes the
 //! tag), plus the HEAD of `ui-lib`. Nothing else: `infra/`, `.task/`, the
@@ -74,6 +74,7 @@ impl Workspace {
         write(&viz, "engine/src/lib.rs", "// engine\n");
         write(&viz, "layout/src/lib.rs", "// layout\n");
         write(&viz, "formats/src/lib.rs", "// formats\n");
+        write(&viz, "i18n-check/src/lib.rs", "// i18n-check\n");
         write(&viz, "Cargo.toml", "[workspace]\n");
         write(&viz, "Cargo.lock", "# lock\n");
         write(&viz, "Dockerfile", "FROM scratch\n");
@@ -139,11 +140,17 @@ fn the_same_inputs_give_the_same_hash() {
 
 #[test]
 fn each_input_changes_the_hash() {
-    let cases: [(&str, &str, &str); 11] = [
+    let cases: [(&str, &str, &str); 12] = [
         ("vizualisation", "app/src/lib.rs", "pub fn b() {}\n"),
         ("vizualisation", "engine/src/lib.rs", "// engine 2\n"),
         ("vizualisation", "layout/src/lib.rs", "// layout 2\n"),
         ("vizualisation", "formats/src/lib.rs", "// formats 2\n"),
+        // app/build.rs's placeholder check (task 012), copied by the Dockerfile.
+        (
+            "vizualisation",
+            "i18n-check/src/lib.rs",
+            "// i18n-check 2\n",
+        ),
         ("vizualisation", "Dockerfile", "FROM scratch\nRUN true\n"),
         ("vizualisation", "scripts/smoke.sh", "echo changed\n"),
         ("vizualisation", "Cargo.lock", "# lock 2\n"),
