@@ -168,7 +168,7 @@ impl Data {
         }
     }
 
-    /// The lines `/healthz` shows: each graph file's stamp, `none` until the
+    /// The lines `/health` shows: each graph file's stamp, `none` until the
     /// data tools write them (task 007).
     #[must_use]
     pub fn stamp_lines(&self) -> Vec<String> {

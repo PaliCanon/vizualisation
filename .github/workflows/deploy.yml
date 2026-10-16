@@ -201,7 +201,7 @@ jobs:
             GATE=(--password-file "$RUNNER_TEMP/password-header")
           fi
 
-          # /healthz, the gate, the page, the wasm it links, the guard on:
+          # /health, the gate, the page, the wasm it links, the guard on:
           # on the tagged revision, before it has any traffic.
           scripts/rollout-check.sh "${GATE[@]}" "$URL" "$HEADER_FILE"
 
@@ -260,7 +260,7 @@ jobs:
 
           # 1. Through Cloudflare and the Worker (which adds the origin
           #    header; this script sends none and is given none; on dev it
-          #    sends the password, which the Worker relays): /healthz, the
+          #    sends the password, which the Worker relays): /health, the
           #    gate, the page, the wasm, and the page hydrating in Chrome on
           #    /, a map route and /privacy (`hydrate`: a panic or no
           #    data-hydrated is exit 1). Exit 1 is a refusal or a failed

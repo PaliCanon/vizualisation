@@ -2,7 +2,7 @@
 # From search-front/infra/scripts/origin-secret.test.sh. What differs: the
 # names (vizualisation-origin-secret-<env>, the Worker vizualisation-<env>),
 # the hosts (map.dev.palicanon.app, map.palicanon.app), and `check` asks the
-# host's /healthz: dev's / is behind the password gate (401), /healthz is
+# host's /health: dev's / is behind the password gate (401), /health is
 # behind the origin guard only, so it is what says the Worker's value works.
 #
 # Tests for infra/scripts/origin-secret (search-front 007, slice S4): `gcloud` and
@@ -132,7 +132,7 @@ STUB_VERSIONS=1 run check dev
 check "check: OK when the version, the Worker's secret and the host agree" test "$code" -eq 0
 check "check: prints OK" out_is_ok
 check "check: prints no value" no_value_anywhere
-check "check: asks the dev host's /healthz" grep -q 'https://map.dev.palicanon.app/healthz' "$log/curl.argv"
+check "check: asks the dev host's /health" grep -q 'https://map.dev.palicanon.app/health' "$log/curl.argv"
 
 reset
 STUB_VERSIONS="" run check dev
@@ -149,7 +149,7 @@ STUB_VERSIONS="1" STUB_HOST_CODE=403 run check dev
 check "check: 403 → not OK (the service refuses the Worker's value)" refused 403
 reset
 STUB_VERSIONS="1" run check prod
-check "check prod: asks the prod host's /healthz" grep -q 'https://map.palicanon.app/healthz' "$log/curl.argv"
+check "check prod: asks the prod host's /health" grep -q 'https://map.palicanon.app/health' "$log/curl.argv"
 
 # ---------------------------------------------------------------- usage
 reset

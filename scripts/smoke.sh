@@ -4,7 +4,7 @@
 # curl in the image: plain bash and /dev/tcp) and by the tests.
 #
 # From search-front/scripts/smoke.sh. What differs (design v4 of task 005):
-# this service has a password gate (`VIZ_GATE`) and `/healthz`, and holds no
+# this service has a password gate (`VIZ_GATE`) and `/health`, and holds no
 # API token, so there is no `token-pattern` and no token check (search-front
 # looked for its API token's shape in the responses; nothing here could put
 # one there). In its place, `leak`: no response and no log of the binary
@@ -25,17 +25,17 @@
 #       and the password from the environment (never arguments).
 #
 # Checks, each named in the output: `listen` (the binary stays up and
-# listens, and stops within SMOKE_WAIT of a SIGTERM), `healthz` (/healthz
+# listens, and stops within SMOKE_WAIT of a SIGTERM), `health` (/health
 # with the origin header is 200, its first line `ok <commit>`, and a line
 # gives graph.json's stamp),
-# `guard` (without the header, or with a wrong one, / is 403, and /healthz
+# `guard` (without the header, or with a wrong one, / is 403, and /health
 # without it is 403), `gate` (/ and the .wasm without the password are 401,
 # the 401 asks for it with WWW-Authenticate, a wrong password is 401), `root`
 # (/ with both is 200 and names the page), `wasm` (the .wasm the page links is
 # served as application/wasm), `css` (the stylesheet the page links, by its
 # hashed name in a release build, is 200 and text/css: a page whose link
 # names a file the site does not hold has no style), `prod` (BINARY mode: with
-# the gate off and LEPTOS_ENV=PROD, /healthz is 200 with the header, / is 403
+# the gate off and LEPTOS_ENV=PROD, /health is 200 with the header, / is 403
 # without it, / and the .wasm and the stylesheet are 200 with it and no
 # password, no response carries WWW-Authenticate, the binary stops), `boot`
 # (BINARY mode: VIZ_GATE unset → exit 2, never listening), `leak` (no
@@ -106,20 +106,20 @@ run_checks() { # port secret password
   basic="$(basic_of "$password")"
   wrong="$(basic_of "not-the-password")"
 
-  get "$port" /healthz "$work/healthz" "$secret" || fail healthz "no answer on port $port"
-  expect_status healthz "$work/healthz" 200 "/healthz with the header"
-  tr -d '\r' <"$work/healthz" | sed '1,/^$/d' >"$work/healthz-body"
-  head -n 1 "$work/healthz-body" | grep -aEq '^ok [^[:space:]]' \
-    || fail healthz "/healthz does not say ok <commit> on its first line"
-  grep -aq '^graph\.json: ' "$work/healthz-body" || fail healthz "/healthz gives no graph.json stamp"
-  echo "smoke: healthz ok"
+  get "$port" /health "$work/health" "$secret" || fail health "no answer on port $port"
+  expect_status health "$work/health" 200 "/health with the header"
+  tr -d '\r' <"$work/health" | sed '1,/^$/d' >"$work/health-body"
+  head -n 1 "$work/health-body" | grep -aEq '^ok [^[:space:]]' \
+    || fail health "/health does not say ok <commit> on its first line"
+  grep -aq '^graph\.json: ' "$work/health-body" || fail health "/health gives no graph.json stamp"
+  echo "smoke: health ok"
 
   get "$port" / "$work/open" "" "$basic" || fail guard "no answer without the header"
   expect_status guard "$work/open" 403 "/ without the header"
   get "$port" / "$work/wrong" "not-the-secret" "$basic" || fail guard "no answer with a wrong header"
   expect_status guard "$work/wrong" 403 "/ with a wrong header"
-  get "$port" /healthz "$work/healthz-open" || fail guard "no answer for /healthz without the header"
-  expect_status guard "$work/healthz-open" 403 "/healthz without the header"
+  get "$port" /health "$work/health-open" || fail guard "no answer for /health without the header"
+  expect_status guard "$work/health-open" 403 "/health without the header"
   echo "smoke: guard ok"
 
   get "$port" / "$work/nopass" "$secret" || fail gate "no answer without the password"
@@ -213,7 +213,7 @@ check_prod() {
     LEPTOS_SITE_ADDR="127.0.0.1:$port" "$binary" >"$work/prod.log" 2>&1 &
   pid=$!
   wait_listening "$port"
-  get "$port" /healthz "$work/prod-healthz" "$secret" || fail prod "no answer for /healthz"
+  get "$port" /health "$work/prod-health" "$secret" || fail prod "no answer for /health"
   get "$port" / "$work/prod-open" || fail prod "no answer without the header"
   get "$port" / "$work/prod-root" "$secret" || fail prod "no answer without the password"
   wasm="$(grep -aEo '/pkg/[^"'"'"' <>]*\.wasm' "$work/prod-root" | head -n 1)"
@@ -229,7 +229,7 @@ check_prod() {
       fail prod "a response asks for a password with the gate off ($(basename "$f"))"
     fi
   done
-  expect_status prod "$work/prod-healthz" 200 "/healthz with the header (prod)"
+  expect_status prod "$work/prod-health" 200 "/health with the header (prod)"
   expect_status prod "$work/prod-open" 403 "/ without the header (prod)"
   expect_status prod "$work/prod-root" 200 "/ without the password (prod)"
   grep -aEq '<title>[^<]*Suttas Map' "$work/prod-root" || fail prod "/ does not name the page (prod)"

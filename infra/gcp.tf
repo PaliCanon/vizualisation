@@ -165,7 +165,7 @@ resource "google_cloud_run_v2_service" "app" {
       # TCP, not HTTP (search-front 007, ruling R2): the service answers 403
       # to a request without the origin header, and a Cloud Run HTTP probe
       # header is a plain string in the service resource, which would put the
-      # origin secret in tofu state. /healthz is checked by the rollout, on
+      # origin secret in tofu state. /health is checked by the rollout, on
       # the tagged revision, before traffic moves.
       startup_probe {
         tcp_socket {

@@ -6,7 +6,7 @@
 //! are in no output and no argument.
 //!
 //! From search-front/app/tests/site_scripts.rs. What differs: the checks of
-//! this service (design v4): `/healthz` behind the origin guard only, the
+//! this service (design v4): `/health` behind the origin guard only, the
 //! password gate of dev (401 with `WWW-Authenticate` without the password,
 //! the pages and the files behind it; prod has no `WWW-Authenticate`), the
 //! boot that refuses an unset `VIZ_GATE` (exit 2). No API, so no live search
@@ -217,14 +217,14 @@ fn page(extra: &str) -> String {
 }
 
 /// A healthy deployment, in the design's order: the origin guard on every
-/// path (403, empty body), `/healthz` behind it alone, then the password
+/// path (403, empty body), `/health` behind it alone, then the password
 /// gate when `gated` (401 asking for it), then the page, the wasm and the
 /// stylesheet.
 fn serve(req: &Req, gated: bool) -> Resp {
     if !req.authed() {
         return Resp::new(403, "").with("cache-control", "no-store");
     }
-    if req.path == "/healthz" {
+    if req.path == "/health" {
         return Resp::new(200, HEALTHZ).with("content-type", "text/plain");
     }
     if gated && !req.admitted() {
@@ -397,12 +397,12 @@ fn answering(path: &'static str, status: u16, body: &str) -> Handler {
     })
 }
 
-/// A dev server whose `/healthz`, to a caller with the secret, answers
+/// A dev server whose `/health`, to a caller with the secret, answers
 /// `status` and `body`.
 fn health(status: u16, body: &str) -> Handler {
     let body = body.to_owned();
     Box::new(move |r| {
-        if r.authed() && r.path == "/healthz" {
+        if r.authed() && r.path == "/health" {
             Resp::new(status, &body)
         } else {
             dev(r)
@@ -417,15 +417,11 @@ fn shared_cases() -> Vec<Case> {
     cases
 }
 
-/// `/healthz` and the origin guard.
+/// `/health` and the origin guard.
 fn origin_cases() -> Vec<Case> {
     vec![
-        ("healthz", "/healthz is a 500", health(500, "boom")),
-        (
-            "healthz",
-            "/healthz does not say ok",
-            health(200, "starting"),
-        ),
+        ("health", "/health is a 500", health(500, "boom")),
+        ("health", "/health does not say ok", health(200, "starting")),
         (
             "guard",
             "/ without the header answers 200",
@@ -450,9 +446,9 @@ fn origin_cases() -> Vec<Case> {
         ),
         (
             "guard",
-            "/healthz without the header answers 200",
+            "/health without the header answers 200",
             Box::new(|r| {
-                if r.path == "/healthz" {
+                if r.path == "/health" {
                     Resp::new(200, HEALTHZ)
                 } else {
                     dev(r)
@@ -480,7 +476,7 @@ fn gate_and_page_cases() -> Vec<Case> {
             "gate",
             "the 401 asks for no password",
             Box::new(|r| {
-                if r.authed() && r.path != "/healthz" && !r.admitted() {
+                if r.authed() && r.path != "/health" && !r.admitted() {
                     Resp::new(401, "")
                 } else {
                     dev(r)
@@ -545,7 +541,7 @@ fn smoke_passes_on_the_real_binary_and_leaves_no_service_behind() {
     let text = printed(&out);
     assert_eq!(out.status.code(), Some(0), "{text}");
     for check in [
-        "healthz ok",
+        "health ok",
         "guard ok",
         "gate ok",
         "root ok",
@@ -690,13 +686,13 @@ fn smoke_fails_on_a_password_in_prod_and_on_a_secret_in_a_log() {
 fn smoke_only_cases() -> Vec<Case> {
     vec![
         (
-            "healthz",
-            "/healthz gives no stamp line",
+            "health",
+            "/health gives no stamp line",
             health(200, "ok 63bdba3\n"),
         ),
         (
-            "healthz",
-            "/healthz says ok without a commit",
+            "health",
+            "/health says ok without a commit",
             health(200, "ok\ngraph.json: none\n"),
         ),
         (
@@ -828,7 +824,7 @@ fn rollout_check_passes_on_the_real_dev_binary() {
         "dev, secret from the env: {text}"
     );
     for check in [
-        "healthz ok",
+        "health ok",
         "gate ok",
         "root ok",
         "wasm ok",
@@ -1056,7 +1052,7 @@ fn rollout_check_tells_a_cloudflare_challenge_from_a_failure() {
 /// Exit 4: the Worker itself answered 500 (it has no secret or no origin;
 /// `origin-secret push` is the remedy), told from a 500 of the service that
 /// the Worker relays (a bad rollout: exit 1) and from a refusal (403). The
-/// first request is `/healthz`, so that is the check a relayed failure names.
+/// first request is `/health`, so that is the check a relayed failure names.
 #[test]
 fn rollout_check_tells_the_workers_500_from_a_failure() {
     for body in [
@@ -1071,10 +1067,10 @@ fn rollout_check_tells_the_workers_500_from_a_failure() {
     }
     let relayed = Fake::start(|_| Resp::new(500, "boom"));
     let out = run(&check_script(), &["--via-worker", &relayed.url()], &[]);
-    assert_fails_naming(&out, "healthz", "the service's own 500, relayed");
+    assert_fails_naming(&out, "health", "the service's own 500, relayed");
     let refusal = Fake::start(|_| Resp::new(403, "forbidden"));
     let out = run(&check_script(), &["--via-worker", &refusal.url()], &[]);
-    assert_fails_naming(&out, "healthz", "a 403");
+    assert_fails_naming(&out, "health", "a 403");
 }
 
 /// The Worker's 500 is recognised on the suffix every one of its bodies
@@ -1116,7 +1112,7 @@ fn rollout_check_does_not_take_a_service_500_for_the_workers() {
     ] {
         let relayed = Fake::start(move |_| Resp::new(500, body));
         let out = run(&check_script(), &["--via-worker", &relayed.url()], &[]);
-        assert_fails_naming(&out, "healthz", &format!("the service's own 500 {body:?}"));
+        assert_fails_naming(&out, "health", &format!("the service's own 500 {body:?}"));
     }
 }
 
@@ -1130,7 +1126,7 @@ fn rollout_check_direct_mode_has_no_worker_500() {
         &[&worker_like.url()],
         &[("ORIGIN_SECRET", SECRET)],
     );
-    assert_fails_naming(&out, "healthz", "direct mode");
+    assert_fails_naming(&out, "health", "direct mode");
 }
 
 // ------------------------------------------------- rollout-check.sh: hydrate
@@ -1361,7 +1357,7 @@ fn rollout_check_hydrate_encodes_an_odd_password() {
     let basic = STANDARD.encode(format!("deploy:{ODD}"));
     let want = format!("Basic {basic}");
     let fake = Fake::start(move |r| {
-        if r.path != "/healthz" && r.header("authorization") != Some(want.as_str()) {
+        if r.path != "/health" && r.header("authorization") != Some(want.as_str()) {
             return Resp::new(401, "")
                 .with("www-authenticate", "Basic realm=\"PaliCanon viz dev\"");
         }
