@@ -32,28 +32,61 @@ pub fn legend_toggled(narrow: bool, legend_open: bool, drawer_open: bool) -> (bo
 }
 
 /// The legend aside's classes (App.tsx line 465): a drawer over the map on a phone, shown
-/// while `drawer_open`; an aside in the row on a desktop, shown while `legend_open`.
+/// while `drawer_open`; an aside in the row on a desktop, shown while `legend_open`. The
+/// drawer starts under the chips' row (`top-12`: the row is 42 px), so its toggle, the first
+/// chip, stays in reach to close it (006 review R4; the React drawer covered it).
 pub fn legend_classes(legend_open: bool, drawer_open: bool) -> String {
     let phone = if drawer_open { "flex" } else { "hidden" };
     let desktop = if legend_open { "md:flex" } else { "md:hidden" };
     format!(
-        "absolute inset-y-0 left-0 z-30 {phone} w-64 max-w-[85vw] shrink-0 flex-col border-r border-line bg-page md:static {desktop}"
+        "absolute top-12 bottom-0 left-0 z-30 {phone} w-64 max-w-[85vw] shrink-0 flex-col border-r border-line bg-page md:static {desktop}"
     )
 }
 
-/// Whether the page is a phone's, below [`NARROW_BELOW`]; read in the browser when the
-/// toggle is pressed (the server never presses it).
-fn narrow_now() -> bool {
+/// The media query of a phone's page, below [`NARROW_BELOW`] (the React page's
+/// `useMediaQuery("(max-width: 767px)")`).
+pub const NARROW_QUERY: &str = "(max-width: 767px)";
+
+/// Whether the page is a phone's, following the window: `false` on the server and in the
+/// browser's first render (the desktop's, so hydration matches), then the media query's
+/// answer once hydrated, and again at each change of it (a resize, a rotation).
+fn narrow_signal() -> RwSignal<bool> {
+    let narrow = RwSignal::new(false);
     #[cfg(feature = "hydrate")]
     {
-        window()
-            .inner_width()
-            .ok()
-            .and_then(|w| w.as_f64())
-            .is_some_and(|w| w < NARROW_BELOW)
+        use wasm_bindgen::JsCast;
+        use wasm_bindgen::closure::Closure;
+
+        let Some(query) = window().match_media(NARROW_QUERY).ok().flatten() else {
+            return narrow;
+        };
+        // After hydrating: the first render was the desktop's on both sides.
+        {
+            let query = query.clone();
+            Effect::new(move |_| narrow.set(query.matches()));
+        }
+        let listener = {
+            let query = query.clone();
+            Closure::<dyn FnMut()>::new(move || {
+                let _ = narrow.try_set(query.matches());
+            })
+        };
+        let added = query
+            .add_event_listener_with_callback("change", listener.as_ref().unchecked_ref())
+            .is_ok();
+        if added {
+            let kept = StoredValue::new_local(Some((query, listener)));
+            on_cleanup(move || {
+                if let Some(Some((query, listener))) = kept.try_update_value(Option::take) {
+                    let _ = query.remove_event_listener_with_callback(
+                        "change",
+                        listener.as_ref().unchecked_ref(),
+                    );
+                }
+            });
+        }
     }
-    #[cfg(not(feature = "hydrate"))]
-    false
+    narrow
 }
 
 /// The map screen.
@@ -148,7 +181,9 @@ fn LegendAside(
 }
 
 /// The chips over the map, centred like palicanon's filter chips: the legend's toggle, then
-/// the wiring's (App.tsx lines 485–517).
+/// the wiring's (App.tsx lines 485–517). Above the phone drawer's backdrop (`z-20`), and
+/// above the drawer, which starts under them ([`legend_classes`]): with the drawer open,
+/// its toggle still closes it.
 #[component]
 fn MapChips(
     chips: ViewFn,
@@ -157,7 +192,7 @@ fn MapChips(
 ) -> impl IntoView {
     let t = strings();
     // The server renders the desktop's state; a phone's drawer starts closed anyway.
-    let narrow = RwSignal::new(false);
+    let narrow = narrow_signal();
     let pressed = move || {
         if narrow.get() {
             drawer_open.get()
@@ -166,10 +201,8 @@ fn MapChips(
         }
     };
     let toggle = move |_| {
-        let now = narrow_now();
-        narrow.set(now);
         let (legend, drawer) = legend_toggled(
-            now,
+            narrow.get_untracked(),
             legend_open.get_untracked(),
             drawer_open.get_untracked(),
         );
@@ -187,7 +220,7 @@ fn MapChips(
         )
     };
     view! {
-        <div class="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center px-4 pt-3">
+        <div class="pointer-events-none absolute inset-x-0 top-0 z-[25] flex justify-center px-4 pt-3">
             <div class="pointer-events-auto flex flex-wrap items-center justify-center gap-2">
                 <button
                     type="button"
@@ -227,6 +260,25 @@ fn PanelIcon() -> impl IntoView {
     }
 }
 
+/// The map's data did not arrive (a failed request, a file that does not parse): said over
+/// the map, in place of "Loading the map…" (which the React page kept for ever).
+#[component]
+pub fn MapError() -> impl IntoView {
+    let t = strings();
+    view! {
+        <div role="alert" class="absolute inset-0 grid place-items-center p-6">
+            <div class="max-w-md text-center">
+                <p class="font-serif text-xl italic">
+                    {move || td_string!(t.locale(), map_error_title)}
+                </p>
+                <p class="mt-3 text-sm text-muted">
+                    {move || td_string!(t.locale(), map_error_body)}
+                </p>
+            </div>
+        </div>
+    }
+}
+
 /// "Loading the map…", over the map until its data is in (App.tsx line 526).
 #[component]
 pub fn MapLoading() -> impl IntoView {
@@ -249,6 +301,14 @@ mod tests {
         assert_eq!(legend_toggled(true, true, true), (true, false));
         assert_eq!(legend_toggled(false, true, false), (false, false));
         assert_eq!(legend_toggled(false, false, true), (true, true));
+    }
+
+    #[test]
+    fn the_phone_query_is_the_breakpoint() {
+        assert_eq!(
+            NARROW_QUERY,
+            format!("(max-width: {}px)", NARROW_BELOW - 1.0)
+        );
     }
 
     #[cfg(feature = "ssr")]
@@ -355,7 +415,8 @@ mod tests {
                 &drawer,
                 &[
                     "absolute",
-                    "inset-y-0",
+                    "top-12",
+                    "bottom-0",
                     "left-0",
                     "z-30",
                     "w-64",
@@ -374,6 +435,14 @@ mod tests {
             let backdrop = tag_around(&open, "bg-black/40");
             assert!(backdrop.starts_with("<button"), "{backdrop}");
             has(&backdrop, &["absolute", "inset-0", "z-20", "md:hidden"]);
+            // 006 review R4: the chips (the legend's toggle first) above the backdrop,
+            // below the drawer.
+            let chips = tag_around(&open, "pointer-events-none absolute");
+            has(&chips, &["z-[25]"]);
+            assert!(
+                open.find("bg-black/40") < open.find("aria-pressed"),
+                "{open}"
+            );
             assert!(
                 backdrop.contains(r#"aria-label="Show / hide the collections""#),
                 "{backdrop}"
@@ -397,6 +466,20 @@ mod tests {
             has(&aside_of(&closed, "legend-slot"), &["md:hidden"]);
             let toggle = tag_around(&html, "aria-pressed");
             assert!(toggle.contains(r#"aria-pressed="true""#), "{toggle}");
+        }
+
+        /// 006 review R3: a failed fetch says so, in each language.
+        #[test]
+        fn the_error_message_in_each_language() {
+            for (language, title) in [
+                (Language::En, "The map could not load"),
+                (Language::Fr, "La carte n’a pas pu se charger"),
+                (Language::Vi, "Không thể tải bản đồ"),
+            ] {
+                let html = plain(&render(language, || view! { <MapError /> }));
+                assert!(html.contains(title), "{language:?}: {html}");
+                assert!(html.contains(r#"role="alert""#), "{html}");
+            }
         }
 
         #[test]

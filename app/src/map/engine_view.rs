@@ -11,8 +11,26 @@
 //!
 //! The server renders the empty container (the canvas, no message), so hydration matches; the
 //! engine starts in the browser only (`hydrate` on wasm32), in an effect, once the canvas, a
-//! graph and a theme are there. Every decision that needs no canvas is a pure function below,
-//! tested on the host; the browser part only reads the DOM and calls the engine.
+//! graph and a theme are there — tried once ([`Start`]). Every decision that needs no canvas
+//! is a pure function below, tested on the host; the browser part only reads the DOM and calls
+//! the engine.
+//!
+//! **The frame loop sleeps; everything that changes the picture wakes it.** The page's loop
+//! drew every frame for ever; this one draws on demand:
+//!
+//! - *Sleep*: after a frame, [`keep_looping`] asks for another while the frame was busy (the
+//!   engine drew — `GraphView::frame` is true while the camera eases, flies or the keys move
+//!   it — or the live layout still steps); after [`IDLE_FRAMES`] still frames in a row it
+//!   stops requesting animation frames. A frame the surface did not give (`frame` false with
+//!   a redraw pending) is retried by those idle frames.
+//! - *Wake*: `wake` restarts it (idle count back to 0) and is called by every path that hands
+//!   the engine something new — the input effect when `sync` pushed anything (its [`Plan`]
+//!   not the default: a buffer, the style, a camera move, a relayout), the engine's creation,
+//!   each pointer press, move, release, wheel and arrow key, and a resize with an area. A new
+//!   path that changes what the engine draws must call `wake`, or its change waits for the
+//!   next input: the picture is not lost, only late.
+//! - *Stop*: the component's cleanup marks the loop disposed; a frame already requested
+//!   finds it so and requests no other.
 
 use std::sync::Arc;
 
@@ -148,10 +166,18 @@ pub enum PointerMove {
 
 /// The pointers pressed on the canvas (rust-engine.ts lines 299–339, `bindPointer`): one
 /// rotates (a click picks), two pinch to zoom. Positions are client CSS pixels.
+///
+/// A gesture runs from the first press to the last release: once a second pointer joined it,
+/// it is a pinch to its end, and no release in it is a click (the page measured the last
+/// release against the last press, the second finger's: a pinch ending with the fingers
+/// together picked a point).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Pointers {
     down: Vec<(i32, (f64, f64))>,
+    /// Where the gesture's first pointer pressed.
     start: (f64, f64),
+    /// A second pointer joined the gesture.
+    pinched: bool,
     pinch: f64,
 }
 
@@ -159,10 +185,13 @@ impl Pointers {
     /// Pointer `id` pressed at `at` (`pointerdown`).
     pub fn down(&mut self, id: i32, at: (f64, f64)) -> PointerDown {
         self.set(id, at);
-        self.start = at;
         if self.down.len() == 1 {
+            // A new gesture.
+            self.start = at;
+            self.pinched = false;
             PointerDown::Rotate
         } else {
+            self.pinched = true;
             self.pinch = self.spread();
             PointerDown::Pinch
         }
@@ -185,13 +214,14 @@ impl Pointers {
     }
 
     /// Pointer `id` released at `at` (`pointerup`, `released`) or cancelled
-    /// (`pointercancel`): whether it was a click, to pick and select (one pointer, released
-    /// within [`CLICK_SLOP`] of where it was pressed). The caller always stops rotating.
+    /// (`pointercancel`): whether it was a click, to pick and select (the one pointer of its
+    /// gesture, never a pinch's, released within [`CLICK_SLOP`] of where it was pressed). The
+    /// caller always stops rotating.
     pub fn up(&mut self, id: i32, at: (f64, f64), released: bool) -> bool {
         let was = self.down.len();
         self.down.retain(|&(d, _)| d != id);
         let (dx, dy) = (at.0 - self.start.0, at.1 - self.start.1);
-        was == 1 && released && dx.hypot(dy) <= CLICK_SLOP
+        was == 1 && !self.pinched && released && dx.hypot(dy) <= CLICK_SLOP
     }
 
     /// Pointer `id` is at `at`: replaced in place, or added last (a `Map`'s order).
@@ -502,6 +532,51 @@ pub fn links_fit(edges: &[u32], n: usize) -> bool {
         .all(|&[a, b, _]| (a as usize) < n && (b as usize) < n)
 }
 
+/// The links a scene of `n` nodes takes from `at` (`setLinks`): `at`'s when they fit; links
+/// cut for another view are refused, and the scene then has none — not the previous ones,
+/// which the legend would no longer count. Returns whether they fit.
+pub fn take_links(scene: &mut Scene, at: &LinksAt, n: usize) -> bool {
+    let fits = links_fit(&at.links.edges, n);
+    scene.set_links(if fits {
+        at.links.clone()
+    } else {
+        Links::default()
+    });
+    fits
+}
+
+/// The engine's creation (rust-engine.ts `create`): where it stands. It is tried once: a
+/// browser without WebGPU or WebGL2 keeps the no-GPU message, not one more GPU setup per
+/// input change.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Start {
+    /// Not tried yet.
+    #[default]
+    Never,
+    /// The GPU is being set up.
+    Creating,
+    /// The engine draws.
+    Made,
+    /// Neither WebGPU nor WebGL2.
+    Failed,
+}
+
+impl Start {
+    /// Whether to try now (never tried); the attempt is then under way.
+    pub fn begin(&mut self) -> bool {
+        if *self != Start::Never {
+            return false;
+        }
+        *self = Start::Creating;
+        true
+    }
+
+    /// The attempt ended, the engine made (`ok`) or not: either way, never tried again.
+    pub fn end(&mut self, ok: bool) {
+        *self = if ok { Start::Made } else { Start::Failed };
+    }
+}
+
 // ---------- The component ----------
 
 /// What the component tells the page.
@@ -598,8 +673,8 @@ mod browser {
 
     use super::{
         EngineInput, Hover, Keys, LAYOUT_STEPS, Outputs, Plan, PointerDown, PointerMove, Pointers,
-        Snapshot, canvas_point, changed, has_area, is_typing, keep_looping, layout_continues,
-        layout_links, links_fit, picked, plan, relayout,
+        Snapshot, Start, canvas_point, changed, has_area, is_typing, keep_looping,
+        layout_continues, layout_links, picked, plan, relayout, take_links,
     };
     use crate::map::draw::{self, POINT_SIZE, Scene};
     use crate::map::model::Graph;
@@ -693,12 +768,11 @@ mod browser {
             scene.selected = want.selected.filter(|&i| i < n);
             let mut relaid = false;
             if links && let Some(at) = &want.links {
-                if links_fit(&at.links.edges, n) {
-                    scene.set_links(at.links.clone());
+                if take_links(scene, at, n) {
                     relaid = relayout(graph.fixed, at.threshold, self.laid_out_at);
                     self.laid_out_at = at.threshold;
                 } else {
-                    warn("map engine: links for another view, ignored");
+                    warn("map engine: links for another view, refused: none drawn");
                 }
             }
             relaid
@@ -782,7 +856,7 @@ mod browser {
     struct Loop {
         running: bool,
         idle: u32,
-        creating: bool,
+        start: Start,
         disposed: bool,
     }
 
@@ -866,10 +940,8 @@ mod browser {
     /// Make the engine on `el` for `want` (rust-engine.ts lines 51–89, `create`): bind the
     /// input, say which API draws, start the loop; or say there is no GPU.
     fn create(h: Handles, el: HtmlCanvasElement, want: Snapshot, input: EngineInput) {
-        let started = h
-            .looping
-            .try_update_value(|l| !std::mem::replace(&mut l.creating, true));
-        if started != Some(true) {
+        // Once: a failed start keeps the no-GPU message (not one GPU setup per input).
+        if h.looping.try_update_value(|l| l.start.begin()) != Some(true) {
             return;
         }
         let rect = el.get_bounding_client_rect();
@@ -884,7 +956,8 @@ mod browser {
                 positions,
             )
             .await;
-            if h.looping.try_update_value(|l| l.creating = false).is_none() {
+            let ok = made.is_ok();
+            if h.looping.try_update_value(|l| l.start.end(ok)).is_none() {
                 return; // the component is gone; the view is dropped
             }
             match made {
@@ -1310,6 +1383,27 @@ mod tests {
         assert!(!p.up(1, (0.0, 0.0), true));
     }
 
+    /// 006 review R3: `start` was the last press, the second finger's; a pinch ending with
+    /// the fingers together then picked a point.
+    #[test]
+    fn a_pinch_that_ends_never_selects() {
+        let mut p = Pointers::default();
+        p.down(1, (0.0, 0.0));
+        p.down(2, (100.0, 0.0));
+        // The fingers come together, near where the second pressed.
+        p.moved(1, (98.0, 0.0), true);
+        assert!(!p.up(2, (100.0, 0.0), true), "two pointers were down");
+        assert!(!p.up(1, (99.0, 0.0), true), "the last finger of a pinch");
+        // The first finger lifted first: the second's release is no click either.
+        p.down(1, (0.0, 0.0));
+        p.down(2, (100.0, 0.0));
+        assert!(!p.up(1, (0.0, 0.0), true));
+        assert!(!p.up(2, (100.0, 0.0), true), "released where it pressed");
+        // The next press is a new gesture: a still release is a click again.
+        p.down(1, (50.0, 50.0));
+        assert!(p.up(1, (51.0, 50.0), true));
+    }
+
     #[test]
     fn a_pinch_starting_from_one_spot_waits_for_a_spread() {
         let mut p = Pointers::default();
@@ -1374,6 +1468,11 @@ mod tests {
         assert_eq!(keep_looping(false, 0), Some(1));
         assert_eq!(keep_looping(false, IDLE_FRAMES - 2), Some(IDLE_FRAMES - 1));
         assert_eq!(keep_looping(false, IDLE_FRAMES - 1), None);
+        // Past the count (a frame already requested when it slept): asleep, and a busy frame
+        // still wakes it.
+        assert_eq!(keep_looping(false, IDLE_FRAMES), None);
+        assert_eq!(keep_looping(false, u32::MAX), None);
+        assert_eq!(keep_looping(true, IDLE_FRAMES), Some(0));
     }
 
     #[test]
@@ -1430,6 +1529,52 @@ mod tests {
         assert!(!links_fit(&[0, 5, 0], 5));
         assert!(!links_fit(&[5, 0, 0], 5));
         assert!(links_fit(&[], 0));
+    }
+
+    /// 006 review R3: a refused payload left the previous links in the scene, drawn, while
+    /// the legend counted the new ones.
+    #[test]
+    fn refused_links_clear_the_scenes_old_ones() {
+        let g = fixture();
+        let mut scene = Scene::new(&g);
+        let fit = LinksAt {
+            threshold: 0.6,
+            links: Links {
+                edges: vec![0, 1, 0],
+                sims: HashMap::new(),
+            },
+        };
+        assert!(take_links(&mut scene, &fit, 5));
+        assert_eq!(scene.edges, [0, 1, 0]);
+        let other_view = LinksAt {
+            threshold: 0.7,
+            links: Links {
+                edges: vec![0, 9, 0],
+                sims: HashMap::new(),
+            },
+        };
+        assert!(!take_links(&mut scene, &other_view, 5));
+        assert!(scene.edges.is_empty(), "{:?}", scene.edges);
+        assert_eq!(scene.link_counts(&g).iter().sum::<usize>(), 0);
+        let segments = scene.segments(&g, &MapTheme::new(false, &g));
+        assert_eq!(segments.ends, Vec::<u32>::new());
+    }
+
+    /// 006 review R3: a failed creation went back to "not tried", so every input change
+    /// tried again.
+    #[test]
+    fn a_failed_start_is_not_retried() {
+        let mut start = Start::default();
+        assert!(start.begin());
+        assert!(!start.begin(), "one attempt at a time");
+        start.end(false);
+        assert_eq!(start, Start::Failed);
+        assert!(!start.begin(), "no GPU: never again");
+        let mut made = Start::default();
+        assert!(made.begin());
+        made.end(true);
+        assert_eq!(made, Start::Made);
+        assert!(!made.begin());
     }
 
     // ---------- What to push ----------

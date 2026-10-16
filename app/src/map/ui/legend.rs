@@ -5,8 +5,10 @@
 use leptos::prelude::*;
 use leptos_i18n::td_string;
 use palicanon_ui_lib::language_signal;
+use serde::{Deserialize, Serialize};
 
 use crate::catalogue::strings;
+use crate::map::draw::Scene;
 use crate::map::legend::Legend as LegendState;
 use crate::map::model::Graph;
 use crate::map::theme::{MapTheme, NO_GROUP_COLOR};
@@ -16,7 +18,7 @@ use crate::map::ui::{number, type_label};
 pub const SECTION_TITLE: &str = "px-2 text-[11px] font-medium uppercase tracking-wider text-subtle";
 
 /// One collection of the legend.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CollectionRow {
     /// Its id in the `viz_legend` cookie (`Group::iso`).
     pub iso: String,
@@ -29,7 +31,7 @@ pub struct CollectionRow {
 }
 
 /// One link type of the legend.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TypeRow {
     /// Its index in `Graph::types`.
     pub index: usize,
@@ -84,10 +86,63 @@ pub fn type_rows(graph: &Graph, theme: &MapTheme, link_counts: &[usize]) -> Vec<
         .map(|(index, name)| TypeRow {
             index,
             name: name.clone(),
+            // TODO(006 merge): `Some(theme.link_color(name).to_owned())` (lane A's
+            // `MapTheme::link_color`, 4d21574: the map's fallback for an unknown type).
             color: theme.type_color(name).map(str::to_owned),
             count: link_counts.get(index).copied().unwrap_or(0),
         })
         .collect()
+}
+
+/// A vectorial view's slider: its similarity range and the threshold applied, in hundredths.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SimRange {
+    /// `SimInfo::min`.
+    pub min: f64,
+    /// `SimInfo::max`.
+    pub max: f64,
+    /// The threshold, in hundredths (the slider's unit).
+    pub value: u32,
+}
+
+/// Everything the legend shows of one view: the server renders it before the browser has
+/// the data (so the aside is not empty until then), the browser from its own data after.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct LegendRows {
+    /// [`collection_rows`].
+    pub collections: Vec<CollectionRow>,
+    /// [`type_rows`], with the scene's links.
+    pub types: Vec<TypeRow>,
+    /// How many links of the first type (a vectorial view's only one): the slider's
+    /// statistics.
+    pub links: usize,
+    /// How many texts have no link.
+    pub alone: usize,
+    /// A vectorial view's slider.
+    pub sim: Option<SimRange>,
+}
+
+/// The legend of `graph` in `theme`, its links `scene`'s, its texts those of `available`
+/// (`None`: all), its slider at `threshold` on a vectorial view.
+pub fn legend_rows(
+    graph: &Graph,
+    theme: &MapTheme,
+    scene: &Scene,
+    available: Option<&[bool]>,
+    threshold: Option<f64>,
+) -> LegendRows {
+    let counts = scene.link_counts(graph);
+    LegendRows {
+        collections: collection_rows(graph, theme, available),
+        types: type_rows(graph, theme, &counts),
+        links: counts.first().copied().unwrap_or(0),
+        alone: scene.alone(),
+        sim: graph.sim.as_ref().map(|sim| SimRange {
+            min: sim.min,
+            max: sim.max,
+            value: crate::map::ui::sim_controls::hundredths(threshold.unwrap_or(sim.default)),
+        }),
+    }
 }
 
 /// The legend: collections, then link types and `children` (the vectorial view's controls).

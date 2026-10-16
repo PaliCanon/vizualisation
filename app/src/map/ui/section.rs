@@ -19,6 +19,12 @@ pub fn stored_open(value: Option<&str>) -> bool {
     value == Some("1")
 }
 
+/// Whether a read of the storage says open: a refused read (`Err`, a private window) is
+/// closed, as nothing stored.
+pub fn remembered<E>(read: Result<Option<String>, E>) -> bool {
+    stored_open(read.ok().flatten().as_deref())
+}
+
 /// The value stored for `open` (Section.tsx line 22).
 pub fn stored_value(open: bool) -> &'static str {
     if open { "1" } else { "0" }
@@ -45,7 +51,7 @@ pub fn Section(
     {
         // After hydrating: the server rendered it closed, as the browser's first render.
         let key = key.clone();
-        Effect::new(move |_| open.set(stored_open(storage::get(&key).as_deref())));
+        Effect::new(move |_| open.set(remembered(storage::get(&key))));
     }
     let toggle = move |_| {
         let next = !open.get_untracked();
@@ -91,9 +97,9 @@ mod storage {
         fn set_item(key: &str, value: &str) -> Result<(), JsValue>;
     }
 
-    /// The value stored under `key`, if any and readable.
-    pub(super) fn get(key: &str) -> Option<String> {
-        get_item(key).ok().flatten()
+    /// The value stored under `key`, if any; `Err` when the browser refuses the read.
+    pub(super) fn get(key: &str) -> Result<Option<String>, JsValue> {
+        get_item(key)
     }
 
     /// Stores `value` under `key`, when the browser lets it.
@@ -117,6 +123,18 @@ mod tests {
         // Section.tsx:22 `localStorage.setItem(key, o ? "0" : "1")`
         assert_eq!(stored_value(true), "1");
         assert_eq!(stored_value(false), "0");
+    }
+
+    /// 006 review R4: each section its own key, the React page's; a browser refusing the
+    /// storage (a private window) leaves every section closed.
+    #[test]
+    fn a_section_is_remembered_under_its_own_key_and_a_refused_storage_keeps_it_closed() {
+        assert_eq!(storage_key("similar"), "suttasmap.section.v2.similar");
+        assert_ne!(storage_key("full"), storage_key("resembling"));
+        assert!(remembered::<()>(Ok(Some("1".to_owned()))));
+        assert!(!remembered::<()>(Ok(Some("0".to_owned()))));
+        assert!(!remembered::<()>(Ok(None)));
+        assert!(!remembered(Err("SecurityError")), "a refused read");
     }
 
     #[cfg(feature = "ssr")]

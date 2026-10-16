@@ -35,6 +35,8 @@
   "legend_show": "Hiện",
   "legend_toggle": "Hiện / ẩn các bộ kinh",
   "loading": "Đang tải bản đồ…",
+  "map_error_body": "Dữ liệu của bản đồ chưa tải được. Hãy kiểm tra kết nối rồi tải lại trang.",
+  "map_error_title": "Không thể tải bản đồ",
   "nav_learn": "Học",
   "nav_map": "Bản đồ",
   "nav_search": "Tìm kiếm",

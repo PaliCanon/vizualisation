@@ -11,6 +11,8 @@ use leptos::prelude::*;
 use palicanon_ui_lib::button::{Disclosed, Disclosure, Size, Variant, classes};
 use palicanon_ui_lib::{Icon, IconName, Popover};
 
+use crate::map::ui::list_keys::list_move;
+
 /// One choice of a [`ChipMenu`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ChipOption {
@@ -36,17 +38,15 @@ pub enum MenuKey {
 }
 
 /// What `key` does with the list `open` or not, row `active` of `len` active: Escape
-/// closes; an arrow opens a closed list, else moves, wrapping around; Enter or Space picks
-/// the active row of an open list.
+/// closes; an arrow opens a closed list, else moves as the search's results do
+/// ([`list_move`]: wrapping around, nothing in an empty list); Enter or Space picks the
+/// active row of an open list.
 pub fn menu_key(key: &str, open: bool, active: usize, len: usize) -> MenuKey {
     match key {
         "Escape" => MenuKey::Close,
         "ArrowDown" | "ArrowUp" if !open => MenuKey::Open,
-        _ if len == 0 => MenuKey::Ignore,
-        "ArrowDown" => MenuKey::Move((active + 1) % len),
-        "ArrowUp" => MenuKey::Move((active + len - 1) % len),
-        "Enter" | " " if open => MenuKey::Pick(active.min(len - 1)),
-        _ => MenuKey::Ignore,
+        "Enter" | " " if open && len > 0 => MenuKey::Pick(active.min(len - 1)),
+        _ => list_move(key, active, len).map_or(MenuKey::Ignore, MenuKey::Move),
     }
 }
 
@@ -128,7 +128,14 @@ fn on_menu_key(
             active.set(selected);
             open.set(true);
         }
-        MenuKey::Close => open.set(false),
+        MenuKey::Close => {
+            if open.get_untracked() {
+                // The open list's own: ui-lib's shell does not also fold its rail, nor the
+                // map close its text.
+                ev.stop_propagation();
+                open.set(false);
+            }
+        }
         MenuKey::Move(i) => {
             ev.prevent_default();
             active.set(i);
@@ -268,6 +275,10 @@ mod tests {
         // Menu.tsx:80-98 the list, closed: every option, the selected one marked.
         assert!(tag_around(&html, r#"id="viz-test-menu""#).contains("hidden"));
         assert_eq!(html.matches(r#"role="option""#).count(), 2, "{html}");
+        assert!(
+            crate::map::ui::test_support::options_in_listboxes(&html),
+            "the options in their listbox: {html}"
+        );
         assert!(html.contains("The whole canon"), "{html}");
         let chosen = tag_around(&html, r#"aria-selected="true""#);
         assert!(chosen.contains(r#"id="viz-test-menu-1""#), "{chosen}");
