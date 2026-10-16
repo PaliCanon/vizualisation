@@ -277,8 +277,8 @@ mod tests {
         let body = String::from_utf8(body.to_vec()).expect("utf-8");
         let lines: Vec<&str> = body.lines().collect();
         let stamps = data().stamp_lines();
-        assert_eq!(stamps.len(), 5, "five graph files");
-        assert_eq!(lines.len(), 6, "{body}");
+        assert_eq!(stamps.len(), 2, "two graph files");
+        assert_eq!(lines.len(), 3, "{body}");
         assert_eq!(lines[0], format!("ok {BUILD_SHA}"), "{body}");
         assert_eq!(&lines[1..], stamps.as_slice(), "{body}");
     }
@@ -425,10 +425,21 @@ mod tests {
 
     /// A text's address whose uid no view has is a 404, behind and in
     /// front of a view, with the not-found page, not indexed; a uid one view
-    /// has is a page (200), whichever view the address names.
+    /// has is a page (200), whichever view the address names. The test views
+    /// removed in 011 (PCA, UMAP, t-SNE) are no view: their addresses are 404s.
     #[tokio::test]
     async fn a_uid_in_no_view_is_a_404() {
-        for path in ["/zz999", "/sim/zz999", "/tsne/mn99999"] {
+        for path in [
+            "/zz999",
+            "/sim/zz999",
+            "/tsne/mn99999",
+            "/pca",
+            "/umap",
+            "/tsne",
+            "/pca/mn10",
+            "/umap/ds1.1",
+            "/tsne/mn10",
+        ] {
             let response = get_from(prod(), path).await;
             assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
             let body = axum::body::to_bytes(response.into_body(), 1 << 24)
@@ -440,7 +451,7 @@ mod tests {
                 "{path}: {body}"
             );
         }
-        for path in ["/mn10", "/sim/mn10", "/ds1.1", "/umap/ds1.1"] {
+        for path in ["/mn10", "/sim/mn10", "/ds1.1", "/sim/ds1.1"] {
             let response = get_from(prod(), path).await;
             assert_eq!(response.status(), StatusCode::OK, "{path}");
         }

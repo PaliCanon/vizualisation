@@ -122,8 +122,7 @@ pub(crate) fn threshold_settles(view_changed: bool, applied: Option<f64>, value:
 }
 
 /// Whether the browser knows `uid` is in no view: `has(view)` says whether a view's data has
-/// it, `None` while that data is not in. The projections (PCA, UMAP, t-SNE) hold the
-/// vectorial space's texts, so the parallels and the vectorial space decide.
+/// it, `None` while that data is not in. The parallels and the vectorial space decide.
 pub(crate) fn in_no_view(has: impl Fn(View) -> Option<bool>) -> bool {
     has(View::Parallels) == Some(false) && has(View::Sim) == Some(false)
 }
@@ -866,9 +865,6 @@ mod browser {
         match view {
             View::Parallels => "graph.json",
             View::Sim => "graph-sim.json",
-            View::Pca => "graph-sim-pca.json",
-            View::Umap => "graph-sim-umap.json",
-            View::Tsne => "graph-sim-tsne.json",
         }
     }
 
@@ -1189,7 +1185,7 @@ mod tests {
         let views = |parallels: Option<bool>, sim: Option<bool>| {
             move |v: View| match v {
                 View::Parallels => parallels,
-                _ => sim,
+                View::Sim => sim,
             }
         };
         assert!(in_no_view(views(Some(false), Some(false))));

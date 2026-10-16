@@ -1,5 +1,5 @@
-//! `graph.json`, `graph-sim.json` and `graph-sim-{pca,umap,tsne}.json`: the nodes of a view
-//! with their positions, its links (or, for the vectorial views, where to find them).
+//! `graph.json` and `graph-sim.json`: the nodes of a view with their positions, its links (or,
+//! for the vectorial view, where to find them).
 
 use crate::{FormatError, stamp::Stamp};
 use serde::{Deserialize, Serialize};

@@ -1,5 +1,5 @@
-//! The views chip (App.tsx lines 502–515): SuttaCentral's parallels, the vectorial space and
-//! its test views, each with its description as the hint.
+//! The views chip (App.tsx lines 502–515): SuttaCentral's parallels and the vectorial space,
+//! each with its description as the hint.
 
 use leptos::prelude::*;
 use leptos_i18n::td_string;
@@ -13,9 +13,6 @@ pub(crate) fn view_hint(view: View, locale: Locale) -> &'static str {
     match view {
         View::Parallels => td_string!(locale, views_liens),
         View::Sim => td_string!(locale, views_sim),
-        View::Pca => td_string!(locale, views_pca),
-        View::Umap => td_string!(locale, views_umap),
-        View::Tsne => td_string!(locale, views_tsne),
     }
 }
 

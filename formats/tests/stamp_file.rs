@@ -15,24 +15,14 @@ fn public(name: &str) -> Option<Vec<u8>> {
     .ok()
 }
 
-const FAMILY: [&str; 4] = [
-    "graph-sim.json",
-    "graph-sim-pca.json",
-    "graph-sim-umap.json",
-    "graph-sim-tsne.json",
-];
-
 /// TRANSITIONAL (task 007 flips it): the tools do not stamp yet, so today's family fails the
 /// strict check for want of a stamp. Once 007 writes the stamps this test must be replaced by
 /// `check_family(..).unwrap()`.
 #[test]
 fn the_committed_family_is_not_stamped_yet() {
-    let graphs: Vec<(&str, Graph)> = FAMILY
-        .iter()
-        .map(|f| (*f, Graph::from_json(&public(f).unwrap()).unwrap()))
-        .collect();
-    let refs: Vec<(&str, &Graph)> = graphs.iter().map(|(n, g)| (*n, g)).collect();
-    let err = check_family(&refs).unwrap_err().to_string();
+    let sim = Graph::from_json(&public("graph-sim.json").unwrap()).unwrap();
+    let pairs = public("graph-sim.bin").unwrap();
+    let err = check_family(&sim, &pairs).unwrap_err().to_string();
     assert!(err.contains("no stamp"), "{err}");
 }
 

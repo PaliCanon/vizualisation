@@ -77,14 +77,8 @@
   "types_sections": "Parallèle partiel",
   "types_similar": "Similarité",
   "views_label_liens": "SuttaCentral",
-  "views_label_pca": "Test · ACP 3D",
   "views_label_sim": "Espace vectoriel",
-  "views_label_tsne": "Test · t-SNE 3D",
-  "views_label_umap": "Test · UMAP 3D",
   "views_liens": "Parallèles SuttaCentral : position calculée à partir des liens",
   "views_name": "Vue",
-  "views_pca": "Espace vectoriel pāli placé par ses 3 directions principales (ACP), sans simulation",
-  "views_sim": "Espace vectoriel pāli : textes reliés quand leur similarité dépasse le seuil",
-  "views_tsne": "Espace vectoriel pāli réduit en 3D par t-SNE : voisinages gardés, sans simulation",
-  "views_umap": "Espace vectoriel pāli réduit en 3D par UMAP : voisinages et forme d'ensemble, sans simulation"
+  "views_sim": "Espace vectoriel pāli : textes reliés quand leur similarité dépasse le seuil"
 }
