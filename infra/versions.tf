@@ -1,13 +1,23 @@
+# From search-front/infra/versions.tf. What differs: the state prefix
+# (`vizualisation`, migrated from `suttasmap` with `tofu init -migrate-state`,
+# README "Order"), and the credentials comment names the Pages scopes this
+# directory still needs until task 008 (pages.tf).
 terraform {
   required_version = ">= 1.8"
 
-  # Same bucket as palicanon.app's infra (palisearch/infra), its own prefix: one state per service.
+  # Its own state, next to the site's (prefix "palicanon"), the API's
+  # (prefix "pali-canon-api"), learn-pali's and search-front's in the same
+  # bucket. Was "suttasmap" until task 005.
   backend "gcs" {
     bucket = "palicanon-app-tofu-state"
-    prefix = "suttasmap"
+    prefix = "vizualisation"
   }
 
   required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 6.0"
+    }
     cloudflare = {
       source  = "cloudflare/cloudflare"
       version = "~> 4.52"
@@ -15,7 +25,14 @@ terraform {
   }
 }
 
-# Credentials come from the environment, never from files in the repo:
-#   gcloud auth application-default login        (the state bucket)
-#   export CLOUDFLARE_API_TOKEN=…   (zone: DNS, Access; account: Pages, Access)
+# Credentials come from the environment: gcloud auth application-default
+# login (the state bucket, the GCP resources), and CLOUDFLARE_API_TOKEN (zone
+# DNS and Workers routes, account Workers scripts; and, until task 008, the
+# Pages project, its domains and records of pages.tf). Nothing is read from a
+# file in this repository.
+provider "google" {
+  project = var.gcp_project
+  region  = var.region
+}
+
 provider "cloudflare" {}

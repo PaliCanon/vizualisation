@@ -1,5 +1,18 @@
 name: build
-description: The engine (Rust → wasm32 → wasm-bindgen) then the site (tsc, vite) into dist/.
+description: The engine (Rust → wasm32 → wasm-bindgen) then the React site (tsc, vite) into dist/.
+
+# The React site's build, kept until task 008 removes the site. Since task 005
+# the repository is checked out into `vizualisation/` beside `ui-lib/` (the
+# `siblings` action, run before this one: the root workspace's [patch]
+# reaches ../ui-lib, so even `cargo build -p map-engine` needs it), and a
+# composite action does not inherit the job's `defaults.run`: every step
+# runs in `inputs.working-directory`.
+
+inputs:
+  working-directory:
+    description: The repository's checkout, relative to the workspace.
+    default: vizualisation
+
 runs:
   using: composite
   steps:
@@ -14,11 +27,16 @@ runs:
       with:
         node-version: 22
         cache: npm
+        cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
     - run: npm ci
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
     - run: npm run build:engine
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
     - run: npx tsc --noEmit -p .
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
     - run: npm run build
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
