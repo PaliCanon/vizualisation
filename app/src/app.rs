@@ -108,13 +108,15 @@ fn first_render() -> FirstRender {
     }
     #[cfg(not(feature = "ssr"))]
     {
+        // TODO(006 merge): `crate::map::first::FirstRender::not_in_page()` (lane A, 4d21574:
+        // logs the missing first render); not on this branch yet.
         FirstRender::default()
     }
 }
 
 /// The rail's entries: the services, Search (search.palicanon.app, as the
-/// showcase's SERVICE_LINKS), Learn, then Map
-/// (this one, the current entry on `/`). `IconName::Grid` stands in for Learn
+/// showcase's `SERVICE_LINKS`), Learn, then Map
+/// (this one, the current entry on every map address: [`rail_current`]). `IconName::Grid` stands in for Learn
 /// as in learn-pali, `IconName::Motion` for Map, until ui-lib has their icons.
 pub(crate) fn nav_entries(locale: crate::catalogue::Locale) -> Vec<NavEntry> {
     vec![
@@ -134,6 +136,16 @@ pub(crate) fn nav_entries(locale: crate::catalogue::Locale) -> Vec<NavEntry> {
             href: "/",
         },
     ]
+}
+
+/// The path the rail marks current for `path`: the Map entry's (`/`) on every map
+/// address — a view, a text in a view —, the path itself elsewhere (a footer page, the
+/// 404: no entry).
+pub(crate) fn rail_current(path: &str) -> String {
+    match route::Route::parse(path) {
+        Some(route::Route::Map { .. }) => "/".to_owned(),
+        _ => path.to_owned(),
+    }
 }
 
 /// The rail, following the language and the current path.
@@ -167,8 +179,9 @@ fn Layout() -> impl IntoView {
             Some(route::Route::Map { .. })
         )
     });
+    let current = Signal::derive(move || location.pathname.with(|path| rail_current(path)));
     view! {
-        <AppShell nav=nav(location.pathname.into()) footer=|| view! { <SiteFooter /> }>
+        <AppShell nav=nav(current) footer=|| view! { <SiteFooter /> }>
             <Routes fallback=|| view! { <NotFoundPage /> }>
                 <Route path=path!("/acknowledgements") view=RoutedPage />
                 <Route path=path!("/terms") view=RoutedPage />
@@ -659,8 +672,12 @@ mod tests {
             body.contains(r#"href="https://suttacentral.net/ds1.1""#),
             "the panel is open: {body}"
         );
+        // The panel's sections, not the legend's link types (the legend is the server's too).
+        let read = body.find("suttacentral.net/ds1.1").expect(body);
+        let open = body[..read].rfind("<aside").expect(body);
+        let panel = &body[open..read + body[read..].find("</aside>").expect(body)];
         for section in [">Full parallel<", ">Similarity<", ">Resembling<"] {
-            assert!(!body.contains(section), "no link in this view: {section}");
+            assert!(!panel.contains(section), "no link in this view: {section}");
         }
         let first = first_render(
             &served(),
@@ -731,6 +748,87 @@ mod tests {
             !html.contains("Le récit de l’attention vigilante"),
             "{html}"
         );
+    }
+
+    /// The links marked `aria-current="page"` in `html` (the rail's entries; the panel's
+    /// trail marks its current chip, a `<span>`, too).
+    #[cfg(feature = "ssr")]
+    fn current_tags(html: &str) -> Vec<&str> {
+        html.match_indices(r#"aria-current="page""#)
+            .map(|(at, _)| {
+                let start = html[..at].rfind('<').expect(html);
+                &html[start..at + html[at..].find('>').expect(html)]
+            })
+            .filter(|tag| tag.starts_with("<a"))
+            .collect()
+    }
+
+    /// 006 review: the rail's Map entry (`/`) is current on every map route — a view, a
+    /// text in a view —, never on a footer page.
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn the_rails_map_entry_is_current_on_every_map_route() {
+        for path in ["/", "/sim", "/sim/mn10", "/mn10", "/tsne/mn10"] {
+            let html = render_layout(Language::En, path);
+            let current = current_tags(&html);
+            assert!(!current.is_empty(), "{path}: no current entry");
+            for tag in current {
+                assert!(tag.contains(r#"href="/""#), "{path}: {tag}");
+            }
+        }
+        for path in ["/terms", "/acknowledgements"] {
+            let html = render_layout(Language::En, path);
+            assert!(
+                current_tags(&html)
+                    .iter()
+                    .all(|tag| !tag.contains(r#"href="/""#)),
+                "{path}: the map is not current"
+            );
+        }
+    }
+
+    /// 006 review: the legend is the server's, its rows and counts in the aside before any
+    /// script runs (it was empty until the browser's data came in): each collection with
+    /// its texts, each link type with its links (the vectorial space's at its default
+    /// threshold), as the browser counts them.
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn the_server_renders_the_legend_with_its_counts() {
+        use crate::map::draw::{Scene, links_at};
+        use crate::map::theme::MapTheme;
+        use crate::map::ui::number;
+        use crate::map::ui::test_support::plain;
+
+        let data = &served().data;
+        for (path, graph) in [("/", &data.parallels), ("/sim", &data.sim)] {
+            let html = plain(&render_document(path));
+            let open = html.find("w-64 max-w-[85vw]").expect(&html);
+            let aside = &html[open..open + html[open..].find("</aside>").expect(&html)];
+            let theme = MapTheme::new(false, graph);
+            let rows = crate::map::ui::legend::collection_rows(graph, &theme, None);
+            assert!(rows.len() > 3, "{path}");
+            for row in rows {
+                let line = format!(
+                    r#"{}<span class="ml-auto tabular-nums text-subtle">{}</span>"#,
+                    row.name,
+                    number(row.count, Language::En)
+                );
+                assert!(aside.contains(&line), "{path}: {line}: {aside}");
+            }
+            let mut scene = Scene::new(graph);
+            if let Some(sim) = &graph.sim {
+                scene.set_links(links_at(&data.pairs, sim, sim.default));
+            }
+            let links = scene.link_counts(graph);
+            for (name, count) in graph.types.iter().zip(&links) {
+                let label = crate::map::ui::type_label(name, Language::En.into());
+                let line = format!(
+                    r#"{label}<span class="ml-auto tabular-nums text-subtle">{}</span>"#,
+                    number(*count, Language::En)
+                );
+                assert!(aside.contains(&line), "{path}: {line}: {aside}");
+            }
+        }
     }
 
     /// The Acknowledgements page has the translators table, read from the

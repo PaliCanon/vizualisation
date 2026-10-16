@@ -35,6 +35,8 @@
   "legend_show": "Show",
   "legend_toggle": "Show / hide the collections",
   "loading": "Loading the map…",
+  "map_error_body": "Its data did not arrive. Check your connection, then reload the page.",
+  "map_error_title": "The map could not load",
   "nav_learn": "Learn",
   "nav_map": "Map",
   "nav_search": "Search",

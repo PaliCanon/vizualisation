@@ -12,6 +12,7 @@ use leptos_i18n::td_string;
 use palicanon_ui_lib::SearchRow;
 
 use crate::catalogue::strings;
+use crate::map::ui::list_keys::list_move;
 use crate::map::ui::text_ref::TextRow;
 use crate::map::ui::{CARD, TextItem};
 
@@ -26,15 +27,13 @@ pub enum SearchKey {
     Ignore,
 }
 
-/// What `key` does with result `active` of `hits` active: the arrows move, held inside the
-/// list; Escape clears.
+/// What `key` does with result `active` of `hits` active: the arrows move as in the chips'
+/// menus ([`list_move`]: wrapping around, nothing in an empty list); Escape clears.
 pub fn search_key(key: &str, active: usize, hits: usize) -> SearchKey {
-    match key {
-        "ArrowDown" => SearchKey::Move((active + 1).min(hits.saturating_sub(1))),
-        "ArrowUp" => SearchKey::Move(active.saturating_sub(1)),
-        "Escape" => SearchKey::Clear,
-        _ => SearchKey::Ignore,
+    if key == "Escape" {
+        return SearchKey::Clear;
     }
+    list_move(key, active, hits).map_or(SearchKey::Ignore, SearchKey::Move)
 }
 
 /// The node Enter opens: the active result's, if there is one (App.tsx line 425,
@@ -83,7 +82,11 @@ pub fn SearchBox(
                 ev.prevent_default();
                 active.set(k);
             }
-            SearchKey::Clear => clear(),
+            SearchKey::Clear => {
+                // The field's own: the shell's rail and the open text stay as they are.
+                ev.stop_propagation();
+                clear();
+            }
             SearchKey::Ignore => {}
         }
     };
@@ -208,17 +211,17 @@ mod tests {
 
     #[test]
     fn arrows_move_inside_the_results_escape_clears() {
-        // App.tsx:420 `setActive((a) => Math.min(a + 1, hits.length - 1))`
+        // The menus' keys (006 review R4: one helper): the arrows move, wrapping around.
         assert_eq!(search_key("ArrowDown", 0, 3), SearchKey::Move(1));
-        assert_eq!(search_key("ArrowDown", 2, 3), SearchKey::Move(2));
-        // App.tsx:421 `setActive((a) => Math.max(a - 1, 0))`
+        assert_eq!(search_key("ArrowDown", 2, 3), SearchKey::Move(0));
         assert_eq!(search_key("ArrowUp", 2, 3), SearchKey::Move(1));
-        assert_eq!(search_key("ArrowUp", 0, 3), SearchKey::Move(0));
+        assert_eq!(search_key("ArrowUp", 0, 3), SearchKey::Move(2), "wraps");
         assert_eq!(
             search_key("ArrowDown", 0, 0),
-            SearchKey::Move(0),
+            SearchKey::Ignore,
             "no results"
         );
+        assert_eq!(search_key("ArrowUp", 0, 0), SearchKey::Ignore, "no results");
         // App.tsx:422 `else if (e.key === "Escape") { setQuery(""); input.current?.blur(); }`
         assert_eq!(search_key("Escape", 1, 3), SearchKey::Clear);
         assert_eq!(
@@ -318,6 +321,11 @@ mod tests {
         let texts = f.texts(Language::Fr);
         let html = render_box(Language::Fr, vec![texts.item(1), texts.item(3)]);
         assert_eq!(html.matches("<li").count(), 2, "{html}");
+        // 006 review R4: each result an option of the results' listbox.
+        assert!(
+            crate::map::ui::test_support::options_in_listboxes(&html),
+            "{html}"
+        );
         assert!(html.contains(">MN 1<") && html.contains(">MN 2<"), "{html}");
         assert!(html.contains("Les souillures"), "{html}");
         let rows: Vec<&str> = html

@@ -12,6 +12,7 @@
 //!   and the texts' language chip.
 //! - [`sim_controls`]: the vectorial view's threshold and "hide texts without a neighbour".
 //! - [`search`]: the search box, its results and its keys.
+//! - [`list_keys`]: the arrows in a list of options, the search's and the chips' alike.
 //! - [`panel`]: the open text — trail, reference, summary, place, neighbours by link type,
 //!   credits.
 //! - [`section`]: a folding section of the panel, closed until opened, remembered.
@@ -24,6 +25,7 @@
 
 pub mod chip_menu;
 pub mod legend;
+pub mod list_keys;
 pub mod panel;
 pub mod screen;
 pub mod search;
@@ -237,6 +239,23 @@ pub(crate) mod test_support {
         html[start..=end].to_owned()
     }
 
+    /// Whether every `role="option"` of `html` sits right inside a `role="listbox"` list
+    /// (the list that opened last before it, not closed since), and there is one at least.
+    pub(crate) fn options_in_listboxes(html: &str) -> bool {
+        let options: Vec<usize> = html
+            .match_indices(r#"role="option""#)
+            .map(|(at, _)| at)
+            .collect();
+        !options.is_empty()
+            && options.iter().all(|&at| {
+                let before = &html[..at];
+                before.rfind("<ul").is_some_and(|ul| {
+                    let tag = &html[ul..ul + html[ul..].find('>').expect(html)];
+                    tag.contains(r#"role="listbox""#) && !before[ul..].contains("</ul>")
+                })
+            })
+    }
+
     /// The classes of a tag, one per item.
     pub(crate) fn classes(tag: &str) -> Vec<&str> {
         let Some(at) = tag.find("class=\"") else {
@@ -395,5 +414,11 @@ mod tests {
         assert_eq!(encode_component("sn56.11"), "sn56.11");
         assert_eq!(encode_component("dn1 a/b"), "dn1%20a%2Fb");
         assert_eq!(encode_component("ā"), "%C4%81");
+        // A uid outside ASCII, every byte of its UTF-8 encoded (006 review R4).
+        assert_eq!(
+            encode_component("pli-tv-bu-vb-pj1·ñ"),
+            "pli-tv-bu-vb-pj1%C2%B7%C3%B1"
+        );
+        assert_eq!(encode_component("thag1.1 ṃ"), "thag1.1%20%E1%B9%83");
     }
 }
