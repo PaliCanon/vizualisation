@@ -22,14 +22,14 @@ use std::sync::Arc;
 use leptos::prelude::*;
 use leptos_i18n::td_string;
 use leptos_router::NavigateOptions;
-use leptos_router::hooks::{use_location, use_navigate};
+use leptos_router::hooks::{use_location, use_matched, use_navigate};
 use leptos_router::location::State;
 use palicanon_ui_lib::{Language, language_signal, theme_signal};
 
 use crate::catalogue::strings;
-use crate::components::not_found::NotFoundPage;
-use crate::head::PageHead;
-use crate::map::address::{address, trail_at, trail_state, view_address};
+use crate::components::not_found::NotFoundBody;
+use crate::fragment::{HeadFn, MapHead, Provided};
+use crate::map::address::{address, trail_at, trail_state, under, view_address};
 use crate::map::cookies;
 use crate::map::draw::Scene;
 use crate::map::engine_view::{EngineInput, EngineView, Hover as Pointed, LinksAt, take_links};
@@ -49,7 +49,7 @@ use crate::map::ui::{
     Hover, Legend, MapScreen, SearchBox, SimControls, TextItem, TextPanel, Texts, TextsMenu,
     Tooltip,
 };
-use crate::route::{Route, View};
+use crate::route::{View, map_address};
 
 /// A view's data in the browser: its graph, and a vectorial view's similarity pairs.
 #[derive(Clone, Debug)]
@@ -85,13 +85,13 @@ fn other_arc<T>(a: Option<&Option<Arc<T>>>, b: Option<&Option<Arc<T>>>) -> bool 
     }
 }
 
-/// The map's address: the view and the text the path names (the parallels, nothing, on a
-/// path that is not the map's).
-fn map_route(path: &str) -> (View, Option<String>) {
-    match Route::parse(path) {
-        Some(Route::Map { view, uid }) => (view, uid),
-        _ => (View::Parallels, None),
-    }
+/// The map's address in `path`, the map being mounted at `base` (what its route matched:
+/// empty at the site's root, `/map` in the app): the view and the text the rest of the path
+/// names (`crate::route::map_address`), `None` for the 404. A parent route does not see its
+/// children's params (`leptos_router` hands them down only), so the map reads the path past
+/// its own match, against the very patterns of its child routes.
+pub(crate) fn relative_address(path: &str, base: &str) -> Option<(View, Option<String>)> {
+    map_address(path.strip_prefix(base.trim_end_matches('/'))?)
 }
 
 /// Whether Escape (`key`) closes the open text: no field has the focus (`typing`), a text is
@@ -127,23 +127,48 @@ pub(crate) fn in_no_view(has: impl Fn(View) -> Option<bool>) -> bool {
     has(View::Parallels) == Some(false) && has(View::Sim) == Some(false)
 }
 
-/// The map at every map address: the 404 when the server found the address's text in no
-/// view (and the reader is still there), else the map screen.
+/// The map at every map address, the view of `fragment::MapRoutes`' parent route: the 404
+/// when the address names no text (`/MN10`), or one the server found in no view (and the
+/// reader is still there), else the map screen.
 #[component]
 pub(crate) fn LiveMap() -> impl IntoView {
     let first = use_context::<Arc<FirstRender>>().unwrap_or_default();
+    let head = Provided::expect().head;
     let location = use_location();
+    let base = use_matched().get_untracked();
+    let address = {
+        let base = base.clone();
+        Memo::new(move |_| location.pathname.with(|path| relative_address(path, &base)))
+    };
     let not_found = {
         let first = Arc::clone(&first);
         Memo::new(move |_| {
-            matches!(first.open, FirstOpen::NotFound) && location.pathname.get() == first.path
+            address.with(Option::is_none)
+                || matches!(first.open, FirstOpen::NotFound)
+                    && location.pathname.get() == first.path
         })
     };
     move || {
         if not_found.get() {
-            view! { <NotFoundPage /> }.into_any()
+            view! { <MapNotFound head=Arc::clone(&head) base=base.clone() /> }.into_any()
         } else {
-            view! { <MapView first=Arc::clone(&first) /> }.into_any()
+            view! { <MapView first=Arc::clone(&first) head=Arc::clone(&head) at=address base=base.clone() /> }
+            .into_any()
+        }
+    }
+}
+
+/// The map's 404: the host's head for it, and the not-found page whose links go to the
+/// map's own address (`base`).
+#[component]
+fn MapNotFound(head: HeadFn, base: String) -> impl IntoView {
+    let t = strings();
+    let home = under(&base, "/");
+    move || {
+        let locale = t.locale();
+        view! {
+            {head(MapHead::NotFound)}
+            <NotFoundBody locale=locale home=home.clone() />
         }
     }
 }
@@ -179,15 +204,26 @@ fn prefers_light() -> bool {
     clippy::too_many_lines,
     reason = "App.tsx's state, one signal after the other"
 )]
-fn MapView(first: Arc<FirstRender>) -> impl IntoView {
+fn MapView(
+    /// The server's decisions (empty in the browser alone).
+    first: Arc<FirstRender>,
+    /// The host's head renderer.
+    head: HeadFn,
+    /// The map's address, `None` for the 404 (`LiveMap` shows it instead).
+    at: Memo<Option<(View, Option<String>)>>,
+    /// Where the map is mounted: every history entry it writes is under it.
+    base: String,
+) -> impl IntoView {
     let t = strings();
     let language = language_signal();
     let theme_choice = theme_signal();
     let location = use_location();
     let navigate = use_navigate();
+    let head_of = head;
+    let base_404 = base.clone();
 
     // ---------- The address ----------
-    let route = Memo::new(move |_| map_route(&location.pathname.get()));
+    let route = Memo::new(move |_| at.get().unwrap_or((View::Parallels, None)));
     let view = Memo::new(move |_| route.with(|r| r.0));
     let uid = Memo::new(move |_| route.with(|r| r.1.clone()));
     let th_query = Memo::new(move |_| location.query.with(|q| q.get("th")));
@@ -207,7 +243,7 @@ fn MapView(first: Arc<FirstRender>) -> impl IntoView {
     });
     let go = Callback::new(move |(path, next, replace): (String, Vec<String>, bool)| {
         navigate(
-            &path,
+            &under(&base, &path),
             NavigateOptions {
                 resolve: false,
                 replace,
@@ -532,7 +568,7 @@ fn MapView(first: Arc<FirstRender>) -> impl IntoView {
 
     #[cfg(all(feature = "browser", target_arch = "wasm32"))]
     browser::start(&browser::Wiring {
-        manifest: Arc::new(first.manifest.clone()),
+        source: Provided::expect().data,
         view,
         uid,
         th_query,
@@ -719,10 +755,15 @@ fn MapView(first: Arc<FirstRender>) -> impl IntoView {
     view! {
         {move || {
             if missing.get() {
-                return view! { <NotFoundPage /> }.into_any();
+                return view! { <MapNotFound head=Arc::clone(&head_of) base=base_404.clone() /> }
+                    .into_any();
             }
             let (title, description, path) = head.get();
-            view! { <PageHead title=title description=description path=path /> }.into_any()
+            head_of(MapHead::Page {
+                title,
+                description,
+                path,
+            })
         }}
         <div class="contents" hidden=move || missing.get()>
             <h1 class="sr-only">{move || view.get().label(t.locale())}</h1>
@@ -851,7 +892,7 @@ mod browser {
     use wasm_bindgen::JsCast;
 
     use super::{Summaries, ViewData, escape_closes_text, threshold_settles};
-    use crate::manifest::Manifest;
+    use crate::fragment::MapData;
     use crate::map::address::{address, threshold};
     use crate::map::engine_view::{Hover as Pointed, is_typing};
     use crate::map::fetch;
@@ -870,7 +911,7 @@ mod browser {
 
     /// The signals the browser's part reads and writes.
     pub(super) struct Wiring {
-        pub manifest: Arc<Manifest>,
+        pub source: Arc<dyn MapData>,
         pub view: Memo<View>,
         pub uid: Memo<Option<String>>,
         pub th_query: Memo<Option<String>>,
@@ -916,8 +957,8 @@ mod browser {
             ..
         } = *w;
         let pairs = StoredValue::new(None::<Arc<Pairs>>);
-        let manifest = Arc::clone(&w.manifest);
-        let load = move |v: View| load_view(Arc::clone(&manifest), views, views_in, pairs, v);
+        let source = Arc::clone(&w.source);
+        let load = move |v: View| load_view(Arc::clone(&source), views, views_in, pairs, v);
         // A view's data on screen: its link types all shown, its threshold the address's or
         // its default (App.tsx lines 182–191).
         let install = move |loaded: ViewData| {
@@ -958,7 +999,7 @@ mod browser {
     /// The data of view `v`: kept, else fetched and kept; the pairs fetched once for every
     /// vectorial view.
     async fn load_view(
-        manifest: Arc<Manifest>,
+        source: Arc<dyn MapData>,
         views: StoredValue<HashMap<View, ViewData>>,
         views_in: RwSignal<usize>,
         pairs: StoredValue<Option<Arc<Pairs>>>,
@@ -967,12 +1008,12 @@ mod browser {
         if let Some(cached) = views.with_value(|views| views.get(&v).cloned()) {
             return Some(cached);
         }
-        let graph = fetch::graph(&manifest, graph_file(v)).await?;
+        let graph = fetch::graph(Arc::clone(&source), graph_file(v)).await?;
         let view_pairs = if let Some(sim) = &graph.sim {
             if let Some(kept) = pairs.get_value() {
                 Some(kept)
             } else {
-                let fetched = fetch::pairs(&manifest, &sim.url).await?;
+                let fetched = fetch::pairs(source, fetch::pairs_name(&sim.url)?).await?;
                 pairs.set_value(Some(Arc::clone(&fetched)));
                 Some(fetched)
             }
@@ -1000,20 +1041,20 @@ mod browser {
             failed,
             ..
         } = *w;
-        let manifest = Arc::clone(&w.manifest);
+        let source = Arc::clone(&w.source);
         {
-            let manifest = Arc::clone(&manifest);
+            let source = Arc::clone(&source);
             spawn_local(async move {
-                match fetch::translations(&manifest).await {
+                match fetch::translations(source).await {
                     Some(tr) => translations.set(Some(tr)),
                     // Without the titles nothing can be shown or searched: said over the map.
                     None => failed.set(true),
                 }
             });
         }
-        let kept = StoredValue::new(Vec::<(&'static str, Arc<Blurbs>)>::new());
-        let blurbs = move |code: &'static str| {
-            let manifest = Arc::clone(&manifest);
+        let kept = StoredValue::new(Vec::<(Language, Arc<Blurbs>)>::new());
+        let blurbs = move |code: Language| {
+            let source = Arc::clone(&source);
             async move {
                 let cached = kept.with_value(|kept| {
                     kept.iter()
@@ -1023,7 +1064,7 @@ mod browser {
                 if let Some(cached) = cached {
                     return cached;
                 }
-                let fetched = fetch::blurbs(&manifest, code).await;
+                let fetched = fetch::blurbs(source, code).await;
                 kept.update_value(|kept| kept.push((code, Arc::clone(&fetched))));
                 fetched
             }
@@ -1032,11 +1073,11 @@ mod browser {
             let language = gloss.get();
             let blurbs = blurbs.clone();
             spawn_local(async move {
-                let en = blurbs("en").await;
+                let en = blurbs(Language::En).await;
                 let lang = if language == Language::En {
                     Arc::clone(&en)
                 } else {
-                    blurbs(language.code()).await
+                    blurbs(language).await
                 };
                 if gloss.get_untracked() == language {
                     summaries.set(Some(Summaries { language, lang, en }));
@@ -1148,6 +1189,48 @@ mod tests {
     use super::*;
 
     /// 006 review: Escape closed the text and, unstopped, also folded the shell's rail.
+    /// Task 012: the map reads its address past where it is mounted, by its routes' own
+    /// patterns: the same rule at the root and under the app's `/map`.
+    #[test]
+    fn the_address_is_read_past_the_maps_base() {
+        let mn10 = Some("mn10".to_owned());
+        for base in ["", "/"] {
+            assert_eq!(
+                relative_address("/", base),
+                Some((View::Parallels, None)),
+                "{base:?}"
+            );
+            assert_eq!(
+                relative_address("/sim/mn10", base),
+                Some((View::Sim, mn10.clone()))
+            );
+            assert_eq!(relative_address("/MN10", base), None);
+        }
+        assert_eq!(
+            relative_address("/map", "/map"),
+            Some((View::Parallels, None))
+        );
+        assert_eq!(
+            relative_address("/map/", "/map"),
+            Some((View::Parallels, None))
+        );
+        assert_eq!(
+            relative_address("/map/mn10", "/map"),
+            Some((View::Parallels, mn10.clone()))
+        );
+        assert_eq!(
+            relative_address("/map/sim", "/map"),
+            Some((View::Sim, None))
+        );
+        assert_eq!(
+            relative_address("/map/sim/mn10", "/map"),
+            Some((View::Sim, mn10))
+        );
+        for path in ["/map/MN10", "/map/sim/a/b", "/map/pca/mn10", "/other"] {
+            assert_eq!(relative_address(path, "/map"), None, "{path}");
+        }
+    }
+
     #[test]
     fn escape_closes_an_open_text_only() {
         assert!(escape_closes_text("Escape", false, true, false));

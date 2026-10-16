@@ -77,35 +77,12 @@ pub(crate) enum Route {
 impl Route {
     /// The route at `path` (no query, no fragment), `None` for a 404.
     pub(crate) fn parse(path: &str) -> Option<Self> {
-        let rest = path.strip_prefix('/')?;
-        if rest.is_empty() {
-            return Some(Self::Map {
-                view: View::Parallels,
-                uid: None,
-            });
-        }
+        path.strip_prefix('/')?;
         if let Some(kind) = PageKind::ALL.into_iter().find(|kind| kind.path() == path) {
             return Some(Self::Page(kind));
         }
-        let mut segments = rest.split('/');
-        let first = segments.next()?;
-        let second = segments.next();
-        if segments.next().is_some() {
-            return None;
-        }
-        let (view, uid) = match (View::from_segment(first), second) {
-            (Some(view), None) => (view, None),
-            (Some(view), Some(uid)) => (view, Some(uid)),
-            (None, None) => (View::Parallels, Some(first)),
-            (None, Some(_)) => return None,
-        };
-        if uid.is_some_and(|uid| !is_uid(uid)) {
-            return None;
-        }
-        Some(Self::Map {
-            view,
-            uid: uid.map(str::to_owned),
-        })
+        let (view, uid) = map_address(path)?;
+        Some(Self::Map { view, uid })
     }
 
     /// The route's path, the one [`Route::parse`] reads back.
@@ -120,6 +97,33 @@ impl Route {
             },
         }
     }
+}
+
+/// The map's address in `rest`, the path past where the map is mounted (the map's routes,
+/// `crate::fragment::MapRoutes`): the empty path or `/` the parallels, `/<uid>` a text there, `/sim`
+/// the vectorial space, `/sim/<uid>` a text there; `None` for anything else (`/MN10`, a
+/// third segment, a removed view's `/pca/mn10`): the map's 404. The same rule at the root
+/// and under the app's `/map`; a footer page's path is not the map's to decide.
+pub(crate) fn map_address(rest: &str) -> Option<(View, Option<String>)> {
+    if rest.is_empty() || rest == "/" {
+        return Some((View::Parallels, None));
+    }
+    let mut segments = rest.strip_prefix('/')?.split('/');
+    let first = segments.next()?;
+    let second = segments.next();
+    if segments.next().is_some() {
+        return None;
+    }
+    let (view, uid) = match (View::from_segment(first), second) {
+        (Some(view), None) => (view, None),
+        (Some(view), Some(uid)) => (view, Some(uid)),
+        (None, None) => (View::Parallels, Some(first)),
+        (None, Some(_)) => return None,
+    };
+    if uid.is_some_and(|uid| !is_uid(uid)) {
+        return None;
+    }
+    Some((view, uid.map(str::to_owned)))
 }
 
 /// Whether `segment` can be a SuttaCentral uid: not empty, lower-case

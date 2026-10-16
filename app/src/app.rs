@@ -21,9 +21,10 @@ use palicanon_ui_lib::{
 use crate::catalogue::strings;
 use crate::components::not_found::NotFoundPage;
 use crate::components::site_footer::SiteFooter;
-use crate::head::SiteHead;
+use crate::fragment::{MapProvider, MapRoutes};
+use crate::head::{SiteHead, site_map_head};
 use crate::map::first::FirstRender;
-use crate::map::live::LiveMap;
+use crate::map::site_data::SiteData;
 use crate::pages::FooterPage;
 use crate::route;
 
@@ -84,19 +85,28 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
 /// for this address (`map::first::FirstRender`: the data files' URLs, the text it
 /// opens or its 404, the translators), made on the server from the data and
 /// read back by the browser from the page (a `SharedValue`, created first
-/// so the browser finds it at the same place).
+/// so the browser finds it at the same place). The map is the Map fragment
+/// (task 012), given the site's data (the manifest's URLs) and head.
 #[component]
 pub fn App() -> impl IntoView {
     provide_language();
     provide_meta_context();
     let first = SharedValue::new(first_render).into_inner();
+    let data = site_data(&first);
     provide_context(std::sync::Arc::new(first));
     view! {
         <SiteHead />
         <Router>
-            <Layout />
+            <MapProvider data=data head=site_map_head>
+                <Layout />
+            </MapProvider>
         </Router>
     }
+}
+
+/// The site's data source for the map: the files at the URLs of `first`'s manifest.
+fn site_data(first: &FirstRender) -> std::sync::Arc<dyn crate::fragment::MapData> {
+    std::sync::Arc::new(SiteData::new(first.manifest.clone()))
 }
 
 /// The server's decisions for the request being rendered; nothing in the
@@ -159,24 +169,16 @@ fn nav(current: Signal<String>) -> NavList {
 }
 
 /// The shell around the pages: `AppShell`'s rail, theme and languages, the
-/// routes, the footer under each. The router knows every path pattern of
-/// `crate::route` (so the server answers them, and the rest falls to the
-/// 404 with its status); what each one shows is [`RoutedPage`]'s. The
-/// pages come before `/:uid`, the views before `/:uid` too, so a page or a
-/// view is never read as a text.
-///
-/// The map is outside the routes: one [`LiveMap`] for every map address,
-/// kept while the reader moves between views and texts (the engine and the
-/// data with it), mounted on the first map address and dropped on a page.
+/// routes, the footer under each. The footer pages come first, then the Map
+/// fragment's routes at the root (`MapRoutes`: `/`, `/sim`, `/sim/:uid`,
+/// `/:uid`; routes match in the order given, so a page is never read as a
+/// text); the rest falls to the 404 with its status. The map is one parent
+/// route, kept while the reader moves between views and texts (the engine
+/// and the data with it), mounted on the first map address and dropped on a
+/// page.
 #[component]
 fn Layout() -> impl IntoView {
     let location = use_location();
-    let on_map = Memo::new(move |_| {
-        matches!(
-            route::Route::parse(&location.pathname.get()),
-            Some(route::Route::Map { .. })
-        )
-    });
     let current = Signal::derive(move || location.pathname.with(|path| rail_current(path)));
     view! {
         <AppShell nav=nav(current) footer=|| view! { <SiteFooter /> }>
@@ -186,26 +188,19 @@ fn Layout() -> impl IntoView {
                 <Route path=path!("/privacy") view=RoutedPage />
                 <Route path=path!("/legal") view=RoutedPage />
                 <Route path=path!("/support") view=RoutedPage />
-                <Route path=path!("/") view=RoutedPage />
-                <Route path=path!("/sim") view=RoutedPage />
-                <Route path=path!("/sim/:uid") view=RoutedPage />
-                <Route path=path!("/:uid") view=RoutedPage />
+                <MapRoutes />
             </Routes>
-            {move || on_map.get().then(|| view! { <LiveMap /> })}
         </AppShell>
     }
 }
 
-/// What the current path shows, as [`route::Route::parse`] reads it: a
-/// footer page, nothing for a map address ([`Layout`] holds the map), or the
-/// 404 for a path the router matched but the table refuses (`/MN10`).
+/// The footer page at the current path, as [`route::Route::parse`] reads it.
 #[component]
 fn RoutedPage() -> impl IntoView {
     let location = use_location();
     move || match route::Route::parse(&location.pathname.get()) {
         Some(route::Route::Page(kind)) => view! { <FooterPage kind=kind /> }.into_any(),
-        Some(route::Route::Map { .. }) => ().into_any(),
-        None => view! { <NotFoundPage /> }.into_any(),
+        _ => view! { <NotFoundPage /> }.into_any(),
     }
 }
 
@@ -274,10 +269,14 @@ mod tests {
             provide_meta_context();
             provide_context(RequestUrl::new(path));
             provide_request(path, None);
-            provide_context(std::sync::Arc::new(first_render()));
+            let first = first_render();
+            let data = site_data(&first);
+            provide_context(std::sync::Arc::new(first));
             view! {
                 <Router>
-                    <Layout />
+                    <MapProvider data=data head=site_map_head>
+                        <Layout />
+                    </MapProvider>
                 </Router>
             }
             .to_html()

@@ -47,6 +47,9 @@ wasm-bindgen = { version = "0.2", optional = true }
 # bytes.
 wasm-bindgen-futures = { version = "0.4", optional = true }
 js-sys = { version = "0.3", optional = true }
+# The site's `MapData` (`map/site_data.rs`) hands its fetch, not `Send` in a browser, behind
+# the trait's `Send` future (already in the tree through leptos, with `futures`).
+send_wrapper = { version = "0.6", features = ["futures"], optional = true }
 
 # `EngineView` (map/engine_view.rs) in the browser: the map engine (wgpu, task 004) and the
 # DOM it is driven through (the canvas, pointer, wheel and key events, ResizeObserver,
@@ -109,6 +112,7 @@ tower = { version = "0.5", features = ["util"] }
 # data loads, history, colour scheme and listeners, the folded sections' storage, the search
 # shortcut —, shared by the two client modes. Never gate it on `hydrate`.
 browser = [
+  "dep:send_wrapper",
   "dep:wasm-bindgen",
   "dep:wasm-bindgen-futures",
   "dep:js-sys",

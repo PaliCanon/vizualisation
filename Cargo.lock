@@ -3003,6 +3003,7 @@ dependencies = [
  "map-engine",
  "map-formats",
  "palicanon-ui-lib",
+ "send_wrapper",
  "serde",
  "serde_json",
  "subtle",

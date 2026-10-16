@@ -17,7 +17,8 @@
 //! - `cookies`: `viz_legend` and `viz_textlang`, read by the server, written by the browser.
 //! - `first`: what the server decides for an address (its panel, its 404) and hands to the
 //!   browser in the page.
-//! - `fetch`: the data files, fetched by the browser at their hashed URLs.
+//! - `fetch`: the data files, read by the browser through the host's `MapData` and parsed.
+//! - `site_data`: the site's `MapData`, the files at the manifest's hashed URLs.
 //! - `live`: `LiveMap`, the state of the map screen as signals, `EngineView` and the UI
 //!   around it.
 
@@ -26,13 +27,14 @@ pub(crate) mod cookies;
 pub mod draw;
 pub mod engine_view;
 #[cfg(all(feature = "browser", target_arch = "wasm32"))]
-mod fetch;
+pub(crate) mod fetch;
 pub(crate) mod first;
 pub mod legend;
 pub(crate) mod live;
 pub mod model;
 pub mod open_text;
 pub mod search;
+pub(crate) mod site_data;
 pub mod texts_lang;
 pub mod theme;
 pub mod ui;

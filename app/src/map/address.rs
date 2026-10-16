@@ -23,6 +23,22 @@ pub(crate) fn address(view: View, uid: Option<&str>, th: Option<&str>) -> String
     }
 }
 
+/// `path`, an address of the map relative to it (`address`'s: `/`, `/sim/mn10?th=0.62`),
+/// under `base`, where the map is mounted (what its route matched: empty at the site's root,
+/// `/map` in the app): `/sim/mn10?th=0.62` at the root, `/map/sim/mn10?th=0.62` in the app,
+/// and the map's own `/` is `/map` there. Every history entry and link the map writes goes
+/// through it.
+pub(crate) fn under(base: &str, path: &str) -> String {
+    let base = base.trim_end_matches('/');
+    if base.is_empty() {
+        path.to_owned()
+    } else if path == "/" {
+        base.to_owned()
+    } else {
+        format!("{base}{path}")
+    }
+}
+
 /// The threshold `?th=` gives `view` in the query `query` (the part after `?`): its value
 /// percent-decoded; `None` when the query has none, an empty one, one that is not a number,
 /// or when `view` is not a vectorial view (the parallels have no threshold). The server's: the
@@ -147,6 +163,21 @@ mod tests {
                 }),
                 "{path}"
             );
+        }
+    }
+
+    /// Task 012: the map at the site's root writes its addresses as they are; mounted under
+    /// the app's `/map`, every one of them is under it, its own `/` being `/map`.
+    #[test]
+    fn an_address_is_written_under_the_maps_base() {
+        for base in ["", "/"] {
+            assert_eq!(under(base, "/"), "/");
+            assert_eq!(under(base, "/sim/mn10?th=0.62"), "/sim/mn10?th=0.62");
+        }
+        for base in ["/map", "/map/"] {
+            assert_eq!(under(base, "/"), "/map");
+            assert_eq!(under(base, "/mn10"), "/map/mn10");
+            assert_eq!(under(base, "/sim?th=0.62"), "/map/sim?th=0.62");
         }
     }
 
