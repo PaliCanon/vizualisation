@@ -1,6 +1,6 @@
 # 013 The Worker sets the request path on ORIGIN, never resolves it — no path picks the host the secret goes to
 
-status: review · rank: 8 · level: hard · type: bug · request: user, 2026-10-16 ("Oui, tâche urgente"), request thread docs/proxy-target discussion d51493764c4e14b · session: vizualisation-013-proxy-target · process: ../../docs/workflows/process-bug.mmd · after: [] · custody: the origin secret vizualisation-origin-secret-dev|prod: Secret Manager and the Worker secret ORIGIN_AUTH; the user rotates it (runbook), no agent reads or moves it
+status: gated (merged locally, not pushed; the deploy runbook with the user, owner: the user and the orchestrator, due 2026-10-16) · rank: 8 · level: hard · type: bug · request: user, 2026-10-16 ("Oui, tâche urgente"), request thread docs/proxy-target discussion d51493764c4e14b · session: vizualisation-013-proxy-target · process: ../../docs/workflows/process-bug.mmd · after: [] · custody: the origin secret vizualisation-origin-secret-dev|prod: Secret Manager and the Worker secret ORIGIN_AUTH; the user rotates it (runbook), no agent reads or moves it
 
 ## Workflow
 ```mermaid
@@ -20,10 +20,10 @@ flowchart LR
   REV["Review round 1 ✓ reviewer + deep"]:::done
   FIXR1["Fix round 1 ✓ T1, T3"]:::done
   LOOK["User check: runbook run, //example.com/ is 400"]:::todo
-  MERGE["Squash merge"]:::todo
+  MERGE["Squash merge ✓ 85fbf70 (local, not pushed)"]:::done
   RETRO["Retro"]:::todo
   ARCH["Archive"]:::todo
-  REQ --> REPRO --> RED --> FIX --> MUT --> FIX2 --> NONREG --> REV --> FIXR1 --> LOOK --> MERGE --> RETRO --> ARCH
+  REQ --> REPRO --> RED --> FIX --> MUT --> FIX2 --> NONREG --> REV --> FIXR1 --> MERGE --> LOOK --> RETRO --> ARCH
 ```
 
 ## Log
@@ -190,3 +190,4 @@ One reviewer (Opus) for the four branches; voice deep (#10964, #11001). Rulings 
 - ACCEPTED: Δ7 the source-reading test reads text, its regex widened (origin or env.ORIGIN).
 
 ## Merge
+85fbf70 on main (local squash, 2026-10-16; not pushed — the push waits for the user, after the deploy order). Merge gate (each CI's commands runnable on this Mac): Homebrew rustc 1.98: fmt, leptosfmt, cargo test ssr 324/0, csr 190/0, map 122/0, rustdoc, CI scripts 7/7, node 31/31, tofu fmt/init/validate — exit 0; its clippy 1.98 refuses float_cmp in 26 test assertions of files this task does not touch, a local-toolchain difference: CI parity under the rustup stable 1.99 toolchain with wasm32 (the one palicanon sessions use), all six clippy matrix entries (wasm32 included), the three rustdoc entries, msrv 1.88 check x3 and cargo deny — exit 0. Not run: the browser tests (no chromedriver), the release bundle, coverage.
