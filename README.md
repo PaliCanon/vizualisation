@@ -35,7 +35,7 @@ VIZ_GATE=off cargo leptos watch
 `DEV_PASSWORD`). A deployed build also requires `ORIGIN_SECRET` (the Worker's). A missing or blank
 variable stops the service at boot, naming the variable, never its value. **No `.env` file.**
 
-The app depends on `palicanon-ui-lib` by git tag (`v0.1.2`), with the workspace's `[patch]` to
+The app depends on `palicanon-ui-lib` by git tag (`v0.3.0`), with the workspace's `[patch]` to
 `../ui-lib` (a worktree reaches it through the `wt/ui-lib` symlink).
 
 The React site, until 008:

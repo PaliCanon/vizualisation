@@ -3,7 +3,7 @@
 //! texts' language. The chip shows the current choice; arrows move, Enter or Space picks,
 //! Escape or a click outside closes (ui-lib's `Popover`).
 //!
-//! Built here, not taken from ui-lib v0.1.2: its `Menu` has no hint line under a
+//! Built here, not taken from ui-lib v0.3.0: its `Menu` has no hint line under a
 //! `MenuItem::Choice`, and its labels are `&'static str` (a ui-lib follow-up: a choice with a
 //! hint, and a chip trigger showing the current value).
 

@@ -292,7 +292,7 @@ fn TypeItem(row: TypeRow, type_on: Signal<Vec<bool>>, on_type: Callback<usize>) 
     }
 }
 
-/// An open eye (the React page's `EyeIcon`, not in ui-lib v0.1.2).
+/// An open eye (the React page's `EyeIcon`, not in ui-lib v0.3.0).
 #[component]
 fn EyeIcon() -> impl IntoView {
     view! {
