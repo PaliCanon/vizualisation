@@ -1,5 +1,14 @@
 // map.palicanon.app / map.dev.palicanon.app → vizualisation on Cloud Run.
 //
+// Task 013 (urgent, user 2026-10-16): the target. `new URL(pathname + search,
+// ORIGIN)` resolved the path, and a path starting `//` (or `/\`, which the URL
+// parser reads as `//`) is a scheme-relative reference: the fetch went to the
+// host the path named, carrying the secret (anatta-sso review 066, delta 1,
+// confirmed by a run in anatta, message 10754). The path is now SET on
+// ORIGIN, never resolved, and a path that would leave ORIGIN's host is a 400,
+// never fetched — anatta-console 068's and anatta-sso 066's target code, line
+// for line.
+//
 // From search-front/infra/worker/proxy.js; the code is unchanged, only this
 // comment names the hosts. The dev password (HTTP Basic, the service's
 // gate) is relayed like any header, and so is the 401 that asks for it: the
@@ -32,6 +41,23 @@ function misconfigured(what) {
     status: 500,
     headers: { "content-type": "text/plain", "cache-control": "no-store" },
   });
+}
+
+/** A 400 for a path that would leave ORIGIN's host: never fetched, never cached. */
+function strayPath() {
+  return new Response("This path is not relayed.", {
+    status: 400,
+    headers: { "content-type": "text/plain", "cache-control": "no-store" },
+  });
+}
+
+/** Whether `path`, read as a reference against `origin`, lands on another host or on none. */
+function leavesOrigin(path, origin) {
+  try {
+    return new URL(path, origin).origin !== origin;
+  } catch {
+    return true;
+  }
 }
 
 /** The origin of the binding `value`, or `null` when it is missing or not an https URL (the secret never travels in clear). */
@@ -67,16 +93,30 @@ export default {
     const publicOrigin = originOf(env.PUBLIC_ORIGIN);
     if (publicOrigin === null) return misconfigured("public origin");
     const incoming = new URL(request.url);
-    const target = new URL(incoming.pathname + incoming.search, origin);
+    // Defence in depth: the target below cannot change host, and a path that
+    // would, were it resolved, is refused rather than relayed somewhere odd.
+    if (leavesOrigin(incoming.pathname + incoming.search, origin)) return strayPath();
+    // The path is SET on ORIGIN, never resolved against it: a `//host` path
+    // stays a path, so no request can choose where the secret goes.
+    const target = new URL(origin);
+    target.pathname = incoming.pathname;
+    target.search = incoming.search;
     const headers = new Headers(request.headers);
     headers.delete("host");
     headers.set("x-forwarded-host", incoming.host);
     // `set` replaces any value the client sent.
     headers.set("x-origin-auth", secret);
+    const dropsBody = ["GET", "HEAD"].includes(request.method);
+    if (dropsBody) {
+      // A length header kept on a request relayed with no body makes the
+      // origin wait for bytes that never come (anatta review 066, #10900).
+      headers.delete("content-length");
+      headers.delete("transfer-encoding");
+    }
     const response = await fetch(target, {
       method: request.method,
       headers,
-      body: ["GET", "HEAD"].includes(request.method) ? undefined : request.body,
+      body: dropsBody ? undefined : request.body,
       redirect: "manual",
     });
     const location = response.headers.get("location");
