@@ -111,7 +111,7 @@ Nothing here has been applied yet (task 005 wrote it, did not run it).
 
    ```sh
    gcloud auth application-default login
-   export CLOUDFLARE_API_TOKEN=$(security find-generic-password -a lsh -s cloudflare-api-token -w)
+   export CLOUDFLARE_API_TOKEN=$(security find-generic-password -a lsh -s cloudflare-api-token-palicanon -w)
    cd infra
    tofu init -migrate-state      # answer yes: copies the state to the new prefix
    tofu plan                     # Pages: no change; the rest: to add
