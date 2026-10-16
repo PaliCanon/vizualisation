@@ -1,5 +1,5 @@
 //! The axum router (design v4, the server's layers): the origin guard
-//! outermost, on every path; `/healthz` behind it alone; then the password
+//! outermost, on every path; `/health` behind it alone; then the password
 //! gate around the pages and the files (the site's files answered first, the
 //! app for every other path). The signature takes the boot
 //! [`Config`], so `main` cannot forget a layer.
@@ -27,13 +27,17 @@ use crate::{gate, origin};
 /// it for good.
 const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 
+/// The health probe's path. Not `/healthz`: Cloud Run reserves the paths
+/// ending in `z` and answers them itself.
+pub const HEALTH_PATH: &str = "/health";
+
 /// The short commit this build came from (`build.rs`).
 const BUILD_SHA: &str = env!("VIZUALISATION_GIT_SHA");
 
 /// The health probe: behind the origin guard only, so the rollout check
 /// reaches it through the Worker without the dev password. Public data only:
 /// the build's commit and what each data file was built from.
-async fn healthz(axum::extract::State(data): axum::extract::State<Arc<Data>>) -> String {
+async fn health(axum::extract::State(data): axum::extract::State<Arc<Data>>) -> String {
     let mut lines = vec![format!("ok {BUILD_SHA}")];
     lines.extend(data.stamp_lines());
     lines.join("\n") + "\n"
@@ -110,7 +114,10 @@ pub fn router(options: LeptosOptions, config: Config, data: Arc<Data>) -> axum::
             gate::guard,
         ));
     axum::Router::new()
-        .route("/healthz", get(healthz).with_state(data))
+        // `/health`, not `/healthz`: Cloud Run's front end keeps the paths ending in
+        // `z` (`/healthz`, `/livez`, `/readyz`) for itself and answers them with its
+        // own 404, so the container never sees them (005's first rollout, 2026-10-16).
+        .route(HEALTH_PATH, get(health).with_state(data))
         .merge(site)
         .layer(axum::middleware::from_fn_with_state(
             Arc::new(config.origin),
@@ -173,13 +180,18 @@ mod tests {
         (status, headers)
     }
 
+    #[test]
+    fn the_health_path_is_not_one_cloud_run_keeps() {
+        assert!(!HEALTH_PATH.ends_with('z'), "{HEALTH_PATH}");
+    }
+
     #[tokio::test]
     async fn the_layers_answer_in_the_designs_order() {
         // (path, with the origin header, with the password, status)
         let cases = [
-            ("/healthz", false, false, StatusCode::FORBIDDEN),
-            ("/healthz", false, true, StatusCode::FORBIDDEN),
-            ("/healthz", true, false, StatusCode::OK),
+            ("/health", false, false, StatusCode::FORBIDDEN),
+            ("/health", false, true, StatusCode::FORBIDDEN),
+            ("/health", true, false, StatusCode::OK),
             ("/", false, true, StatusCode::FORBIDDEN),
             ("/", true, false, StatusCode::UNAUTHORIZED),
             (
@@ -251,7 +263,7 @@ mod tests {
     async fn the_probe_names_the_build_and_the_data_stamps() {
         let response = dev()
             .oneshot(
-                Request::get("/healthz")
+                Request::get("/health")
                     .header(ORIGIN_HEADER, SECRET)
                     .body(Body::empty())
                     .unwrap(),

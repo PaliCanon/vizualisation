@@ -20,7 +20,7 @@ later, see "Order"):
 | Cloud Run service `vizualisation-<env>` | `gcp.tf` | min 0, max 2 (dev) / 3 (prod), 1 CPU, 512Mi, CPU only while a request is served, public at the Cloud Run layer. `VIZ_GATE` is a plain value (`password` on dev, `off` on prod; the boot refuses to start without it); `ORIGIN_SECRET` and, on dev, `DEV_PASSWORD` come from the secrets (`latest`, read when an instance starts). Startup probe: **TCP 8080** (see "R2"). |
 | A Worker relaying to Cloud Run | `cloudflare.tf`, `worker/proxy.js` | The Worker's `ORIGIN` is the Cloud Run URL and its `PUBLIC_ORIGIN` the host's own `https://` origin (both answer 500 when missing); it adds `x-origin-auth` from its secret `ORIGIN_AUTH` and answers 500 without it. The dev password (HTTP Basic) and the gate's 401 pass through it untouched. Tested with `node --test 'infra/worker/*.test.mjs'`. |
 | A Workers Custom Domain per host | `cloudflare.tf` | `map.dev.palicanon.app` (dev), `map.palicanon.app` (prod, added after task 008). Cloudflare creates the DNS record and the certificate. |
-| `scripts/origin-secret` | `scripts/` | `create`, `push`, `check` the origin secret; tested with stub `gcloud`/`curl` (`bash infra/scripts/origin-secret.test.sh`). `check` asks the host's `/healthz` (dev's `/` is behind the password). |
+| `scripts/origin-secret` | `scripts/` | `create`, `push`, `check` the origin secret; tested with stub `gcloud`/`curl` (`bash infra/scripts/origin-secret.test.sh`). `check` asks the host's `/health` (dev's `/` is behind the password). |
 | The Pages site of the React map | `pages.tf` | **Removed in task 008.** Unchanged from before task 005 (the project, its two custom domains, the two CNAME records); the first apply must show no change to it. `deploy.yml` no longer deploys to it: it keeps its last build. |
 
 CI owns the image: tofu ignores `image`, `scaling`, `client` and
@@ -38,7 +38,7 @@ belong to the site's infra, the API's infra and `platform`: only used here.
 
 **The origin rule.** The service answers **403 to any request without
 `x-origin-auth`** equal to its `ORIGIN_SECRET` (constant-time comparison),
-on every path, `/healthz` included, so the `*.run.app` URL is no way round
+on every path, `/health` included, so the `*.run.app` URL is no way round
 Cloudflare (its WAF, its per-IP limit): only the Worker holds the value. The
 same value lives in two places, set by `scripts/origin-secret`: Secret
 Manager (the service reads it) and the Worker's secret store (the Worker
@@ -46,7 +46,7 @@ sends it). Neither is in tofu state.
 
 **The dev password.** Behind the origin guard, dev asks every page and file
 for the password (HTTP Basic, any user name, `401` with `WWW-Authenticate`,
-never cached); `/healthz` is not behind it, so the rollout and
+never cached); `/health` is not behind it, so the rollout and
 `origin-secret check` reach it. Prod runs the same image with `VIZ_GATE=off`
 and asks nothing. It replaces the Pages function `functions/_middleware.js`
 and its Pages secret `DEV_PASSWORD` (both removed in task 008), with the same
@@ -186,7 +186,7 @@ the real image.
 - **R2, the TCP probe.** The service refuses a request without the origin
   header, a Cloud Run HTTP probe header is a plain string in the service
   resource, and the origin secret would then sit in the tofu state and in the
-  revision JSON. So the startup probe is TCP on 8080; `/healthz` is checked
+  revision JSON. So the startup probe is TCP on 8080; `/health` is checked
   in the rollout (`scripts/rollout-check.sh`) on the tagged revision, before
   traffic moves, with the header read from Secret Manager.
 - **R3, the deployer reads the origin secret** (and here the dev password):

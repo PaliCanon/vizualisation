@@ -139,7 +139,7 @@ EXPOSE 8080
 # image will run it, on a free local port, with VIZ_GATE=password and a
 # throwaway origin secret and dev password it makes itself (valid for this run
 # only, never the real ones), and asks it what the rollout will ask:
-# /healthz is 200 with the origin header and 403 without and says
+# /health is 200 with the origin header and 403 without and says
 # `ok <commit>` and each graph file's stamp, / is 401 without the password
 # and 200 with it, the .wasm it links is served; then it starts it as prod
 # runs it (VIZ_GATE=off, LEPTOS_ENV=PROD): / is 200 without the password and

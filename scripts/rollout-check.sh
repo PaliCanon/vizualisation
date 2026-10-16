@@ -3,7 +3,7 @@
 # tagged revision before it takes traffic, and on the public host after.
 #
 # From search-front/scripts/rollout-check.sh. What differs (design v4 of
-# task 005): the checks of this service — `/healthz` behind the origin guard
+# task 005): the checks of this service — `/health` behind the origin guard
 # only, the password gate of dev (`--password-file`), prod's absence of any
 # password prompt — in place of search-front's live search; no token-pattern
 # and no token check (this service holds no API token: nothing could put one
@@ -34,11 +34,11 @@
 # checked without the file fails (its 401), and a prod that asks for a
 # password fails.
 #
-# Checks, each named in the output: `healthz` (/healthz is 200 and says ok),
+# Checks, each named in the output: `health` (/health is 200 and says ok),
 # `gate` (as above), `root` (/ is 200 and names the page), `wasm` (the .wasm
 # the page links is served), `css` (the stylesheet the page links, by its
 # hashed name in a release build, is 200 and text/css), `guard` (direct mode: without the header, or
-# with a wrong one, / is 403; /healthz without it is 403), `refused`, and,
+# with a wrong one, / is 403; /health without it is 403), `refused`, and,
 # through the Worker only (Chrome cannot add the origin header), `hydrate`:
 # headless Chrome loads /, /sim/mn10 and /privacy (ui-lib 063: the page
 # hydrates past the nodes Cloudflare injects); a page passes when Chrome's
@@ -204,7 +204,7 @@ who=auth
 
 if [ "$mode" = refused ]; then
   for probe in anon wrong; do
-    for path in / /healthz; do
+    for path in / /health; do
       status="$(fetch "$path" "r-$probe" "$probe")"
       [ "$status" = 403 ] || { challenged "r-$probe"; fail refused "$path answered $status ($probe request; 403 wanted)"; }
       [ ! -s "$work/r-$probe.body" ] || fail refused "the 403 for $path has a body"
@@ -214,10 +214,10 @@ if [ "$mode" = refused ]; then
   exit 0
 fi
 
-status="$(fetch /healthz healthz "$who")"
-expect healthz healthz /healthz "$status" 200
-grep -aq '^ok' "$work/healthz.body" || fail healthz "/healthz does not say ok"
-echo "rollout-check: healthz ok"
+status="$(fetch /health health "$who")"
+expect health health /health "$status" 200
+grep -aq '^ok' "$work/health.body" || fail health "/health does not say ok"
+echo "rollout-check: health ok"
 
 if [ -n "$password_file" ]; then
   status="$(fetch / nopass "$who" nopass)"
@@ -229,7 +229,7 @@ status="$(fetch / root "$who")"
 expect root root / "$status" 200
 grep -aEq '<title>[^<]*Suttas Map' "$work/root.body" || fail root "/ does not name the page"
 if [ -z "$password_file" ]; then
-  for name in healthz root; do
+  for name in health root; do
     ! asks_password "$name" || fail gate "the $name response asks for a password (WWW-Authenticate): the gate is on"
   done
 fi
@@ -255,8 +255,8 @@ if [ "$mode" = direct ]; then
   [ "$status" = 403 ] || { challenged open; fail guard "/ without the header answered $status (403 wanted)"; }
   status="$(fetch / wrongone wrong)"
   [ "$status" = 403 ] || fail guard "/ with a wrong header answered $status (403 wanted)"
-  status="$(fetch /healthz healthz-open anon)"
-  [ "$status" = 403 ] || fail guard "/healthz without the header answered $status (403 wanted)"
+  status="$(fetch /health health-open anon)"
+  [ "$status" = 403 ] || fail guard "/health without the header answered $status (403 wanted)"
   echo "rollout-check: guard ok"
 fi
 

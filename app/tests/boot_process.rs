@@ -8,7 +8,7 @@
 //! variables (`VIZ_GATE`, `DEV_PASSWORD`, `ORIGIN_SECRET`; no API, so no
 //! mock and no token), the exit code pinned to 2 (the smoke test and the
 //! design rely on it), and the gate's answers (401 without the password,
-//! `/healthz` behind the origin guard only).
+//! `/health` behind the origin guard only).
 #![cfg(feature = "ssr")]
 
 use std::io::{Read, Write};
@@ -210,7 +210,7 @@ fn a_deployed_build_without_the_origin_secret_refuses_to_start() {
 }
 
 /// The requests dev is asked, in the layers' order: (path, header lines,
-/// status wanted). The origin guard first, `/healthz` behind it alone, then
+/// status wanted). The origin guard first, `/health` behind it alone, then
 /// the password.
 fn dev_cases() -> Vec<(&'static str, String, u16)> {
     let origin = format!("x-origin-auth: {ORIGIN_CANARY}\r\n");
@@ -224,8 +224,8 @@ fn dev_cases() -> Vec<(&'static str, String, u16)> {
         ("/", String::new(), 403),
         ("/", basic(PASSWORD_CANARY), 403),
         ("/", "x-origin-auth: nope\r\n".to_owned(), 403),
-        ("/healthz", String::new(), 403),
-        ("/healthz", origin.clone(), 200),
+        ("/health", String::new(), 403),
+        ("/health", origin.clone(), 200),
         ("/", origin.clone(), 401),
         ("/", format!("{origin}{}", basic("nope")), 401),
         ("/", format!("{origin}{}", basic(PASSWORD_CANARY)), 200),
