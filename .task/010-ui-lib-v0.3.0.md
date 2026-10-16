@@ -10,3 +10,6 @@ The app (PaliCanon/app, Tauri) mounts Learn, Search and the Map built on one ui-
 | Step | Result | Output |
 | --- | --- | --- |
 | Define | done | orchestrator, 2026-10-16 |
+| Build | done | 43c528c: app/Cargo.toml tag v0.3.0 (version "0.3"), Cargo.lock 0.3.0, the light canvas #fdf6e3 (ui-lib 0.2.0's cream page), points #c9952e kept; red first: the theme test expecting #fdf6e3 |
+| Verify (local, CI's matrix and layout: ui-lib checked out at v0.3.0 beside) | done | fmt 0, leptosfmt 0, clippy app ssr 0 / hydrate wasm32 0 / map host 0 / map wasm32 0, test app 0 / map 0, rustdoc app 0 / map host 0 / map wasm32 0, msrv 1.88 0, deny 0, coverage 0, bundle 0, smoke 0, site 0, scripts 0, tofu 0 (after a provider download reset: unexpected EOF, retried) |
+
