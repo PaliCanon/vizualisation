@@ -323,13 +323,10 @@ fn the_image_runs_in_production_mode_as_a_non_root_user() {
 
 /// The data files `app/src/data.rs` reads at boot (design v4: baked into the
 /// image, loaded at boot).
-const DATA_FILES: [&str; 9] = [
+const DATA_FILES: [&str; 6] = [
     "graph.json",
     "graph-sim.json",
     "graph-sim.bin",
-    "graph-sim-pca.json",
-    "graph-sim-umap.json",
-    "graph-sim-tsne.json",
     "translations.json",
     "blurbs-en.json",
     "blurbs-fr.json",

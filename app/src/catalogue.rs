@@ -80,10 +80,9 @@ mod tests {
 
     /// Keys whose French or Vietnamese value is, rightly, the English one:
     /// names ("Suttas Map", "SuttaCentral", the Pāli edition, "Anattā" and
-    /// the 404 title built from them, the t-SNE and UMAP test views), the
-    /// numeral "404", and words French spells the same ("Collections",
-    /// "Mention", "Site").
-    const SAME_AS_ENGLISH: [(&str, &str); 17] = [
+    /// the 404 title built from them), the numeral "404", and words French
+    /// spells the same ("Collections", "Mention", "Site").
+    const SAME_AS_ENGLISH: [(&str, &str); 15] = [
         ("fr", "brand"),
         ("fr", "credits_pali_edition"),
         ("fr", "footer_nav"),
@@ -93,8 +92,6 @@ mod tests {
         ("fr", "notfound_title"),
         ("fr", "types_mentions"),
         ("fr", "views_label_liens"),
-        ("fr", "views_label_tsne"),
-        ("fr", "views_label_umap"),
         ("vi", "brand"),
         ("vi", "credits_pali_edition"),
         ("vi", "head_notfound_title"),

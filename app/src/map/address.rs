@@ -136,7 +136,7 @@ mod tests {
             address(View::Sim, Some("sn56.11"), Some("0.62")),
             "/sim/sn56.11?th=0.62"
         );
-        assert_eq!(address(View::Tsne, Some("mn1"), Some("")), "/tsne/mn1");
+        assert_eq!(address(View::Sim, Some("mn1"), Some("")), "/sim/mn1");
         for view in View::ALL {
             let path = address(view, Some("dn1"), None);
             assert_eq!(
@@ -177,9 +177,9 @@ mod tests {
     fn th_is_decoded_and_only_a_vectorial_views() {
         let th = |query: &str, view: View| th_param(Some(query), view);
         assert_eq!(th("th=0.62", View::Sim).as_deref(), Some("0.62"));
-        assert_eq!(th("q=mn&th=0%2E62", View::Pca).as_deref(), Some("0.62"));
-        assert_eq!(th("th=%200.7", View::Umap).as_deref(), Some("0.7"));
-        assert_eq!(th("a=1&th=0.5&b=2", View::Tsne).as_deref(), Some("0.5"));
+        assert_eq!(th("q=mn&th=0%2E62", View::Sim).as_deref(), Some("0.62"));
+        assert_eq!(th("th=%200.7", View::Sim).as_deref(), Some("0.7"));
+        assert_eq!(th("a=1&th=0.5&b=2", View::Sim).as_deref(), Some("0.5"));
         for garbage in [
             "th=", "th=abc", "th=%zz", "th=NaN", "th=inf", "th=%FF", "x=0.6", "",
         ] {
@@ -244,6 +244,6 @@ mod tests {
         // App.tsx:507-509 `url.set("map", v); url.delete("th"); …${location.hash}`
         assert_eq!(view_address(View::Sim, Some("mn10")), "/sim/mn10");
         assert_eq!(view_address(View::Parallels, None), "/");
-        assert_eq!(view_address(View::Umap, None), "/umap");
+        assert_eq!(view_address(View::Sim, None), "/sim");
     }
 }

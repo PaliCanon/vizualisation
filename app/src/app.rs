@@ -188,13 +188,7 @@ fn Layout() -> impl IntoView {
                 <Route path=path!("/support") view=RoutedPage />
                 <Route path=path!("/") view=RoutedPage />
                 <Route path=path!("/sim") view=RoutedPage />
-                <Route path=path!("/pca") view=RoutedPage />
-                <Route path=path!("/umap") view=RoutedPage />
-                <Route path=path!("/tsne") view=RoutedPage />
                 <Route path=path!("/sim/:uid") view=RoutedPage />
-                <Route path=path!("/pca/:uid") view=RoutedPage />
-                <Route path=path!("/umap/:uid") view=RoutedPage />
-                <Route path=path!("/tsne/:uid") view=RoutedPage />
                 <Route path=path!("/:uid") view=RoutedPage />
             </Routes>
             {move || on_map.get().then(|| view! { <LiveMap /> })}
@@ -315,20 +309,11 @@ mod tests {
 
     /// The views' path prefixes and their names in en, fr, vi.
     #[cfg(feature = "ssr")]
-    const VIEW_TITLES: [(&str, [&str; 3]); 5] = [
+    const VIEW_TITLES: [(&str, [&str; 3]); 2] = [
         ("", ["SuttaCentral", "SuttaCentral", "SuttaCentral"]),
         (
             "/sim",
             ["Vectorial space", "Espace vectoriel", "Không gian vectơ"],
-        ),
-        ("/pca", ["Test · PCA 3D", "Test · ACP 3D", "Thử · PCA 3D"]),
-        (
-            "/umap",
-            ["Test · UMAP 3D", "Test · UMAP 3D", "Thử · UMAP 3D"],
-        ),
-        (
-            "/tsne",
-            ["Test · t-SNE 3D", "Test · t-SNE 3D", "Thử · t-SNE 3D"],
         ),
     ];
 
@@ -348,7 +333,7 @@ mod tests {
             routes.push((bare.to_owned(), titles, None));
             routes.push((format!("{prefix}/mn10"), titles, Some("mn10")));
         }
-        assert_eq!(routes.len(), 15, "5 pages, 5 views with and without a uid");
+        assert_eq!(routes.len(), 9, "5 pages, 2 views with and without a uid");
         for (path, titles, uid) in routes {
             for (language, title) in Language::ALL.into_iter().zip(titles) {
                 let html = render_layout(language, &path);
@@ -522,7 +507,15 @@ mod tests {
     #[test]
     fn the_404_is_noindex() {
         let noindex = r#"<meta name="robots" content="noindex">"#;
-        for path in ["/nope/x/y", "/sim/a/b", "/zz999", "/sim/zz999"] {
+        for path in [
+            "/nope/x/y",
+            "/sim/a/b",
+            "/zz999",
+            "/sim/zz999",
+            "/pca",
+            "/umap/mn10",
+            "/tsne",
+        ] {
             let html = render_document(path);
             let head = &html[..html.find("</head>").expect(&html)];
             assert!(head.contains(noindex), "{path}: {head}");
@@ -766,7 +759,7 @@ mod tests {
     #[cfg(feature = "ssr")]
     #[test]
     fn the_rails_map_entry_is_current_on_every_map_route() {
-        for path in ["/", "/sim", "/sim/mn10", "/mn10", "/tsne/mn10"] {
+        for path in ["/", "/sim", "/sim/mn10", "/mn10"] {
             let html = render_layout(Language::En, path);
             let current = current_tags(&html);
             assert!(!current.is_empty(), "{path}: no current entry");

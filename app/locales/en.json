@@ -77,14 +77,8 @@
   "types_sections": "Partial parallel",
   "types_similar": "Similarity",
   "views_label_liens": "SuttaCentral",
-  "views_label_pca": "Test · PCA 3D",
   "views_label_sim": "Vectorial space",
-  "views_label_tsne": "Test · t-SNE 3D",
-  "views_label_umap": "Test · UMAP 3D",
   "views_liens": "SuttaCentral parallels: positions computed from the links",
   "views_name": "View",
-  "views_pca": "Pāli vectorial space placed by its 3 main directions (PCA), no layout",
-  "views_sim": "Pāli vectorial space: texts linked when their similarity is above the threshold",
-  "views_tsne": "Pāli vectorial space reduced to 3D by t-SNE: neighbourhoods kept, no layout",
-  "views_umap": "Pāli vectorial space reduced to 3D by UMAP: neighbourhoods and global shape, no layout"
+  "views_sim": "Pāli vectorial space: texts linked when their similarity is above the threshold"
 }

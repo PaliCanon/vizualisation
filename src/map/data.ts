@@ -18,16 +18,11 @@ export interface Graph {
   fixed?: boolean; // positions are the data (a 3D reduction): no live layout when the threshold moves
 }
 
-export type MapName = 'liens' | 'sim' | 'pca' | 'tsne' | 'umap';
+export type MapName = 'liens' | 'sim';
 // Labels and hints are translated: views.label_<value>, views.<value>.
 export const MAPS: { value: MapName; file: string }[] = [
   { value: 'sim', file: 'graph-sim.json' },
   { value: 'liens', file: 'graph.json' },
-  // Test views: the same vectorial space placed by its own LSA coordinates reduced to 3D
-  // (scripts/reduce-3d.py), not by the force layout; same similarity pairs.
-  { value: 'pca', file: 'graph-sim-pca.json' },
-  { value: 'tsne', file: 'graph-sim-tsne.json' },
-  { value: 'umap', file: 'graph-sim-umap.json' },
 ];
 
 export const TYPE_STYLE: Record<string, { color: string; opacity: number }> = {

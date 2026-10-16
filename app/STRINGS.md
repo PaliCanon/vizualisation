@@ -53,12 +53,6 @@ a field of `content_<lang>.rs`'s `PAGES`.
 - `views.sim` → `views_sim`
 - `views.label_sim` → `views_label_sim`
 - `views.label_liens` → `views_label_liens`
-- `views.label_pca` → `views_label_pca`
-- `views.label_tsne` → `views_label_tsne`
-- `views.label_umap` → `views_label_umap`
-- `views.pca` → `views_pca`
-- `views.tsne` → `views_tsne`
-- `views.umap` → `views_umap`
 
 ### `legend`
 
@@ -204,9 +198,9 @@ Every `t()` call in `src/App.tsx` and `src/components/*.tsx`, as of this commit,
 - `src/App.tsx:495` `legend.toggle` → `legend_toggle`
 - `src/App.tsx:497` `legend.toggle` → `legend_toggle`
 - `src/App.tsx:503` `views.name` → `views_name`
-- `src/App.tsx:504` `views.label_${mapName}` → `views_label_{sim,liens,pca,tsne,umap}` (by the current map)
-- `src/App.tsx:506` `views.label_${value}` → `views_label_{sim,liens,pca,tsne,umap}` (by `MAPS[].value`)
-- `src/App.tsx:506` `views.${value}` → `views_{sim,liens,pca,tsne,umap}` (by `MAPS[].value`)
+- `src/App.tsx:504` `views.label_${mapName}` → `views_label_{sim,liens}` (by the current map)
+- `src/App.tsx:506` `views.label_${value}` → `views_label_{sim,liens}` (by `MAPS[].value`)
+- `src/App.tsx:506` `views.${value}` → `views_{sim,liens}` (by `MAPS[].value`)
 - `src/App.tsx:521` `noGpu.title` → `no_gpu_title`
 - `src/App.tsx:522` `noGpu.body` → `no_gpu_body`
 - `src/App.tsx:526` `loading` → `loading`

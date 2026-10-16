@@ -2,7 +2,7 @@
 //! uid no view has is a 404; a uid the view has opens its panel with the text highlighted;
 //! a uid the view lacks still opens the panel (the text exists), with nothing highlighted.
 //! The panel's canonical address is the text's first view, in the views' order (parallels,
-//! sim, pca, umap, tsne): each text is in the sitemap once.
+//! then sim): each text is in the sitemap once.
 //!
 //! The React page had no text addresses (the uid was a `#fragment`, `src/App.tsx` lines
 //! 153–158) and showed nothing for an unknown one (lines 283–287); this is design v4's rule.
@@ -138,7 +138,7 @@ mod tests {
             }
         );
         assert_eq!(
-            open_text("an1.1", View::Umap, &View::ALL, &at),
+            open_text("an1.1", View::Parallels, &View::ALL, &at),
             Open::Panel {
                 index_in_view: None,
                 canonical_view: View::Sim
@@ -185,9 +185,6 @@ mod tests {
         let files = [
             (View::Parallels, "graph.json"),
             (View::Sim, "graph-sim.json"),
-            (View::Pca, "graph-sim-pca.json"),
-            (View::Umap, "graph-sim-umap.json"),
-            (View::Tsne, "graph-sim-tsne.json"),
         ];
         let graphs: Vec<(View, Graph)> = files
             .iter()

@@ -1,5 +1,5 @@
 //! The data files, loaded once at boot from the image (design v4: `MEM`):
-//! every view's graph, the similarity pairs, the translations and the blurbs,
+//! both views' graphs, the similarity pairs, the translations and the blurbs,
 //! each read through the `formats` crate, the only reader of these files. A
 //! file missing or unreadable stops the service before it listens, naming the
 //! file. The similarity family's shared-vectors check waits for the stamps
@@ -29,14 +29,11 @@ use crate::route::View;
 /// The variable naming the data directory; `public` (the repository's) when unset.
 pub const DATA_VAR: &str = "VIZ_DATA_DIR";
 
-/// The nine data files, in the order they are read.
-pub const FILES: [&str; 9] = [
+/// The six data files, in the order they are read.
+pub const FILES: [&str; 6] = [
     "graph-sim.json",
     "graph-sim.bin",
     "graph.json",
-    "graph-sim-pca.json",
-    "graph-sim-umap.json",
-    "graph-sim-tsne.json",
     "translations.json",
     "blurbs-en.json",
     "blurbs-fr.json",
@@ -77,8 +74,6 @@ pub struct Data {
     pub sim: Graph,
     /// Its pairs by similarity (`graph-sim.bin`).
     pub pairs: Pairs,
-    /// The test views: PCA, UMAP, t-SNE reductions of the same space.
-    pub reductions: [Graph; 3],
     /// The texts translated on SuttaCentral, by language.
     pub translations: Translations,
     /// The blurbs in English and in French.
@@ -137,11 +132,6 @@ impl Data {
         })?;
         Ok(Data {
             parallels: graph("graph.json")?,
-            reductions: [
-                graph("graph-sim-pca.json")?,
-                graph("graph-sim-umap.json")?,
-                graph("graph-sim-tsne.json")?,
-            ],
             sim,
             pairs,
             translations: parse("translations.json").with(|bytes| {
@@ -162,9 +152,6 @@ impl Data {
         match view {
             View::Parallels => &self.parallels,
             View::Sim => &self.sim,
-            View::Pca => &self.reductions[0],
-            View::Umap => &self.reductions[1],
-            View::Tsne => &self.reductions[2],
         }
     }
 
@@ -175,9 +162,6 @@ impl Data {
         let graphs = [
             ("graph.json", &self.parallels),
             ("graph-sim.json", &self.sim),
-            ("graph-sim-pca.json", &self.reductions[0]),
-            ("graph-sim-umap.json", &self.reductions[1]),
-            ("graph-sim-tsne.json", &self.reductions[2]),
         ];
         graphs
             .iter()
@@ -330,9 +314,6 @@ mod tests {
         let data = Data::load(&committed()).expect("the committed data");
         assert_eq!(data.sim.nodes.len(), 7286);
         assert!(data.parallels.nodes.len() > 3000);
-        for reduction in &data.reductions {
-            assert_eq!(reduction.nodes.len(), data.sim.nodes.len());
-        }
         assert!(!data.translations.0.is_empty());
         assert_eq!(
             data.stamp_lines()[0],
@@ -375,7 +356,7 @@ mod tests {
                 "graph-sim.bin",
                 Some(&b"\x01\x00\x02"[..]),
             ),
-            ("a reduction missing", "graph-sim-umap.json", None),
+            ("the pairs missing", "graph-sim.bin", None),
         ] {
             let dir = copy();
             let path = dir.join(file);

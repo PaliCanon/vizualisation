@@ -77,14 +77,8 @@
   "types_sections": "Tương đương một phần",
   "types_similar": "Độ tương đồng",
   "views_label_liens": "SuttaCentral",
-  "views_label_pca": "Thử · PCA 3D",
   "views_label_sim": "Không gian vectơ",
-  "views_label_tsne": "Thử · t-SNE 3D",
-  "views_label_umap": "Thử · UMAP 3D",
   "views_liens": "Các bài kinh tương đương của SuttaCentral: vị trí được tính từ các liên kết",
   "views_name": "Chế độ xem",
-  "views_pca": "Không gian vectơ Pāli đặt theo 3 hướng chính (PCA), không mô phỏng",
-  "views_sim": "Không gian vectơ Pāli: các bài kinh được nối khi độ tương đồng vượt ngưỡng",
-  "views_tsne": "Không gian vectơ Pāli rút gọn còn 3D bằng t-SNE: giữ các lân cận, không mô phỏng",
-  "views_umap": "Không gian vectơ Pāli rút gọn còn 3D bằng UMAP: giữ lân cận và hình dạng tổng thể, không mô phỏng"
+  "views_sim": "Không gian vectơ Pāli: các bài kinh được nối khi độ tương đồng vượt ngưỡng"
 }

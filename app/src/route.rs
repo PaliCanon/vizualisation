@@ -23,37 +23,22 @@ pub(crate) enum View {
     Parallels,
     /// The Pāli vectorial space, texts linked above a similarity threshold.
     Sim,
-    /// The vectorial space placed by its three main directions (test view).
-    Pca,
-    /// The vectorial space reduced by UMAP (test view).
-    Umap,
-    /// The vectorial space reduced by t-SNE (test view).
-    Tsne,
 }
 
 impl View {
     /// Every view, in the views menu's order.
-    pub(crate) const ALL: [Self; 5] = [
-        Self::Parallels,
-        Self::Sim,
-        Self::Pca,
-        Self::Umap,
-        Self::Tsne,
-    ];
+    pub(crate) const ALL: [Self; 2] = [Self::Parallels, Self::Sim];
 
     /// The view's path segment: empty for the default view.
     pub(crate) const fn segment(self) -> &'static str {
         match self {
             Self::Parallels => "",
             Self::Sim => "sim",
-            Self::Pca => "pca",
-            Self::Umap => "umap",
-            Self::Tsne => "tsne",
         }
     }
 
-    /// Whether the view is one of the vectorial space's (sim, pca, umap, tsne): the views a
-    /// similarity threshold (`?th=`) applies to.
+    /// Whether the view is the vectorial space's (sim): the view a similarity threshold
+    /// (`?th=`) applies to.
     pub(crate) const fn is_vectorial(self) -> bool {
         !matches!(self, Self::Parallels)
     }
@@ -70,9 +55,6 @@ impl View {
         match self {
             Self::Parallels => td_string!(locale, views_label_liens),
             Self::Sim => td_string!(locale, views_label_sim),
-            Self::Pca => td_string!(locale, views_label_pca),
-            Self::Umap => td_string!(locale, views_label_umap),
-            Self::Tsne => td_string!(locale, views_label_tsne),
         }
     }
 }
@@ -195,9 +177,9 @@ mod tests {
                 },
             ),
             (
-                "/tsne",
+                "/sim",
                 Route::Map {
-                    view: View::Tsne,
+                    view: View::Sim,
                     uid: None,
                 },
             ),
@@ -224,8 +206,29 @@ mod tests {
             "nope",
             "/MN10",
             "/mn10?",
+            "/pca/mn10",
+            "/umap/mn10",
+            "/tsne/mn10",
         ] {
             assert_eq!(Route::parse(path), None, "{path}");
+        }
+    }
+
+    /// The test views removed in 011 (PCA, UMAP, t-SNE) are no view: their
+    /// old segment alone reads as a text's uid (a 404 when no text has it),
+    /// and with a uid behind it the path is no route.
+    #[test]
+    fn the_removed_test_views_are_no_view() {
+        assert_eq!(View::ALL, [View::Parallels, View::Sim]);
+        for segment in ["pca", "umap", "tsne"] {
+            assert_eq!(
+                Route::parse(&format!("/{segment}")),
+                Some(Route::Map {
+                    view: View::Parallels,
+                    uid: Some(segment.to_owned()),
+                }),
+                "{segment}"
+            );
         }
     }
 

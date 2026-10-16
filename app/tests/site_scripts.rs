@@ -202,8 +202,7 @@ const CSS: &str = "/pkg/vizualisation.css";
 
 /// The probe's body as the real service writes it: the commit, then each
 /// graph file's stamp (`app/src/data.rs`, `stamp_lines`).
-const HEALTHZ: &str = "ok 63bdba3\ngraph.json: none\ngraph-sim.json: none\n\
-    graph-sim-pca.json: none\ngraph-sim-umap.json: none\ngraph-sim-tsne.json: none\n";
+const HEALTHZ: &str = "ok 63bdba3\ngraph.json: none\ngraph-sim.json: none\n";
 
 /// The page the real service renders, as far as the scripts read it.
 fn page(extra: &str) -> String {

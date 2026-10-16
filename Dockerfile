@@ -111,9 +111,6 @@ COPY --chown=app:app \
     vizualisation/public/graph.json \
     vizualisation/public/graph-sim.json \
     vizualisation/public/graph-sim.bin \
-    vizualisation/public/graph-sim-pca.json \
-    vizualisation/public/graph-sim-umap.json \
-    vizualisation/public/graph-sim-tsne.json \
     vizualisation/public/translations.json \
     vizualisation/public/blurbs-en.json \
     vizualisation/public/blurbs-fr.json \

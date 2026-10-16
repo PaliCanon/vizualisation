@@ -76,37 +76,24 @@ impl StampFile {
     }
 }
 
-/// The similarity family (`graph-sim.json` and the reductions) is one build: every file is
-/// stamped, with the same vectors digest and the same nodes in the same order.
+/// The similarity family (`graph-sim.json` and its pair list `graph-sim.bin`) is one build:
+/// the graph is stamped, names its pair list and lists that list's digest, which is the digest
+/// of `pairs` (the pair list's bytes).
 ///
 /// # Errors
-/// With the first file that breaks it.
-pub fn check_family(files: &[(&str, &Graph)]) -> Result<(), FormatError> {
-    let bad = |why: String| Err(FormatError::Invalid(why));
-    let Some(&(first, base)) = files.first() else {
-        return Ok(());
-    };
-    let vectors = |g: &Graph| g.stamp.as_ref().and_then(|s| s.vectors_sha.clone());
-    for &(name, g) in files {
-        if g.stamp.is_none() {
-            return bad(format!("{name} has no stamp"));
-        }
-        if vectors(g) != vectors(base) {
-            return bad(format!(
-                "{name} was computed from vectors {:?}, {first} from {:?}",
-                vectors(g),
-                vectors(base)
-            ));
-        }
-        let same = g.nodes.len() == base.nodes.len()
-            && g.nodes.iter().zip(&base.nodes).all(|(a, b)| a.uid == b.uid);
-        if !same {
-            return bad(format!(
-                "{name} has other nodes than {first}, or in another order"
-            ));
-        }
+/// With the first rule broken, naming the file.
+pub fn check_family(sim: &Graph, pairs: &[u8]) -> Result<(), FormatError> {
+    let bad = |why: &str| Err(FormatError::Invalid(why.to_owned()));
+    if sim.stamp.is_none() {
+        return bad("graph-sim.json has no stamp");
     }
-    Ok(())
+    let Some(info) = &sim.sim else {
+        return bad("graph-sim.json names no pair list");
+    };
+    if info.sha256.is_none() {
+        return bad("graph-sim.json lists no digest for its pair list (graph-sim.bin)");
+    }
+    crate::pairs::check_sha256(info, pairs)
 }
 
 #[cfg(test)]
@@ -189,49 +176,64 @@ mod tests {
         );
     }
 
+    /// `graph-sim.json` naming `graph-sim.bin` with `digest`, stamped when `stamped`.
+    fn sim_graph(stamped: bool, digest: Option<&str>) -> Graph {
+        let mut g = graph(stamped.then_some("ff"), &["x", "y"]);
+        g.sim = Some(crate::graph::SimInfo {
+            url: "graph-sim.bin".into(),
+            min: 0.3,
+            max: 0.9,
+            default: 0.5,
+            range: None,
+            sha256: digest.map(str::to_owned),
+        });
+        g
+    }
+
+    const PAIRS: &[u8] = b"\x00\x00\x01\x00\xff\xff";
+
     #[test]
     fn family_with_one_build_passes() {
-        let a = graph(Some("ff"), &["x", "y"]);
-        let b = graph(Some("ff"), &["x", "y"]);
-        check_family(&[("graph-sim.json", &a), ("graph-sim-pca.json", &b)]).unwrap();
+        let digest = crate::pairs::sha256_hex(PAIRS);
+        check_family(&sim_graph(true, Some(&digest)), PAIRS).unwrap();
     }
 
     #[test]
-    fn vectors_sha_mismatch_is_an_error() {
-        let a = graph(Some("ff"), &["x"]);
-        let b = graph(Some("ee"), &["x"]);
-        let err = check_family(&[("graph-sim.json", &a), ("graph-sim-pca.json", &b)])
+    fn another_pair_list_is_an_error() {
+        let digest = crate::pairs::sha256_hex(b"other");
+        let err = check_family(&sim_graph(true, Some(&digest)), PAIRS)
             .unwrap_err()
             .to_string();
         assert!(
-            err.contains("graph-sim-pca.json") && err.contains("vectors"),
+            err.contains("graph-sim.bin") && err.contains("sha256"),
             "{err}"
         );
     }
 
     #[test]
-    fn an_unstamped_family_member_is_an_error() {
-        let a = graph(Some("ff"), &["x"]);
-        let b = graph(None, &["x"]);
-        let err = check_family(&[("graph-sim.json", &a), ("graph-sim-umap.json", &b)])
+    fn an_unstamped_graph_is_an_error() {
+        let digest = crate::pairs::sha256_hex(PAIRS);
+        let err = check_family(&sim_graph(false, Some(&digest)), PAIRS)
             .unwrap_err()
             .to_string();
         assert!(
-            err.contains("graph-sim-umap.json") && err.contains("no stamp"),
+            err.contains("graph-sim.json") && err.contains("no stamp"),
             "{err}"
         );
     }
 
     #[test]
-    fn a_different_node_set_is_an_error() {
-        let a = graph(Some("ff"), &["x", "y"]);
-        let b = graph(Some("ff"), &["y", "x"]);
-        let err = check_family(&[("graph-sim.json", &a), ("graph-sim-tsne.json", &b)])
+    fn a_pair_list_without_its_digest_is_an_error() {
+        let err = check_family(&sim_graph(true, None), PAIRS)
             .unwrap_err()
             .to_string();
         assert!(
-            err.contains("graph-sim-tsne.json") && err.contains("nodes"),
+            err.contains("graph-sim.bin") && err.contains("no digest"),
             "{err}"
         );
+        let err = check_family(&graph(Some("ff"), &["x"]), PAIRS)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("no pair list"), "{err}");
     }
 }
