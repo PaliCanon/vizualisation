@@ -445,7 +445,7 @@ mod tests {
             .unwrap();
         let body = String::from_utf8(body.to_vec()).unwrap();
         assert!(
-            body.contains("<loc>https://viz.palicanon.app/mn10</loc>"),
+            body.contains("<loc>https://map.palicanon.app/mn10</loc>"),
             "{body}"
         );
         assert_eq!(body.matches("<loc>").count(), 1 + 5 + 8268);

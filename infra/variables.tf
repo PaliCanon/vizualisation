@@ -1,7 +1,8 @@
 # From search-front/infra/variables.tf. What differs: no API URL (this
 # service calls no API); each environment says its password gate (`gate`,
 # the service's VIZ_GATE: `password` on dev, `off` on prod); the hosts are
-# viz.dev.palicanon.app and viz.palicanon.app; `cloudflare_account_id` keeps
+# map.dev.palicanon.app and map.palicanon.app (user, 2026-10-16; the
+# repository, the services and the secrets keep the name vizualisation); `cloudflare_account_id` keeps
 # this repository's declaration of before task 005 (no default: the
 # git-ignored terraform.tfvars gives it), and `zone` is kept from it too. The
 # Pages variables (`project`, `hosts`) moved to pages.tf with what uses them.
@@ -34,7 +35,7 @@ variable "zone" {
   default     = "palicanon.app"
 }
 
-# One entry per environment. The dev host is viz.dev.palicanon.app: two
+# One entry per environment. The dev host is map.dev.palicanon.app: two
 # levels deep, served by a Workers Custom Domain which issues the exact
 # host's certificate (cloudflare.tf), as search-front's and learn-pali's.
 # `gate` is the service's VIZ_GATE: `password` asks every visitor for the dev
@@ -46,9 +47,10 @@ variable "zone" {
 # prod host before dev has deployed and been checked from CI. Prod is added
 # afterwards, with `-var-file` or by uncommenting the block below (README,
 # "Order"), then a second apply, with its own origin secret. Not before task
-# 008: viz.palicanon.app is the Pages site's custom domain and DNS record
-# until then (pages.tf), and a Workers Custom Domain cannot take a host that
-# already has a record.
+# 008: an order set when prod's host was viz.palicanon.app, the Pages site's
+# custom domain and DNS record until then (pages.tf), which a Workers Custom
+# Domain cannot take. A Workers Custom Domain cannot take any host that
+# already has a record: check map.palicanon.app has none before the apply.
 variable "envs" {
   type = map(object({
     host          = string
@@ -57,12 +59,12 @@ variable "envs" {
   }))
   default = {
     dev = {
-      host          = "viz.dev.palicanon.app"
+      host          = "map.dev.palicanon.app"
       max_instances = 2
       gate          = "password"
     }
     # prod = {
-    #   host          = "viz.palicanon.app"
+    #   host          = "map.palicanon.app"
     #   max_instances = 3
     #   gate          = "off"
     # }

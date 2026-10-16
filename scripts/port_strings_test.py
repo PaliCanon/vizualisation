@@ -127,6 +127,18 @@ class Content(unittest.TestCase):
                 self.assertIn(f'title: "{title}",', rust, f"{lang}: {name}")
                 self.assertIn(f"    {name}: PageText {{", rust, f"{lang}: {name}")
 
+    def test_public_host_is_rewritten(self):
+        """The React catalogues name viz.palicanon.app; the app's host is map.palicanon.app."""
+        generated = [APP / "locales" / f"{lang}.json" for lang in LANGS]
+        generated += [APP / "src" / "pages" / f"content_{lang}.rs" for lang in LANGS]
+        for path in generated:
+            lines = path.read_text(encoding="utf-8").splitlines()
+            left = [line.strip()[:80] for line in lines if re.search(r"viz\.(dev\.)?palicanon\.app", line)]
+            self.assertEqual(left, [], path.relative_to(ROOT))
+        for lang in LANGS:
+            rust = (APP / "src" / "pages" / f"content_{lang}.rs").read_text(encoding="utf-8")
+            self.assertIn('href: "https://map.palicanon.app",', rust, lang)
+
     def test_no_placeholder_left(self):
         for lang in LANGS:
             rust = (APP / "src" / "pages" / f"content_{lang}.rs").read_text(encoding="utf-8")

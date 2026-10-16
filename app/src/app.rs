@@ -108,9 +108,7 @@ fn first_render() -> FirstRender {
     }
     #[cfg(not(feature = "ssr"))]
     {
-        // TODO(006 merge): `crate::map::first::FirstRender::not_in_page()` (lane A, 4d21574:
-        // logs the missing first render); not on this branch yet.
-        FirstRender::default()
+        FirstRender::not_in_page()
     }
 }
 
@@ -462,7 +460,7 @@ mod tests {
             );
             assert!(
                 head.contains(
-                    r#"<meta property="og:image" content="https://viz.palicanon.app/og.png">"#
+                    r#"<meta property="og:image" content="https://map.palicanon.app/og.png">"#
                 ),
                 "{path}: {head}"
             );
@@ -627,7 +625,7 @@ mod tests {
             "{head}"
         );
         assert!(
-            head.contains(r#"<link href="https://viz.palicanon.app/mn10" rel="canonical">"#),
+            head.contains(r#"<link href="https://map.palicanon.app/mn10" rel="canonical">"#),
             "{head}"
         );
         assert!(
@@ -664,7 +662,7 @@ mod tests {
         let head = &html[..html.find("</head>").expect(&html)];
         assert!(!head.contains("noindex"), "{head}");
         assert!(
-            head.contains(r#"<link href="https://viz.palicanon.app/sim/ds1.1" rel="canonical">"#),
+            head.contains(r#"<link href="https://map.palicanon.app/sim/ds1.1" rel="canonical">"#),
             "{head}"
         );
         let body = &html[html.find("<body>").expect(&html)..];

@@ -1,4 +1,4 @@
-// viz.palicanon.app / viz.dev.palicanon.app → vizualisation on Cloud Run.
+// map.palicanon.app / map.dev.palicanon.app → vizualisation on Cloud Run.
 //
 // From search-front/infra/worker/proxy.js; the code is unchanged, only this
 // comment names the hosts. The dev password (HTTP Basic, the service's

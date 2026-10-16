@@ -108,9 +108,12 @@ impl FirstRender {
     /// What the browser runs on when the page holds no first render (a `SharedValue` lost:
     /// the page cut, a serialization failure): the empty decisions, and an error in the
     /// console, not a silently empty map.
-    #[allow(
-        dead_code,
-        reason = "app.rs's first_render calls it in the browser (lane B of 006's fix round 1)"
+    #[cfg_attr(
+        feature = "ssr",
+        allow(
+            dead_code,
+            reason = "app.rs's first_render calls it in the browser only"
+        )
     )]
     pub(crate) fn not_in_page() -> FirstRender {
         Self::not_in_page_with(|message| leptos::logging::error!("{message}"))

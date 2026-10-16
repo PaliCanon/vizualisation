@@ -86,9 +86,8 @@ pub fn type_rows(graph: &Graph, theme: &MapTheme, link_counts: &[usize]) -> Vec<
         .map(|(index, name)| TypeRow {
             index,
             name: name.clone(),
-            // TODO(006 merge): `Some(theme.link_color(name).to_owned())` (lane A's
-            // `MapTheme::link_color`, 4d21574: the map's fallback for an unknown type).
-            color: theme.type_color(name).map(str::to_owned),
+            // The map's colour, its fallback for an unknown type included.
+            color: Some(theme.link_color(name).to_owned()),
             count: link_counts.get(index).copied().unwrap_or(0),
         })
         .collect()

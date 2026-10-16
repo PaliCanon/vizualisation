@@ -1,6 +1,6 @@
 # vizualisation — Suttas Map
 
-The 3D map of the Pāli canon at [viz.palicanon.app](https://viz.palicanon.app): SuttaCentral's
+The 3D map of the Pāli canon at [map.palicanon.app](https://map.palicanon.app): SuttaCentral's
 parallels, and a vectorial space built on the Pāli text.
 
 **Being rewritten in Leptos** (design `002 design` v4, tasks 004–008 in `.task/`). Until task 008
@@ -101,8 +101,8 @@ Functions stay under 50 lines (`clippy.toml`).
 
 ## Deploy
 
-`main` deploys `viz.dev.palicanon.app`, a `v*` tag `viz.palicanon.app` (prod is added to `infra/`
-once dev is checked; `viz.palicanon.app` stays on Pages until 008) — `.github/workflows/deploy.yml`,
+`main` deploys `map.dev.palicanon.app`, a `v*` tag `map.palicanon.app` (prod is added to `infra/`
+once dev is checked, after 008; the React site keeps `viz.palicanon.app` on Pages until 008) — `.github/workflows/deploy.yml`,
 from search-front's. Cloudflare (a Worker per host) is the only way in: the service answers 403 to
 any request without the Worker's `x-origin-auth` secret. Dev asks for a password (`VIZ_GATE=password`,
 `DEV_PASSWORD` from Secret Manager; the value in the keychain: account `palicanon`, service

@@ -15,7 +15,7 @@ use leptos_meta::{Link, Meta, Script, Title};
 use crate::pages::PageKind;
 
 /// The production origin every canonical and `og:url` starts with.
-pub const CANONICAL_BASE: &str = "https://viz.palicanon.app";
+pub const CANONICAL_BASE: &str = "https://map.palicanon.app";
 
 /// A route's title, description and canonical path (`/`, `/terms`, `/sim/mn10`),
 /// with their `og:*` mirrors.
@@ -62,7 +62,7 @@ pub(crate) fn SiteHead() -> impl IntoView {
 /// The site's structured data (React's `index.html`), one line.
 const JSON_LD: &str = concat!(
     r#"{"@context":"https://schema.org","@type":"WebApplication","name":"Suttas Map","#,
-    r#""url":"https://viz.palicanon.app/","description":"A 3D map of the Pāli Canon: "#,
+    r#""url":"https://map.palicanon.app/","description":"A 3D map of the Pāli Canon: "#,
     r#"SuttaCentral's parallels between the suttas, and the texts that resemble each other "#,
     r#"in Pāli.","applicationCategory":"EducationalApplication","operatingSystem":"Any","#,
     r#""inLanguage":["en","fr","vi","pi"],"isAccessibleForFree":true,"#,
@@ -100,6 +100,24 @@ pub(crate) fn sitemap(texts: &crate::data::TextIndex) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The public host is map.palicanon.app (user, 2026-10-16): the canonical
+    /// base, the JSON-LD's url and robots.txt's sitemap all name it.
+    #[test]
+    fn the_canonical_host_is_map_palicanon_app() {
+        assert_eq!(CANONICAL_BASE, "https://map.palicanon.app");
+        assert!(
+            JSON_LD.contains(&format!(r#""url":"{CANONICAL_BASE}/""#)),
+            "{JSON_LD}"
+        );
+        let robots = include_str!("../public/robots.txt");
+        assert!(
+            robots
+                .lines()
+                .any(|line| line == format!("Sitemap: {CANONICAL_BASE}/sitemap.xml")),
+            "{robots}"
+        );
+    }
 
     /// The committed data's text index, as the server builds it at boot.
     #[cfg(feature = "ssr")]

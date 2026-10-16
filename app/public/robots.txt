@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://viz.palicanon.app/sitemap.xml
+Sitemap: https://map.palicanon.app/sitemap.xml
