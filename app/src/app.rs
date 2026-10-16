@@ -112,7 +112,8 @@ fn first_render() -> FirstRender {
     }
 }
 
-/// The rail's entries: the services, Search (the main site), Learn, then Map
+/// The rail's entries: the services, Search (search.palicanon.app, as the
+/// showcase's SERVICE_LINKS), Learn, then Map
 /// (this one, the current entry on `/`). `IconName::Grid` stands in for Learn
 /// as in learn-pali, `IconName::Motion` for Map, until ui-lib has their icons.
 pub(crate) fn nav_entries(locale: crate::catalogue::Locale) -> Vec<NavEntry> {
@@ -120,7 +121,7 @@ pub(crate) fn nav_entries(locale: crate::catalogue::Locale) -> Vec<NavEntry> {
         NavEntry {
             label: td_string!(locale, nav_search),
             icon: IconName::Search,
-            href: "https://palicanon.app",
+            href: "https://search.palicanon.app",
         },
         NavEntry {
             label: td_string!(locale, nav_learn),
@@ -223,7 +224,11 @@ mod tests {
             .collect();
         assert_eq!(
             hrefs,
-            ["https://palicanon.app", "https://learn.palicanon.app", "/"]
+            [
+                "https://search.palicanon.app",
+                "https://learn.palicanon.app",
+                "/"
+            ]
         );
     }
 
