@@ -198,6 +198,13 @@ pub fn encode_component(s: &str) -> String {
 /// What the components' tests share: rendering in a language, reading the markup, and the
 /// map's fixture with translations and summaries.
 #[cfg(test)]
+#[cfg_attr(
+    not(feature = "ssr"),
+    allow(
+        dead_code,
+        reason = "the markup readers serve the tests that render, ssr ones"
+    )
+)]
 pub(crate) mod test_support {
     use palicanon_ui_lib::Language;
 

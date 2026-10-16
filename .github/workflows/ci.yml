@@ -82,6 +82,10 @@ jobs:
           # test's code (tests/csr.rs).
           - name: app csr wasm32
             args: -p vizualisation --no-default-features --features csr --target wasm32-unknown-unknown --lib --test csr
+          # The same build on the host, where the app runs its native tests: the browser-only
+          # code is gated on wasm32 too (task 012, PaliCanon/app 003).
+          - name: app csr host
+            args: -p vizualisation --no-default-features --features csr --all-targets
           - name: map host
             args: -p map-engine -p map-layout -p map-formats --all-targets --target x86_64-unknown-linux-gnu
           # The inline tests are host-only (learn-pali's "core-wasm" entry is --lib too).
@@ -116,6 +120,7 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --locked -p vizualisation --features ssr
+      - run: cargo test --locked -p vizualisation --no-default-features --features csr
       - run: cargo test --locked $MAP_CRATES
 
   # tests/csr.rs (task 012) in a real browser: the Map fragment mounted under /map by

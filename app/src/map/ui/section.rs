@@ -47,7 +47,7 @@ pub fn Section(
 ) -> impl IntoView {
     let open = RwSignal::new(false);
     let key = storage_key(&id);
-    #[cfg(feature = "browser")]
+    #[cfg(all(feature = "browser", target_arch = "wasm32"))]
     {
         // After hydrating: the server rendered it closed, as the browser's first render.
         let key = key.clone();
@@ -56,9 +56,9 @@ pub fn Section(
     let toggle = move |_| {
         let next = !open.get_untracked();
         open.set(next);
-        #[cfg(feature = "browser")]
+        #[cfg(all(feature = "browser", target_arch = "wasm32"))]
         storage::set(&key, stored_value(next));
-        #[cfg(not(feature = "browser"))]
+        #[cfg(not(all(feature = "browser", target_arch = "wasm32")))]
         let _ = &key;
     };
     view! {
@@ -85,7 +85,7 @@ pub fn Section(
 
 /// The browser's localStorage, read and written as the React page did: a private window
 /// that refuses it reads nothing and keeps nothing.
-#[cfg(feature = "browser")]
+#[cfg(all(feature = "browser", target_arch = "wasm32"))]
 mod storage {
     use wasm_bindgen::prelude::*;
 

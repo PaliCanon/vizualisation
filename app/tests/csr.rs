@@ -25,7 +25,7 @@ use leptos::prelude::*;
 use leptos_router::components::{Outlet, ParentRoute, Router, Routes};
 use leptos_router::path;
 use palicanon_ui_lib::csr;
-use vizualisation::fragment::{MapData, MapFile, MapHead, MapProvider, MapRoutes};
+use vizualisation::fragment::{MAP_FILES, MapData, MapFile, MapHead, MapProvider, MapRoutes};
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
@@ -153,6 +153,7 @@ impl Fake {
 
 impl MapData for Fake {
     fn file(&self, name: &'static str) -> MapFile {
+        assert!(MAP_FILES.contains(&name), "{name}: not in MAP_FILES");
         self.asked.lock().expect("asked").push(name);
         if *self.absent.lock().expect("absent") == Some(name) {
             return Box::pin(async { None });
@@ -518,23 +519,30 @@ async fn the_map_mounts_and_unmounts_under_map() {
         assert_eq!(map_engine::live_views(), 0, "{name}");
         assert!(!PANICKED.load(Ordering::SeqCst), "{name}: a panic");
     }
-    store("viz_textlang", Some("fr|en"));
-    fake.absent(Some("blurbs-fr.json"));
-    let before = fake.asked("blurbs-fr.json");
-    mount_at(&shown, "/map/mn10").await;
-    until("MN 10's English summary", || {
-        text().contains("Here the Buddha details the seventh factor")
-    })
-    .await;
-    assert!(
-        fake.asked("blurbs-fr.json") > before,
-        "the French summaries asked"
-    );
-    assert!(!text().contains("Le Bouddha détaille"), "{}", text());
-    assert!(!map_error(), "no MapError without blurbs-fr.json");
-    unmount(&shown).await;
-    fake.absent(None);
+    // blurbs-vi.json is in no data set (the fake has none either): the same English fallback.
+    for (texts, name) in [("fr|en", "blurbs-fr.json"), ("vi|en", "blurbs-vi.json")] {
+        store("viz_textlang", Some(texts));
+        fake.absent(Some(name));
+        let before = fake.asked(name);
+        mount_at(&shown, "/map/mn10").await;
+        until("MN 10's English summary", || {
+            text().contains("Here the Buddha details the seventh factor")
+        })
+        .await;
+        assert!(fake.asked(name) > before, "{name} asked");
+        assert!(!text().contains("Le Bouddha détaille"), "{}", text());
+        assert!(!map_error(), "no MapError without {name}");
+        unmount(&shown).await;
+        fake.absent(None);
+    }
     store("viz_textlang", None);
+    // The names the map asked are MAP_FILES, every one of them (`file` refuses any other).
+    let mut asked: Vec<&str> = fake.asked.lock().expect("asked").clone();
+    asked.sort_unstable();
+    asked.dedup();
+    let mut documented = MAP_FILES.to_vec();
+    documented.sort_unstable();
+    assert_eq!(asked, documented, "the names asked against MAP_FILES");
 
     // ---------- 20 mount-unmount cycles ----------
     let mut after_unmount = Vec::new();

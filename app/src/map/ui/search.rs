@@ -170,19 +170,19 @@ fn SearchHits(
 
 /// Empties the field and leaves it (App.tsx lines 381–385, `pick`; line 422, Escape).
 fn clear_field(input: NodeRef<html::Input>) {
-    #[cfg(feature = "browser")]
+    #[cfg(all(feature = "browser", target_arch = "wasm32"))]
     if let Some(el) = input.get_untracked() {
         el.set_value("");
         let _ = el.blur();
     }
-    #[cfg(not(feature = "browser"))]
+    #[cfg(not(all(feature = "browser", target_arch = "wasm32")))]
     let _ = input;
 }
 
 /// `/` and ⌘K (Ctrl+K) focus the field from anywhere, its text selected (SearchBar.tsx lines
 /// 20–31). The browser only.
 fn focus_on_shortcut(input: NodeRef<html::Input>) {
-    #[cfg(feature = "browser")]
+    #[cfg(all(feature = "browser", target_arch = "wasm32"))]
     {
         let handle = window_event_listener(leptos::ev::keydown, move |ev| {
             let typing = ev
@@ -201,7 +201,7 @@ fn focus_on_shortcut(input: NodeRef<html::Input>) {
         });
         on_cleanup(move || handle.remove());
     }
-    #[cfg(not(feature = "browser"))]
+    #[cfg(not(all(feature = "browser", target_arch = "wasm32")))]
     let _ = input;
 }
 

@@ -52,7 +52,7 @@ pub const NARROW_QUERY: &str = "(max-width: 767px)";
 /// answer once hydrated, and again at each change of it (a resize, a rotation).
 fn narrow_signal() -> RwSignal<bool> {
     let narrow = RwSignal::new(false);
-    #[cfg(feature = "browser")]
+    #[cfg(all(feature = "browser", target_arch = "wasm32"))]
     {
         use wasm_bindgen::JsCast;
         use wasm_bindgen::closure::Closure;

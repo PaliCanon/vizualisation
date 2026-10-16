@@ -57,15 +57,34 @@ use crate::map::live::LiveMap;
 /// The bytes of one data file, or `None` (see [`MapData::file`]).
 pub type MapFile = Pin<Box<dyn Future<Output = Option<Vec<u8>>> + Send>>;
 
+/// Every name [`MapData::file`] may be asked, and no other: six files every data set has,
+/// then `blurbs-vi.json`, which none has yet (the summaries exist in English and French):
+/// answer `None` for it, and the Vietnamese texts show their English summary.
+pub const MAP_FILES: [&str; 7] = [
+    "graph.json",
+    "graph-sim.json",
+    "graph-sim.bin",
+    "translations.json",
+    "blurbs-en.json",
+    "blurbs-fr.json",
+    "blurbs-vi.json",
+];
+
 /// Where the map reads its data files from: the site fetches them at the manifest's
 /// content-hashed URLs; the app reads its bundled copies, never the network.
 ///
-/// The files asked: `graph.json`, `graph-sim.json`, `graph-sim.bin` (the name
-/// `graph-sim.json` gives in `sim.url`), `translations.json`, `blurbs-en.json`,
-/// `blurbs-fr.json` and `blurbs-vi.json`. Only the map's browser part awaits the future (a
-/// fetch's or a file read's is not `Send` in a browser: an implementation wraps it, as
-/// `send_wrapper` does, inside its own code). Each file is asked again on each mount: the
-/// map keeps nothing while it is not shown.
+/// The names asked are exactly [`MAP_FILES`]:
+///
+/// - `graph.json`: the SuttaCentral parallels' graph;
+/// - `graph-sim.json`: the vectorial space's graph;
+/// - `graph-sim.bin`: its similarity pairs (the name `graph-sim.json` gives in `sim.url`);
+/// - `translations.json`: the translated titles and their translators;
+/// - `blurbs-en.json`, `blurbs-fr.json`: the summaries in English and in French;
+/// - `blurbs-vi.json`, optional: no data set has it; `None` is the answer.
+///
+/// Only the map's browser part awaits the future (a fetch's or a file read's is not `Send`
+/// in a browser: an implementation wraps it, as `send_wrapper` does, inside its own code).
+/// Each file is asked again on each mount: the map keeps nothing while it is not shown.
 pub trait MapData: Send + Sync + 'static {
     /// The bytes of the data file `name`; `None` when it is absent or cannot be read (the
     /// implementation logs why). `blurbs-fr.json` or `blurbs-vi.json` absent gives that
@@ -160,5 +179,7 @@ pub fn MapRoutes() -> impl leptos_router::MatchNestedRoutes + Clone {
     .into_inner()
 }
 
+#[cfg(all(test, feature = "csr", not(target_arch = "wasm32")))]
+mod native;
 #[cfg(all(test, feature = "ssr"))]
 mod tests;

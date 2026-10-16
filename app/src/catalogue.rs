@@ -70,6 +70,9 @@ mod tests {
     #[test]
     fn strings_follow_the_language_signal() {
         Owner::new().with(|| {
+            // The page's signal, given here: ui-lib's `provide_language` reads the page under
+            // `csr`, which a native test has not (task 012).
+            provide_context(RwSignal::new(Language::En));
             let t = strings();
             let label = Signal::derive(move || td_string!(t.locale(), nav_search));
             assert_eq!(label.get(), "Search");

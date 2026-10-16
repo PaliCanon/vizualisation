@@ -77,6 +77,13 @@ fn percent_decode(s: &str) -> Option<String> {
 /// The threshold a view opens at: `?th=` when it is a number inside the view's range, else
 /// the view's default (App.tsx lines 186–187: `fromUrl >= min && fromUrl <= max ? fromUrl :
 /// default`, `Number(null)` being 0).
+#[cfg_attr(
+    not(any(feature = "ssr", all(feature = "browser", target_arch = "wasm32"))),
+    allow(
+        dead_code,
+        reason = "read by the server and the browser, not by csr on the host"
+    )
+)]
 pub(crate) fn threshold(th: Option<&str>, sim: &SimInfo) -> f64 {
     let asked = match th.map(str::trim) {
         None | Some("") => 0.0,

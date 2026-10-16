@@ -129,7 +129,9 @@ web-sys = { version = "0.3", features = [
 #
 # Private: the code that needs a browser — EngineView's engine and DOM wiring, the live map's
 # data loads, history, colour scheme and listeners, the folded sections' storage, the search
-# shortcut —, shared by the two client modes. Never gate it on `hydrate`.
+# shortcut —, shared by the two client modes. Never gate it on `hydrate`; always on wasm32
+# as well (`all(feature = "browser", target_arch = "wasm32")`): `csr` builds on the host,
+# where the PaliCanon app runs its native tests (task 012).
 browser = [
   "dep:send_wrapper",
   "dep:wasm-bindgen",

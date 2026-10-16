@@ -11,7 +11,10 @@ use palicanon_ui_lib::Store;
 
 /// A year, as ui-lib keeps its preferences.
 #[cfg_attr(
-    all(feature = "ssr", not(test)),
+    not(any(
+        test,
+        all(feature = "browser", target_arch = "wasm32", not(feature = "ssr"))
+    )),
     expect(dead_code, reason = "the browser writes the cookies")
 )]
 const MAX_AGE_SECONDS: u32 = 365 * 24 * 3600;
@@ -19,7 +22,10 @@ const MAX_AGE_SECONDS: u32 = 365 * 24 * 3600;
 /// The `document.cookie` assignment storing `value` under `name`: a year, the whole site,
 /// sent on same-site navigation, for this host only.
 #[cfg_attr(
-    all(feature = "ssr", not(test)),
+    not(any(
+        test,
+        all(feature = "browser", target_arch = "wasm32", not(feature = "ssr"))
+    )),
     expect(dead_code, reason = "the browser writes the cookies")
 )]
 pub(crate) fn assignment(name: &str, value: &str) -> String {
@@ -42,7 +48,7 @@ fn cookie_header() -> Option<String> {
 }
 
 /// `document.cookie`.
-#[cfg(all(feature = "browser", not(feature = "ssr")))]
+#[cfg(all(feature = "browser", target_arch = "wasm32", not(feature = "ssr")))]
 fn cookie_header() -> Option<String> {
     use wasm_bindgen::JsCast;
     leptos::prelude::document()
@@ -53,7 +59,7 @@ fn cookie_header() -> Option<String> {
 }
 
 /// Neither a request nor a page (a plain test).
-#[cfg(not(any(feature = "ssr", feature = "browser")))]
+#[cfg(not(any(feature = "ssr", all(feature = "browser", target_arch = "wasm32"))))]
 fn cookie_header() -> Option<String> {
     None
 }
@@ -80,14 +86,14 @@ pub(crate) fn write_in(store: Store, name: &str, value: &str) {
 
 /// Stores `value` under `name`, in the browser; nothing on the server.
 fn write(name: &str, value: &str) {
-    #[cfg(all(feature = "browser", not(feature = "ssr")))]
+    #[cfg(all(feature = "browser", target_arch = "wasm32", not(feature = "ssr")))]
     {
         use wasm_bindgen::JsCast;
         if let Ok(document) = leptos::prelude::document().dyn_into::<web_sys::HtmlDocument>() {
             let _ = document.set_cookie(&assignment(name, value));
         }
     }
-    #[cfg(not(all(feature = "browser", not(feature = "ssr"))))]
+    #[cfg(not(all(feature = "browser", target_arch = "wasm32", not(feature = "ssr"))))]
     let _ = (name, value);
 }
 
