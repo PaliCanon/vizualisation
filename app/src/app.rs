@@ -378,7 +378,7 @@ mod tests {
             );
             assert!(
                 head.contains(
-                    r#"<meta property="og:image" content="https://viz.palicanon.app/og.png">"#
+                    r#"<meta property="og:image" content="https://map.palicanon.app/og.png">"#
                 ),
                 "{path}: {head}"
             );

@@ -246,7 +246,8 @@ fn site_block(
                 />
             }
         });
-    let id = if site.href.contains("viz.") {
+    // This site's own block: its href is the canonical origin.
+    let id = if site.href.starts_with(crate::head::CANONICAL_BASE) {
         "map-shots"
     } else {
         "palicanon-shots"
@@ -444,7 +445,7 @@ mod tests {
         assert!(html.contains("ct=PaliWebMapSupport"), "{html}");
         assert!(html.contains(r#"href="https://palicanon.app""#), "{html}");
         assert!(
-            html.contains(r#"href="https://viz.palicanon.app""#),
+            html.contains(r#"href="https://map.palicanon.app""#),
             "{html}"
         );
         assert!(

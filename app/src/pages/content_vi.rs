@@ -1,8 +1,9 @@
 //! The footer pages in Vietnamese: generated from the React site's
 //! `src/locales/vi.json` `pages.*` by `scripts/port_strings.py`
 //! (verbatim; `{{publisher}}` and `{{contact}}` resolved as
-//! `src/components/Pages.tsx` does; `pages.updated` is the catalogue's
-//! `pages_updated`). Data, not code: regenerate rather than edit by hand.
+//! `src/components/Pages.tsx` does; the hosts `viz.*` rewritten `map.*`;
+//! `pages.updated` is the catalogue's `pages_updated`). Data, not code:
+//! regenerate rather than edit by hand.
 
 use super::types::{AppBlock, Cta, InstagramBlock, PageText, Pages, Section, SiteBlock, Table};
 
@@ -231,7 +232,7 @@ pub(super) const PAGES: Pages = Pages {
                 name: "Suttas Map",
                 tagline: "Kinh tạng Pāli dưới dạng bản đồ: các bài tương đương của SuttaCentral, và toàn bộ Kinh tạng được đặt theo nghĩa của văn bản Pāli.",
                 cta: "Mở Suttas Map",
-                href: "https://viz.palicanon.app",
+                href: "https://map.palicanon.app",
                 alts: &[
                     "Toàn bộ bản đồ SuttaCentral",
                     "Các bài tương đương của MN 10 trên bản đồ SuttaCentral",

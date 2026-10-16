@@ -1,8 +1,9 @@
 //! The footer pages in French: generated from the React site's
 //! `src/locales/fr.json` `pages.*` by `scripts/port_strings.py`
 //! (verbatim; `{{publisher}}` and `{{contact}}` resolved as
-//! `src/components/Pages.tsx` does; `pages.updated` is the catalogue's
-//! `pages_updated`). Data, not code: regenerate rather than edit by hand.
+//! `src/components/Pages.tsx` does; the hosts `viz.*` rewritten `map.*`;
+//! `pages.updated` is the catalogue's `pages_updated`). Data, not code:
+//! regenerate rather than edit by hand.
 
 use super::types::{AppBlock, Cta, InstagramBlock, PageText, Pages, Section, SiteBlock, Table};
 
@@ -231,7 +232,7 @@ pub(super) const PAGES: Pages = Pages {
                 name: "Suttas Map",
                 tagline: "Le Canon pāli comme une carte : les parallèles de SuttaCentral entre les textes, et tout le canon placé selon le sens de son pāli.",
                 cta: "Ouvrir Suttas Map",
-                href: "https://viz.palicanon.app",
+                href: "https://map.palicanon.app",
                 alts: &[
                     "La carte SuttaCentral en entier",
                     "Les parallèles de MN 10 sur la carte SuttaCentral",

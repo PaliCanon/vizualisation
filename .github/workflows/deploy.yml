@@ -1,7 +1,7 @@
 name: deploy
 
-# Push to main → dev (vizualisation-dev, viz.dev.palicanon.app); tag v* →
-# prod (vizualisation-prod, viz.palicanon.app). The image is
+# Push to main → dev (vizualisation-dev, map.dev.palicanon.app); tag v* →
+# prod (vizualisation-prod, map.palicanon.app). The image is
 # content-addressed: built only when its inputs changed, rolled out with no
 # traffic first, checked through the revision's tagged URL with the origin
 # header, then given the traffic, then checked again through the public host
@@ -41,7 +41,7 @@ permissions:
 
 env:
   ENV: ${{ startsWith(github.ref, 'refs/tags/') && 'prod' || 'dev' }}
-  HOST: ${{ startsWith(github.ref, 'refs/tags/') && 'viz.palicanon.app' || 'viz.dev.palicanon.app' }}
+  HOST: ${{ startsWith(github.ref, 'refs/tags/') && 'map.palicanon.app' || 'map.dev.palicanon.app' }}
   REGION: europe-west1
   PROJECT: ${{ vars.GCP_PROJECT }}
 

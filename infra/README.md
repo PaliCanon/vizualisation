@@ -19,7 +19,7 @@ later, see "Order"):
 | The deployer's rights | `gcp.tf` | `github-deployer` is read as a data source (the site's infra owns it), never managed here. It may **act as** the runtime account, **read the origin secret** and, on dev, **read the dev password** (the rollout check sends it; see "R3"). |
 | Cloud Run service `vizualisation-<env>` | `gcp.tf` | min 0, max 2 (dev) / 3 (prod), 1 CPU, 512Mi, CPU only while a request is served, public at the Cloud Run layer. `VIZ_GATE` is a plain value (`password` on dev, `off` on prod; the boot refuses to start without it); `ORIGIN_SECRET` and, on dev, `DEV_PASSWORD` come from the secrets (`latest`, read when an instance starts). Startup probe: **TCP 8080** (see "R2"). |
 | A Worker relaying to Cloud Run | `cloudflare.tf`, `worker/proxy.js` | The Worker's `ORIGIN` is the Cloud Run URL and its `PUBLIC_ORIGIN` the host's own `https://` origin (both answer 500 when missing); it adds `x-origin-auth` from its secret `ORIGIN_AUTH` and answers 500 without it. The dev password (HTTP Basic) and the gate's 401 pass through it untouched. Tested with `node --test 'infra/worker/*.test.mjs'`. |
-| A Workers Custom Domain per host | `cloudflare.tf` | `viz.dev.palicanon.app` (dev), `viz.palicanon.app` (prod, added after task 008). Cloudflare creates the DNS record and the certificate. |
+| A Workers Custom Domain per host | `cloudflare.tf` | `map.dev.palicanon.app` (dev), `map.palicanon.app` (prod, added after task 008). Cloudflare creates the DNS record and the certificate. |
 | `scripts/origin-secret` | `scripts/` | `create`, `push`, `check` the origin secret; tested with stub `gcloud`/`curl` (`bash infra/scripts/origin-secret.test.sh`). `check` asks the host's `/healthz` (dev's `/` is behind the password). |
 | The Pages site of the React map | `pages.tf` | **Removed in task 008.** Unchanged from before task 005 (the project, its two custom domains, the two CNAME records); the first apply must show no change to it. `deploy.yml` no longer deploys to it: it keeps its last build. |
 
@@ -88,9 +88,12 @@ short window in which the two disagree.
 ## Order: dev first, prod later
 
 `var.envs` holds **dev only** by default. The first apply therefore stands up
-`vizualisation-dev` and `viz.dev.palicanon.app` and nothing public in prod.
-Prod waits for task 008: `viz.palicanon.app` is the Pages site's custom
-domain and CNAME record until `pages.tf` is removed.
+`vizualisation-dev` and `map.dev.palicanon.app` and nothing public in prod.
+Prod waits for task 008, an order set when prod's host was
+`viz.palicanon.app`, the Pages site's custom domain and CNAME record until
+`pages.tf` is removed. The host is now `map.palicanon.app` (user,
+2026-10-16): a Workers Custom Domain cannot take a host that already has a
+record, so check it has none before the prod apply.
 
 ## Only the user (and the orchestrator for step 3), in order
 
@@ -161,7 +164,7 @@ Nothing here has been applied yet (task 005 wrote it, did not run it).
    ```
 
 9. Push `vizualisation` main: `deploy.yml` rolls dev; look at
-   https://viz.dev.palicanon.app (it asks for the password).
+   https://map.dev.palicanon.app (it asks for the password).
 
 The services start with the **bootstrap image**
 (`us-docker.pkg.dev/cloudrun/container/hello`, `var.bootstrap_image`), which
@@ -201,7 +204,7 @@ the real image.
   loud. Declaring the secret in tofu (`cloudflare_workers_secret`) would put
   the value in the state: ruled out.
 - **R6, Bot Fight.** The check from a GitHub runner to
-  `viz.dev.palicanon.app` after traffic can meet Cloudflare's Bot Fight Mode
+  `map.dev.palicanon.app` after traffic can meet Cloudflare's Bot Fight Mode
   or a managed challenge (HTTP 403 with `cf-mitigated: challenge`). The
   script tells it from the service's own 403. If it happens, the decision is
   the user's: a WAF skip rule for the runner, or drop that one check.
@@ -210,5 +213,6 @@ the real image.
 
 - **Cloudflare Access on dev.** Not needed: the service's own password gate
   replaces it (design v4).
-- The hosts (`viz.dev.palicanon.app`, `viz.palicanon.app`) are the design's
-  (task 005, v4).
+- The hosts (`map.dev.palicanon.app`, `map.palicanon.app`) are the user's
+  (2026-10-16, renamed from the design's `viz.*`, task 005 v4); the repository,
+  the services, accounts and secrets keep the name `vizualisation`.

@@ -10,13 +10,18 @@ stdlib only, plus `rustfmt` on the PATH:
 -> app/src/pages/content_<lang>.rs  `pages.*` as typed Rust const data (`leptos_i18n` reads a JSON
                                   array as a plural range, so a page's lists cannot live in the
                                   catalogue); `{{publisher}}` and `{{contact}}` resolved with the
-                                  values `src/components/Pages.tsx` passes.
+                                  values `src/components/Pages.tsx` passes; the public hosts
+                                  rewritten by HOSTS.
 -> app/src/pages/types.rs         the types those modules fill.
 
 i18next plurals (`tooltip.links_one` / `_other`) become two plain keys, the word alone
 (`tooltip_link`, `tooltip_links`), as search-front's `results_one` / `results_label`: the count is
 put before it in Rust. `leptos_i18n` 0.6 deprecates range keys (a warning, which CI denies) and its
 suffix plurals need the `plurals` feature and ICU data, for one tooltip.
+
+Hosts: the React catalogues link to the map at `viz.palicanon.app`, the React site's host until
+task 008; the Leptos app is served at `map.palicanon.app` (user, 2026-10-16). HOSTS maps each old
+host to the new one in every page string, and leaves the React catalogues as they are.
 
 Dropped: `settings.themes.sepia` (design v4 has no sepia theme). The key map, old -> new, and every
 `t()` call site are in app/STRINGS.md.
@@ -48,6 +53,10 @@ ADDED = {
 PLURAL_SUFFIXES = ("_one", "_other")
 # Each plural's singular key (the plural keeps the stem's name).
 SINGULAR = {"tooltip_links": "tooltip_link"}
+# The React site's public hosts -> the Leptos app's (user, 2026-10-16), rewritten in page strings.
+HOSTS = {"viz.palicanon.app": "map.palicanon.app", "viz.dev.palicanon.app": "map.dev.palicanon.app"}
+# A host on its own: not the tail of another (`dev.viz.palicanon.app`, the Pages dev host).
+HOST_RE = re.compile(r"(?<![\w.-])(" + "|".join(re.escape(h) for h in HOSTS) + r")(?![\w-]|\.\w)")
 
 PAGE_ORDER = ("acknowledgements", "terms", "privacy", "legal", "support")
 PAGE_KEYS = {"title", "description", "intro", "sections", "app", "instagram", "web"}
@@ -245,7 +254,13 @@ def tsx_const(name: str) -> str:
     return found.group(1)
 
 
+def rehost(text: str) -> str:
+    """The React site's public hosts replaced by the Leptos app's (HOSTS)."""
+    return HOST_RE.sub(lambda m: HOSTS[m.group(1)], text)
+
+
 def resolve(text: str, values: dict) -> str:
+    text = rehost(text)
     text = re.sub(r"\{\{\s*(publisher|contact)\s*\}\}", lambda m: values[m.group(1)], text)
     if "{{" in text:
         fail(f"unresolved placeholder in a page: {text}")
@@ -329,8 +344,9 @@ def content(lang: str, pages: dict, values: dict) -> str:
 //! The footer pages in {LANG_NAMES[lang]}: generated from the React site's
 //! `src/locales/{lang}.json` `pages.*` by `scripts/port_strings.py`
 //! (verbatim; `{{{{publisher}}}}` and `{{{{contact}}}}` resolved as
-//! `src/components/Pages.tsx` does; `pages.updated` is the catalogue's
-//! `pages_updated`). Data, not code: regenerate rather than edit by hand.
+//! `src/components/Pages.tsx` does; the hosts `viz.*` rewritten `map.*`;
+//! `pages.updated` is the catalogue's `pages_updated`). Data, not code:
+//! regenerate rather than edit by hand.
 
 use super::types::{{{", ".join(used)}}};
 
