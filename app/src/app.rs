@@ -110,15 +110,21 @@ fn site_data(first: &FirstRender) -> std::sync::Arc<dyn crate::fragment::MapData
 }
 
 /// The server's decisions for the request being rendered; nothing in the
-/// browser (it reads the server's from the page).
+/// browser (it reads the server's from the page; the page lacking them is an
+/// error). Under `csr` alone the site's App is not mounted: the map starts
+/// from no decision (`FirstRender::default`) and makes its own from its data.
 fn first_render() -> FirstRender {
     #[cfg(feature = "ssr")]
     {
         crate::map::first::of_request()
     }
-    #[cfg(not(feature = "ssr"))]
+    #[cfg(all(feature = "hydrate", not(feature = "ssr")))]
     {
         FirstRender::not_in_page()
+    }
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {
+        FirstRender::default()
     }
 }
 

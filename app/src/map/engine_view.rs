@@ -1043,7 +1043,9 @@ mod browser {
         }
     }
 
-    /// Stop the loop, unbind, free the GPU (rust-engine.ts lines 208–215, `dispose`).
+    /// Stop the loop, unbind, free the GPU (rust-engine.ts lines 208–215, `dispose`): the
+    /// engine view dropped releases it at once (map-engine: `device.destroy()` under WebGPU,
+    /// the WebGL2 context lost), and `<html>` no longer names an API drawing.
     fn stop(h: Handles) {
         h.looping.try_update_value(|l| l.disposed = true);
         h.bound.try_update_value(|b| {
@@ -1057,6 +1059,9 @@ mod browser {
             }
         });
         h.live.try_update_value(|l| *l = None);
+        if let Some(html) = document().document_element() {
+            let _ = html.remove_attribute("data-engine");
+        }
     }
 
     /// Listen to `kind` on `target` until the component goes (rust-engine.ts `listen`);

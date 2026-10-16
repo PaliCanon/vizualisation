@@ -15,7 +15,13 @@ wgpu = { version = "30", default-features = false, features = ["webgpu", "webgl"
 wasm-bindgen = "=0.2.129"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["HtmlCanvasElement", "console"] }
+# The canvas; its WebGL2 context, lost when a view is dropped (gpu.rs, `Release`).
+web-sys = { version = "0.3", features = [
+  "HtmlCanvasElement",
+  "WebGl2RenderingContext",
+  "WebglLoseContext",
+  "console",
+] }
 glam = "0.33"
 bytemuck = { version = "1", features = ["derive"] }
 map-layout = { version = "0.1.0", path = "../layout" }

@@ -1,7 +1,13 @@
-//! The map's own cookies, `viz_legend` and `viz_textlang` (design v4): read by the server for
-//! the first render (from the request) and by the browser when it hydrates (from
-//! `document.cookie`), so both start alike; written by the browser only. Host-only, unlike
-//! ui-lib's `pc_*` cookies shared across PaliCanon's subdomains: they are this map's.
+//! The map's own preferences, `viz_legend` and `viz_textlang` (design v4), where ui-lib's
+//! `Store` says ([`read_in`], [`write_in`]; task 012). On the web (`Store::Cookie`) they are
+//! cookies: read by the server for the first render (from the request) and by the browser
+//! when it hydrates (from `document.cookie`), so both start alike; written by the browser
+//! only. Host-only, unlike ui-lib's `pc_*` cookies shared across PaliCanon's subdomains:
+//! they are this map's (never `Store::Cookie.write`, which adds `Domain=palicanon.app`). In
+//! the PaliCanon app (`Store::Local`, `csr::mount`) they are `localStorage` entries under the
+//! same names.
+
+use palicanon_ui_lib::Store;
 
 /// A year, as ui-lib keeps its preferences.
 #[cfg_attr(
@@ -52,8 +58,28 @@ fn cookie_header() -> Option<String> {
     None
 }
 
+/// The preference `name` kept in `store` (`Store::current()` of the map): the cookie
+/// ([`read`]), or the `localStorage` entry; `None` when there is none.
+pub(crate) fn read_in(store: Store, name: &str) -> Option<String> {
+    match store {
+        Store::Cookie => read(name),
+        Store::Local => Store::Local.read(name),
+    }
+}
+
+/// Keeps the preference `value` under `name` in `store`: the host-only cookie ([`write`]), or
+/// the `localStorage` entry (storage that refuses it keeps the choice for the page only).
+pub(crate) fn write_in(store: Store, name: &str, value: &str) {
+    match store {
+        Store::Cookie => write(name, value),
+        Store::Local => {
+            let _ = Store::Local.write(name, value);
+        }
+    }
+}
+
 /// Stores `value` under `name`, in the browser; nothing on the server.
-pub(crate) fn write(name: &str, value: &str) {
+fn write(name: &str, value: &str) {
     #[cfg(all(feature = "browser", not(feature = "ssr")))]
     {
         use wasm_bindgen::JsCast;

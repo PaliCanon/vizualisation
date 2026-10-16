@@ -58,6 +58,46 @@ pub struct Gpu {
     lines: Option<(wgpu::Buffer, u32)>,
     pub backend: String,
     pub timer: Option<Timer>,
+    /// Releases the GPU once everything above is dropped (fields drop in order): last.
+    _release: Release,
+}
+
+/// What a dropped [`Gpu`] gives back at once, rather than when the browser collects it:
+/// under WebGPU the device, destroyed (wgpu's drop does not destroy it); under WebGL2 the
+/// canvas' context, lost (`WEBGL_lose_context`). And its place in `crate::live_views`.
+struct Release {
+    /// The device, under WebGPU only.
+    webgpu: Option<wgpu::Device>,
+    /// The canvas whose WebGL2 context is lost, under GL.
+    canvas: web_sys::HtmlCanvasElement,
+    /// Counted as a live view until dropped.
+    _counted: crate::Counted,
+}
+
+impl Drop for Release {
+    fn drop(&mut self) {
+        if let Some(device) = self.webgpu.take() {
+            device.destroy();
+        } else {
+            lose_webgl_context(&self.canvas);
+        }
+    }
+}
+
+/// Loses the canvas' WebGL2 context now (its GPU memory goes back), if it has one.
+fn lose_webgl_context(canvas: &web_sys::HtmlCanvasElement) {
+    use wasm_bindgen::JsCast;
+    let Ok(Some(context)) = canvas.get_context("webgl2") else {
+        return;
+    };
+    let Ok(context) = context.dyn_into::<web_sys::WebGl2RenderingContext>() else {
+        return;
+    };
+    if let Ok(Some(extension)) = context.get_extension("WEBGL_lose_context") {
+        extension
+            .unchecked_into::<web_sys::WebglLoseContext>()
+            .lose_context();
+    }
 }
 
 const ALPHA: wgpu::BlendState = wgpu::BlendState::ALPHA_BLENDING;
@@ -82,6 +122,7 @@ impl Gpu {
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         })
         .await;
+        let kept = canvas.clone();
         let surface = instance
             .create_surface(wgpu::SurfaceTarget::Canvas(canvas))
             .map_err(|e| e.to_string())?;
@@ -108,7 +149,15 @@ impl Gpu {
         config.format = config.format.remove_srgb_suffix(); // colours are given as the shaders output them
         config.view_formats = vec![];
         surface.configure(&device, &config);
-        Ok(Self::build(surface, device, queue, config, backend))
+        let webgpu = adapter.get_info().backend == wgpu::Backend::BrowserWebGpu;
+        let release = Release {
+            webgpu: webgpu.then(|| device.clone()),
+            canvas: kept,
+            _counted: crate::Counted::new(),
+        };
+        Ok(Self::build(
+            surface, device, queue, config, backend, release,
+        ))
     }
 
     fn build(
@@ -117,6 +166,7 @@ impl Gpu {
         queue: wgpu::Queue,
         config: wgpu::SurfaceConfiguration,
         backend: String,
+        release: Release,
     ) -> Gpu {
         let (uniforms, layout, bind) = uniform_bind(&device);
         let pipes = Pipelines::new(&device, &layout, config.format);
@@ -143,6 +193,7 @@ impl Gpu {
             n_points: 0,
             lines: None,
             backend,
+            _release: release,
         }
     }
 

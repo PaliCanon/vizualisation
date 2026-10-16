@@ -24,7 +24,7 @@ use leptos_i18n::td_string;
 use leptos_router::NavigateOptions;
 use leptos_router::hooks::{use_location, use_matched, use_navigate};
 use leptos_router::location::State;
-use palicanon_ui_lib::{Language, language_signal, theme_signal};
+use palicanon_ui_lib::{Language, Store, language_signal, theme_signal};
 
 use crate::catalogue::strings;
 use crate::components::not_found::NotFoundBody;
@@ -259,11 +259,15 @@ fn MapView(
     let summaries = RwSignal::new(None::<Summaries>);
 
     // ---------- The reader's choices ----------
+    // Kept where ui-lib keeps the page's: cookies on the web, localStorage in the app.
+    let store = Store::current();
     let texts = RwSignal::new(texts_lang(
-        cookies::read(texts_lang::COOKIE).as_deref(),
+        cookies::read_in(store, texts_lang::COOKIE).as_deref(),
         language.get_untracked(),
     ));
-    let legend_state = RwSignal::new(LegendState::parse(cookies::read(legend::COOKIE).as_deref()));
+    let legend_state = RwSignal::new(LegendState::parse(
+        cookies::read_in(store, legend::COOKIE).as_deref(),
+    ));
     let legend_open = RwSignal::new(legend_state.with_untracked(|l| l.open));
     let drawer_open = RwSignal::new(false);
     let type_on = RwSignal::new(Vec::<bool>::new());
@@ -540,7 +544,8 @@ fn MapView(
     });
     let on_texts = Callback::new(move |choice: TextsLang| {
         texts.set(choice);
-        cookies::write(
+        cookies::write_in(
+            store,
             texts_lang::COOKIE,
             &texts_lang::cookie_value(choice, language.get_untracked()),
         );
@@ -552,7 +557,7 @@ fn MapView(
         let mut state = legend_state.get();
         state.open = legend_open.get();
         if previous.is_some() {
-            cookies::write(legend::COOKIE, &state.to_cookie());
+            cookies::write_in(store, legend::COOKIE, &state.to_cookie());
         }
     });
     // A new interface language shows the texts translated into it (App.tsx lines 89–94).
@@ -561,7 +566,11 @@ fn MapView(
         if previous.is_some_and(|before| before != now) {
             let choice = TextsLang::Translated(now);
             texts.set(choice);
-            cookies::write(texts_lang::COOKIE, &texts_lang::cookie_value(choice, now));
+            cookies::write_in(
+                store,
+                texts_lang::COOKIE,
+                &texts_lang::cookie_value(choice, now),
+            );
         }
         now
     });
@@ -883,11 +892,12 @@ impl Loaded {
 #[cfg(all(feature = "browser", target_arch = "wasm32"))]
 mod browser {
     use std::collections::HashMap;
+    use std::future::Future;
     use std::sync::Arc;
     use std::time::Duration;
 
     use leptos::prelude::*;
-    use leptos::task::spawn_local;
+    use leptos::task::spawn_local_scoped_with_cancellation;
     use palicanon_ui_lib::Language;
     use wasm_bindgen::JsCast;
 
@@ -933,16 +943,29 @@ mod browser {
 
     /// Starts the browser's part.
     pub(super) fn start(w: &Wiring) {
-        load_views(w);
-        load_glosses(w);
+        let map = Owner::current();
+        load_views(w, map.clone());
+        load_glosses(w, map);
         debounce_threshold(w);
         escape_closes(w.uid, w.choose);
+    }
+
+    /// Runs `task` until it ends or the map (`map`, the owner the map was made in) is gone:
+    /// then it is dropped at its next await, so no line after an await runs on the map's
+    /// disposed state (an unmount during a load; in the app a panic there freezes its UI).
+    /// The read in flight is dropped with it. A view change does not stop a load: the
+    /// owner is the map's, not the effect's that started it.
+    fn spawn_owned(map: Option<&Owner>, task: impl Future<Output = ()> + 'static) {
+        match map {
+            Some(map) => map.with(|| spawn_local_scoped_with_cancellation(task)),
+            None => spawn_local_scoped_with_cancellation(task),
+        }
     }
 
     /// The view's data, fetched once per page and kept (App.tsx lines 61–71, `loadView`); the
     /// view on screen stays until the next is in; then the parallels and the vectorial space,
     /// ahead of time (App.tsx line 192).
-    fn load_views(w: &Wiring) {
+    fn load_views(w: &Wiring, map: Option<Owner>) {
         let Wiring {
             view,
             views,
@@ -978,7 +1001,7 @@ mod browser {
         Effect::new(move |_| {
             let v = view.get();
             let load = load.clone();
-            spawn_local(async move {
+            spawn_owned(map.as_ref(), async move {
                 let Some(loaded) = load(v).await else {
                     // The view's data did not arrive: said over the map (fetch.rs logged why).
                     if view.get_untracked() == v {
@@ -1033,7 +1056,7 @@ mod browser {
 
     /// The translations, once; the summaries of the glosses' language and of English, each
     /// fetched once (App.tsx lines 78 and 106–112).
-    fn load_glosses(w: &Wiring) {
+    fn load_glosses(w: &Wiring, map: Option<Owner>) {
         let Wiring {
             translations,
             summaries,
@@ -1044,7 +1067,7 @@ mod browser {
         let source = Arc::clone(&w.source);
         {
             let source = Arc::clone(&source);
-            spawn_local(async move {
+            spawn_owned(map.as_ref(), async move {
                 match fetch::translations(source).await {
                     Some(tr) => translations.set(Some(tr)),
                     // Without the titles nothing can be shown or searched: said over the map.
@@ -1072,7 +1095,7 @@ mod browser {
         Effect::new(move |_| {
             let language = gloss.get();
             let blurbs = blurbs.clone();
-            spawn_local(async move {
+            spawn_owned(map.as_ref(), async move {
                 let en = blurbs(Language::En).await;
                 let lang = if language == Language::En {
                     Arc::clone(&en)
