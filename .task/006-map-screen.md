@@ -1,6 +1,6 @@
 # 006 (C) The map screen in Leptos
 
-status: open · rank: 9 · level: hard · type: feature · request: user, 2026-10-12 ("remplace react par lepsos"), validated 2026-10-14 ("on fait la reecriture ! jaimerai bien que ce soit dans les guidelines des autres repo") · session: vizualisation-002-leptos (design dce546795076c4c v4, discussion d49d768dcc92341, process d4b32bf84ae3f40) · process: ../../docs/workflows/development-process.mmd · after: [004, 005]
+status: merged · rank: 9 · level: hard · type: feature · request: user, 2026-10-12 ("remplace react par lepsos"), validated 2026-10-14 ("on fait la reecriture ! jaimerai bien que ce soit dans les guidelines des autres repo") · session: vizualisation-002-leptos (design dce546795076c4c v4, discussion d49d768dcc92341, process d4b32bf84ae3f40) · process: ../../docs/workflows/development-process.mmd · after: [004, 005]
 
 ## Summary
 Rank: difficulty 9 (the whole of today's App.tsx and its components, the engine bound from Rust, SSR of the panel), impact 7 (every user-facing behaviour of the map) → 9, hard.
@@ -23,3 +23,8 @@ Built on 005's branch (feat/leptos-app; 006 merges after it). The React sources 
 | --- | --- | --- |
 | Define | done | design v4 validated by the user 2026-10-14 |
 | Plan | done | 5 slices: M1 ∥ M2, then M3 ∥ M4, then M5; built on feat/leptos-app (005 unmerged) |
+| Merge | done | squash d54f2bd (PR #7) after main merged in keeping the validated tree; released in v0.1.0 (223e952), live at map.palicanon.app |
+
+## Retro
+**Errors**: bugs invisible to SSR tests (MapScreen's slots ran once: "Loading…" and an empty legend stayed; the hashed-CSS 404) — only a Chrome capture saw them; the local lock failure stopped lanes before their own tests (no `--no-fail-fast`) and cost clippy runs to a misplaced patch flag; a lane's `pkill -f` stopped the user's test server; pedantic clippy fixed late; a browser fix checked only in a unit test needed a second fix after Chrome; review round 1 found ~40 parity points the React-sourced parity list had not named; expected values written from memory (a title from graph.json where the panel reads translations.json); voices on quota (Gemini 429, Sage empty or 504).
+**Changes**: a Chrome check is mandatory for any UI slice (hydrated, no console error, a screenshot read), and browser fixes are checked there; kill only the PID or port a lane started; pedantic clippy as the code is written, `--no-fail-fast` in briefs with the known local failures named; the parity list read from the React sources' state and edge cases, a source line per row, before slicing; expected values from the source the code reads; review rounds start on flash-lite when Gemini's tier is spent. (retro-discussion d0572a9d3926b4d, #9443; gemini #9449)
