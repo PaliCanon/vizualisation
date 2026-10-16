@@ -35,7 +35,8 @@ mod git_info;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use leptos_i18n_parser::parse_locales::{options::Config, parse_locales};
+use leptos_i18n_parser::parse_locales::options::{Config, ParseOptions};
+use leptos_i18n_parser::parse_locales::parse_locales;
 
 #[path = "../../ui-lib/build/placeholders.rs"]
 mod placeholders;
@@ -51,9 +52,13 @@ fn main() {
 /// Generates the typed string catalogue into `OUT_DIR/i18n/mod.rs`,
 /// failing the build when the locales disagree on their keys.
 fn generate_catalogue() {
+    // `interpolate_display` (as learn-pali's build.rs): `td_string!` with arguments renders
+    // to a string, for a sentence with a count or names in it (`sim_stats`,
+    // `texts_translated`, `credits_translated`).
     let config = Config::new(LOCALES[0])
         .and_then(|config| config.add_locales(&LOCALES[1..]))
-        .expect("the locale list is valid");
+        .expect("the locale list is valid")
+        .parse_options(ParseOptions::new().interpolate_display(true));
     let parsed = parse_locales(None, config).expect("locales/*.json parse");
     for file in parsed.tracked_files.iter().flatten() {
         println!("cargo::rerun-if-changed={file}");

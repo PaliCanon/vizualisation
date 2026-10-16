@@ -9,9 +9,9 @@
 //! `Showcase` with `shape="web"`: the lotus on a tile, landscape
 //! screenshots, two in view from `sm`), then `@daily_sutta` — no search
 //! showcase; the Instagram mark is the footer's inline SVG; the App Store
-//! link's campaign is the React map's `PaliWebMapSupport`. Not here yet:
-//! the Acknowledgements' translators table, built from the map's data
-//! (`Translators.tsx`), comes with the data (task 006).
+//! link's campaign is the React map's `PaliWebMapSupport`. The
+//! Acknowledgements show the translators table (`Translators.tsx`) before
+//! their sections, read from the data by the server (`map::first::Credits`).
 //!
 //! Inside the shell, above the same `SiteFooter` as the map. A phone: the
 //! shell's top bar carries the brand (the header's own is hidden below
@@ -26,6 +26,8 @@ use super::{AppBlock, InstagramBlock, PageKind, PageText, Section, SiteBlock, Ta
 use crate::catalogue::{Strings, strings};
 use crate::components::site_footer::{INSTAGRAM, InstagramIcon};
 use crate::head::PageHead;
+use crate::map::first::{Credits, FirstRender};
+use crate::map::ui::translators::TranslatorsTable;
 
 const H2: &str = "mt-10 font-serif text-xl font-semibold text-heading";
 const P: &str = "mt-3 max-w-[66ch] text-[15px] leading-7 text-ink";
@@ -68,9 +70,17 @@ const WEB_SHOTS: [&[(&str, u32, u32)]; 2] = [
 #[component]
 pub(crate) fn FooterPage(kind: PageKind) -> impl IntoView {
     let t = strings();
+    let credits = (kind == PageKind::Acknowledgements)
+        .then(|| {
+            use_context::<std::sync::Arc<FirstRender>>()?
+                .credits
+                .clone()
+        })
+        .flatten();
     move || {
         let locale = t.locale();
         let page = kind.text(locale);
+        let credits = credits.clone();
         view! {
             <PageHead
                 title=format!("{} — Suttas Map", page.title)
@@ -81,7 +91,7 @@ pub(crate) fn FooterPage(kind: PageKind) -> impl IntoView {
                 <Header t=t />
                 <PagesNav t=t current=kind />
                 <main class="mx-auto max-w-[44rem] pt-8">
-                    <Body page=page />
+                    <Body page=page credits=credits />
                     <p class="mt-10 text-xs text-subtle">
                         {td!(locale, pages_updated, date = UPDATED)}
                     </p>
@@ -158,9 +168,17 @@ fn PagesNav(t: Strings, current: PageKind) -> impl IntoView {
     }
 }
 
-/// The title, the intro, Support's showcases, then the sections.
+/// The title, the intro, Support's showcases, the translators table
+/// (Acknowledgements: `credits`), then the sections.
 #[component]
-fn Body(page: &'static PageText) -> impl IntoView {
+fn Body(page: &'static PageText, credits: Option<Credits>) -> impl IntoView {
+    // Its rows read the language tracked: the table follows a change as the page does.
+    let table = credits.map(|credits| {
+        move || {
+            let rows = credits.rows(palicanon_ui_lib::language_signal().get());
+            view! { <TranslatorsTable rows=rows pali_texts=credits.pali_texts /> }
+        }
+    });
     view! {
         <h1 class="font-serif text-3xl font-semibold text-heading">{page.title}</h1>
         {page.intro.iter().map(|p| view! { <p class=P>{rich(p)}</p> }).collect_view()}
@@ -172,6 +190,7 @@ fn Body(page: &'static PageText) -> impl IntoView {
             .map(|(site, shots)| site_block(site, shots))
             .collect_view()}
         {page.instagram.as_ref().map(instagram_block)}
+        {table}
         {page.sections.iter().map(section).collect_view()}
     }
 }
@@ -493,6 +512,41 @@ mod tests {
         let html = render(Language::En, PageKind::Terms);
         let inside = tag_of(&html, r#"href="/legal" class="text-gold underline"#);
         assert!(!inside.contains("target"), "{inside}");
+    }
+
+    /// The translators table follows a language change (design v4: every string of the
+    /// page does): rendered under a memo, it is rendered again once the language moves, in
+    /// the new language — its counts grouped as the language groups them, its headers.
+    #[test]
+    fn the_translators_table_follows_a_language_change() {
+        use crate::map::first::Credits;
+        let credits = Credits {
+            pali_texts: 7286,
+            languages: vec![
+                ("en".to_owned(), vec!["Bhikkhu Sujato".to_owned()], 6516),
+                ("fr".to_owned(), vec!["Môhan Wijayaratna".to_owned()], 1191),
+            ],
+        };
+        Owner::new().with(|| {
+            let language = provide_language();
+            language.set(Language::En);
+            leptos_meta::provide_meta_context();
+            let page = PageKind::Acknowledgements.text(Locale::en);
+            let table = Memo::new(move |_| {
+                let html = view! { <Body page=page credits=Some(credits.clone()) /> }.to_html();
+                let start = html.find("<table").expect(&html);
+                let end = html.find("</table>").expect(&html);
+                html[start..end].replace("<!>", "")
+            });
+            let en = table.get();
+            assert!(en.contains(">6,516<"), "{en}");
+            assert!(en.contains(">Language<"), "{en}");
+            language.set(Language::Fr);
+            let fr = table.get();
+            assert!(fr.contains(">6\u{202f}516<"), "{fr}");
+            assert!(fr.contains(">Langue<"), "{fr}");
+            assert!(fr.contains("Môhan Wijayaratna"), "{fr}");
+        });
     }
 
     #[test]

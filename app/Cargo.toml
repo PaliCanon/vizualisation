@@ -25,8 +25,15 @@ leptos_i18n = { version = "0.6.2", default-features = false }
 leptos_axum = { workspace = true, optional = true }
 axum = { version = "0.8", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net"], optional = true }
-# The data files' types (task 004), read at boot on the server only.
-map-formats = { version = "0.1.0", path = "../formats", optional = true }
+# The data files' types (task 004): read at boot on the server, and in the browser by the
+# map's logic (`map/`, shared by ssr and hydrate; serde only, it builds for wasm32).
+map-formats = { version = "0.1.0", path = "../formats" }
+# The first render's decisions travel to the browser in the page (`map::first`, a Leptos
+# `SharedValue`, JSON): the panel and its parts derive `Serialize`/`Deserialize`.
+serde = { version = "1", features = ["derive"] }
+# Search folds diacritics as the React page did (`normalize`, src/map/data.ts: NFD, then the
+# combining marks dropped).
+unicode-normalization = "0.1"
 # The origin guard and the password gate compare their secrets in constant time
 # (`origin.rs`, `gate.rs`); the gate decodes HTTP Basic credentials.
 subtle = { version = "2", optional = true }
@@ -36,6 +43,43 @@ base64 = { version = "0.22", optional = true }
 tower-http = { version = "0.6", features = ["fs"], optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
+# The map's data files are fetched by the browser (`map/fetch.rs`): a fetch's future, its
+# bytes.
+wasm-bindgen-futures = { version = "0.4", optional = true }
+js-sys = { version = "0.3", optional = true }
+
+# `EngineView` (map/engine_view.rs) in the browser: the map engine (wgpu, task 004) and the
+# DOM it is driven through (the canvas, pointer, wheel and key events, ResizeObserver,
+# requestAnimationFrame); the map's wiring (`map/live.rs`): its cookies, the history entry's
+# trail, the device's colour scheme, the data files' responses. `hydrate` only, and wasm32
+# only: the server renders the empty canvas.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+map-engine = { version = "0.1.0", path = "../engine", optional = true }
+web-sys = { version = "0.3", optional = true, features = [
+  "AddEventListenerOptions",
+  "CssStyleDeclaration",
+  "Document",
+  "DomRect",
+  "DomStringMap",
+  "Element",
+  "Event",
+  "EventTarget",
+  "History",
+  "HtmlCanvasElement",
+  "HtmlDocument",
+  "HtmlElement",
+  "KeyboardEvent",
+  "MediaQueryList",
+  "MouseEvent",
+  "NodeList",
+  "Performance",
+  "PointerEvent",
+  "ResizeObserver",
+  "Response",
+  "WheelEvent",
+  "Window",
+  "console",
+] }
 
 [build-dependencies]
 # As in ui-lib's build.rs: the parser's diagnostics fail the build on a missing key.
@@ -60,6 +104,10 @@ hydrate = [
   "palicanon-ui-lib/hydrate",
   "dep:console_error_panic_hook",
   "dep:wasm-bindgen",
+  "dep:wasm-bindgen-futures",
+  "dep:js-sys",
+  "dep:map-engine",
+  "dep:web-sys",
 ]
 ssr = [
   "dep:axum",
@@ -68,7 +116,6 @@ ssr = [
   "dep:subtle",
   "dep:base64",
   "dep:tower-http",
-  "dep:map-formats",
   "leptos/ssr",
   "leptos_meta/ssr",
   "leptos_router/ssr",

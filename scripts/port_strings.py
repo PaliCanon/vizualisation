@@ -43,11 +43,30 @@ PAGES_TSX = ROOT / "src" / "components" / "Pages.tsx"
 
 DROPPED = {"settings.themes.sepia"}
 # Keys the Leptos app adds, which the React site never had: the shared rail's entries,
-# worded as learn-pali's (app/locales: nav_search, nav_learn) plus this service's own.
+# worded as learn-pali's (app/locales: nav_search, nav_learn) plus this service's own; the
+# message of a map whose data did not arrive (006 review: the React page stayed on "Loading").
 ADDED = {
-    "en": {"nav_learn": "Learn", "nav_map": "Map", "nav_search": "Search"},
-    "fr": {"nav_learn": "Apprendre", "nav_map": "Carte", "nav_search": "Recherche"},
-    "vi": {"nav_learn": "Học", "nav_map": "Bản đồ", "nav_search": "Tìm kiếm"},
+    "en": {
+        "nav_learn": "Learn",
+        "nav_map": "Map",
+        "nav_search": "Search",
+        "map_error_title": "The map could not load",
+        "map_error_body": "Its data did not arrive. Check your connection, then reload the page.",
+    },
+    "fr": {
+        "nav_learn": "Apprendre",
+        "nav_map": "Carte",
+        "nav_search": "Recherche",
+        "map_error_title": "La carte n’a pas pu se charger",
+        "map_error_body": "Ses données ne sont pas arrivées. Vérifiez votre connexion, puis rechargez la page.",
+    },
+    "vi": {
+        "nav_learn": "Học",
+        "nav_map": "Bản đồ",
+        "nav_search": "Tìm kiếm",
+        "map_error_title": "Không thể tải bản đồ",
+        "map_error_body": "Dữ liệu của bản đồ chưa tải được. Hãy kiểm tra kết nối rồi tải lại trang.",
+    },
 }
 # i18next plural forms -> the counts CLDR gives `one` in each language (the rest is `_other`).
 PLURAL_SUFFIXES = ("_one", "_other")

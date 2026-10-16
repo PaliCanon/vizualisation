@@ -19,10 +19,11 @@ use palicanon_ui_lib::{
 };
 
 use crate::catalogue::strings;
-use crate::components::map_placeholder::MapPlaceholder;
 use crate::components::not_found::NotFoundPage;
 use crate::components::site_footer::SiteFooter;
 use crate::head::SiteHead;
+use crate::map::first::FirstRender;
+use crate::map::live::LiveMap;
 use crate::pages::FooterPage;
 use crate::route;
 
@@ -79,11 +80,17 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
 
 /// The app root: what hydration mounts, so it provides the page's one
 /// language signal ([`provide_language`]; the server's shell already set
-/// `<html lang>` from the very same resolution).
+/// `<html lang>` from the very same resolution), and the server's decisions
+/// for this address (`map::first::FirstRender`: the data files' URLs, the text it
+/// opens or its 404, the translators), made on the server from the data and
+/// read back by the browser from the page (a `SharedValue`, created first
+/// so the browser finds it at the same place).
 #[component]
 pub fn App() -> impl IntoView {
     provide_language();
     provide_meta_context();
+    let first = SharedValue::new(first_render).into_inner();
+    provide_context(std::sync::Arc::new(first));
     view! {
         <SiteHead />
         <Router>
@@ -92,15 +99,29 @@ pub fn App() -> impl IntoView {
     }
 }
 
-/// The rail's entries: the services, Search (the main site), Learn, then Map
-/// (this one, the current entry on `/`). `IconName::Grid` stands in for Learn
+/// The server's decisions for the request being rendered; nothing in the
+/// browser (it reads the server's from the page).
+fn first_render() -> FirstRender {
+    #[cfg(feature = "ssr")]
+    {
+        crate::map::first::of_request()
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        FirstRender::not_in_page()
+    }
+}
+
+/// The rail's entries: the services, Search (search.palicanon.app, as the
+/// showcase's `SERVICE_LINKS`), Learn, then Map
+/// (this one, the current entry on every map address: [`rail_current`]). `IconName::Grid` stands in for Learn
 /// as in learn-pali, `IconName::Motion` for Map, until ui-lib has their icons.
 pub(crate) fn nav_entries(locale: crate::catalogue::Locale) -> Vec<NavEntry> {
     vec![
         NavEntry {
             label: td_string!(locale, nav_search),
             icon: IconName::Search,
-            href: "https://palicanon.app",
+            href: "https://search.palicanon.app",
         },
         NavEntry {
             label: td_string!(locale, nav_learn),
@@ -113,6 +134,16 @@ pub(crate) fn nav_entries(locale: crate::catalogue::Locale) -> Vec<NavEntry> {
             href: "/",
         },
     ]
+}
+
+/// The path the rail marks current for `path`: the Map entry's (`/`) on every map
+/// address — a view, a text in a view —, the path itself elsewhere (a footer page, the
+/// 404: no entry).
+pub(crate) fn rail_current(path: &str) -> String {
+    match route::Route::parse(path) {
+        Some(route::Route::Map { .. }) => "/".to_owned(),
+        _ => path.to_owned(),
+    }
 }
 
 /// The rail, following the language and the current path.
@@ -133,11 +164,22 @@ fn nav(current: Signal<String>) -> NavList {
 /// 404 with its status); what each one shows is [`RoutedPage`]'s. The
 /// pages come before `/:uid`, the views before `/:uid` too, so a page or a
 /// view is never read as a text.
+///
+/// The map is outside the routes: one [`LiveMap`] for every map address,
+/// kept while the reader moves between views and texts (the engine and the
+/// data with it), mounted on the first map address and dropped on a page.
 #[component]
 fn Layout() -> impl IntoView {
     let location = use_location();
+    let on_map = Memo::new(move |_| {
+        matches!(
+            route::Route::parse(&location.pathname.get()),
+            Some(route::Route::Map { .. })
+        )
+    });
+    let current = Signal::derive(move || location.pathname.with(|path| rail_current(path)));
     view! {
-        <AppShell nav=nav(location.pathname.into()) footer=|| view! { <SiteFooter /> }>
+        <AppShell nav=nav(current) footer=|| view! { <SiteFooter /> }>
             <Routes fallback=|| view! { <NotFoundPage /> }>
                 <Route path=path!("/acknowledgements") view=RoutedPage />
                 <Route path=path!("/terms") view=RoutedPage />
@@ -155,21 +197,20 @@ fn Layout() -> impl IntoView {
                 <Route path=path!("/tsne/:uid") view=RoutedPage />
                 <Route path=path!("/:uid") view=RoutedPage />
             </Routes>
+            {move || on_map.get().then(|| view! { <LiveMap /> })}
         </AppShell>
     }
 }
 
 /// What the current path shows, as [`route::Route::parse`] reads it: a
-/// footer page, the map (its placeholder until task 006), or the 404 for a
-/// path the router matched but the table refuses (`/MN10`).
+/// footer page, nothing for a map address ([`Layout`] holds the map), or the
+/// 404 for a path the router matched but the table refuses (`/MN10`).
 #[component]
 fn RoutedPage() -> impl IntoView {
     let location = use_location();
     move || match route::Route::parse(&location.pathname.get()) {
         Some(route::Route::Page(kind)) => view! { <FooterPage kind=kind /> }.into_any(),
-        Some(route::Route::Map { view, uid }) => {
-            view! { <MapPlaceholder view=view uid=uid /> }.into_any()
-        }
+        Some(route::Route::Map { .. }) => ().into_any(),
         None => view! { <NotFoundPage /> }.into_any(),
     }
 }
@@ -194,12 +235,43 @@ mod tests {
             .collect();
         assert_eq!(
             hrefs,
-            ["https://palicanon.app", "https://learn.palicanon.app", "/"]
+            [
+                "https://search.palicanon.app",
+                "https://learn.palicanon.app",
+                "/"
+            ]
         );
     }
 
+    /// The committed data as the server serves it, read once for every test.
+    #[cfg(feature = "ssr")]
+    fn served() -> crate::data::Served {
+        use std::sync::{Arc, OnceLock};
+        static SERVED: OnceLock<crate::data::Served> = OnceLock::new();
+        SERVED
+            .get_or_init(|| {
+                let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public");
+                let data = crate::data::Data::load(&dir).expect("the committed data");
+                crate::data::Served::new(Arc::new(data))
+            })
+            .clone()
+    }
+
+    /// What the server's router provides a page: the data, the request
+    /// (its path and, when given, its `Cookie` header).
+    #[cfg(feature = "ssr")]
+    fn provide_request(path: &str, cookie: Option<&str>) {
+        let mut request = axum::http::Request::builder().uri(path);
+        if let Some(cookie) = cookie {
+            request = request.header(axum::http::header::COOKIE, cookie);
+        }
+        provide_context(request.body(()).expect("a request").into_parts().0);
+        provide_context(served());
+    }
+
     /// [`Layout`] as the server renders it for `path`, the language set
-    /// (search-front's `render_layout`).
+    /// (search-front's `render_layout`), with the data and the first render's
+    /// decisions [`App`] provides.
     #[cfg(feature = "ssr")]
     fn render_layout(language: Language, path: &str) -> String {
         use leptos_router::location::RequestUrl;
@@ -207,6 +279,8 @@ mod tests {
             palicanon_ui_lib::provide_language().set(language);
             provide_meta_context();
             provide_context(RequestUrl::new(path));
+            provide_request(path, None);
+            provide_context(std::sync::Arc::new(first_render()));
             view! {
                 <Router>
                     <Layout />
@@ -260,7 +334,8 @@ mod tests {
 
     /// Every route of the table renders, inside the shell, its title in
     /// each language (a page's `<h1>`, the view's name on a map route),
-    /// before the footer, and is no 404.
+    /// before the footer, and is no 404; a map route with a text opens its
+    /// panel.
     #[cfg(feature = "ssr")]
     #[test]
     fn every_route_renders() {
@@ -282,7 +357,8 @@ mod tests {
                 assert!(h1 < footer, "{path} {language:?}: {html}");
                 assert!(!html.contains("Anattā"), "{path} {language:?}: {html}");
                 if let Some(uid) = uid {
-                    assert!(html.contains(&format!(">{uid}</p>")), "{path}: {html}");
+                    let read = format!(r#"href="https://suttacentral.net/{uid}""#);
+                    assert!(html.contains(&read), "{path}: the panel is open: {html}");
                 }
             }
         }
@@ -308,23 +384,28 @@ mod tests {
     /// (learn-pali/app/src/app.rs's `render_document`).
     #[cfg(feature = "ssr")]
     fn render_document(path: &str) -> String {
+        render_document_with_cookie(path, None)
+    }
+
+    /// [`render_document`] for a request carrying `cookie`.
+    #[cfg(feature = "ssr")]
+    fn render_document_with_cookie(path: &str, cookie: Option<&str>) -> String {
         let options = LeptosOptions::builder()
             .output_name("vizualisation")
             .build();
-        render_document_with(options, path)
+        render_document_with(options, path, cookie)
     }
 
-    /// [`render_document`] with the given options.
+    /// [`render_document`] with the given options and cookie.
     #[cfg(feature = "ssr")]
-    fn render_document_with(options: LeptosOptions, path: &str) -> String {
+    fn render_document_with(options: LeptosOptions, path: &str, cookie: Option<&str>) -> String {
         use futures::StreamExt;
         use leptos_meta::ServerMetaContext;
         use leptos_router::location::RequestUrl;
 
         let (server, output) = ServerMetaContext::new();
         let body = Owner::new().with(|| {
-            let request = axum::http::Request::builder().uri(path);
-            provide_context(request.body(()).expect("a request").into_parts().0);
+            provide_request(path, cookie);
             provide_context(server);
             provide_context(RequestUrl::new(path));
             shell(options).to_html()
@@ -351,15 +432,16 @@ mod tests {
     #[test]
     fn each_route_has_its_title_and_canonical() {
         let home = "Suttas Map — the links between the suttas of the Pāli Canon";
-        for (path, title) in [
-            ("/", home),
-            ("/sim", home),
-            ("/sim/mn10", home),
-            ("/terms", "Terms of use — Suttas Map"),
+        let mn10 = "MN 10 Satipaṭṭhānasutta: Mindfulness Meditation — Suttas Map";
+        for (path, title, canonical) in [
+            ("/", home, "/"),
+            ("/sim", home, "/sim"),
+            ("/sim/mn10", mn10, "/mn10"),
+            ("/terms", "Terms of use — Suttas Map", "/terms"),
         ] {
             let html = render_document(path);
             let head = &html[..html.find("</head>").expect(&html)];
-            let url = format!("{}{path}", crate::head::CANONICAL_BASE);
+            let url = format!("{}{canonical}", crate::head::CANONICAL_BASE);
             assert!(
                 head.contains(&format!("<title>{title}</title>")),
                 "{path}: {head}"
@@ -418,7 +500,7 @@ mod tests {
             .hash_files(true)
             .hash_file(hash_file.to_string_lossy().as_ref().into())
             .build();
-        let html = render_document_with(options, "/");
+        let html = render_document_with(options, "/", None);
         let head = &html[..html.find("</head>").expect(&html)];
         assert!(
             head.contains(r#"href="/pkg/vizualisation.ccc333.css""#),
@@ -440,7 +522,7 @@ mod tests {
     #[test]
     fn the_404_is_noindex() {
         let noindex = r#"<meta name="robots" content="noindex">"#;
-        for path in ["/nope/x/y", "/sim/a/b"] {
+        for path in ["/nope/x/y", "/sim/a/b", "/zz999", "/sim/zz999"] {
             let html = render_document(path);
             let head = &html[..html.find("</head>").expect(&html)];
             assert!(head.contains(noindex), "{path}: {head}");
@@ -516,5 +598,252 @@ mod tests {
         let page = html.find(">Privacy</h1>").expect(&html);
         let footer = html.find("<footer").expect(&html);
         assert!(body < page && footer < end, "the app is inside: {html}");
+    }
+
+    /// The opening tag of the `<aside>` holding the legend.
+    #[cfg(feature = "ssr")]
+    fn legend_aside(html: &str) -> &str {
+        let at = html.find("w-64 max-w-[85vw]").expect(html);
+        let open = html[..at].rfind("<aside").expect(html);
+        &html[open..open + html[open..].find('>').expect(html)]
+    }
+
+    /// `/:view/:uid` is the text's page, rendered by the server: its title
+    /// (reference and name) and summary in the head, its canonical at its
+    /// first view (`/mn10`, the parallels have it), and the panel — its
+    /// reference, the SuttaCentral link, its neighbours in the view at the
+    /// view's threshold (one similar text at 0.56 for MN 10).
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn the_panel_is_server_rendered_for_a_text() {
+        let html = render_document("/sim/mn10");
+        let head = &html[..html.find("</head>").expect(&html)];
+        assert!(
+            head.contains(
+                "<title>MN 10 Satipaṭṭhānasutta: Mindfulness Meditation — Suttas Map</title>"
+            ),
+            "{head}"
+        );
+        assert!(
+            head.contains(r#"<link href="https://map.palicanon.app/mn10" rel="canonical">"#),
+            "{head}"
+        );
+        assert!(
+            head.contains(r#"<meta name="description" content="Here the Buddha details"#),
+            "{head}"
+        );
+        let body = &html[html.find("<body>").expect(&html)..];
+        assert!(
+            body.contains(r#"href="https://suttacentral.net/mn10""#),
+            "{body}"
+        );
+        assert!(body.contains("Read on SuttaCentral"), "{body}");
+        assert!(body.contains("Satipaṭṭhānasutta"), "{body}");
+        assert!(
+            body.contains(">Similarity<"),
+            "a section of similar texts: {body}"
+        );
+        assert!(body.contains("Texts visited"), "the trail: {body}");
+        assert!(!html.contains("noindex"), "{head}");
+    }
+
+    /// A uid the view lacks but another view has (`ds1.1`: the vectorial
+    /// space's, not the parallels') opens its panel anyway — no 404 —,
+    /// without a neighbour in this view and with nothing highlighted; its
+    /// canonical is its first view.
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn a_uid_missing_from_the_view_opens_the_panel_with_nothing_highlighted() {
+        use crate::map::first::{FirstOpen, FirstRequest, first_render};
+        use crate::map::texts_lang::TextsLang;
+        use crate::route::View;
+
+        let html = render_document("/ds1.1");
+        let head = &html[..html.find("</head>").expect(&html)];
+        assert!(!head.contains("noindex"), "{head}");
+        assert!(
+            head.contains(r#"<link href="https://map.palicanon.app/sim/ds1.1" rel="canonical">"#),
+            "{head}"
+        );
+        let body = &html[html.find("<body>").expect(&html)..];
+        assert!(
+            body.contains(r#"href="https://suttacentral.net/ds1.1""#),
+            "the panel is open: {body}"
+        );
+        // The panel's sections, not the legend's link types (the legend is the server's too).
+        let read = body.find("suttacentral.net/ds1.1").expect(body);
+        let open = body[..read].rfind("<aside").expect(body);
+        let panel = &body[open..read + body[read..].find("</aside>").expect(body)];
+        for section in [">Full parallel<", ">Similarity<", ">Resembling<"] {
+            assert!(!panel.contains(section), "no link in this view: {section}");
+        }
+        let first = first_render(
+            &served(),
+            &FirstRequest {
+                path: "/ds1.1",
+                view: View::Parallels,
+                uid: Some("ds1.1"),
+                th: None,
+                language: Language::En,
+                texts: TextsLang::Pali,
+                light: false,
+            },
+        );
+        let FirstOpen::Text(text) = first.open else {
+            panic!("ds1.1 opens a panel: {:?}", first.open);
+        };
+        assert_eq!(text.index_in_view, None);
+        assert_eq!(text.highlighted, None, "nothing highlighted");
+        assert_eq!(text.canonical, View::Sim);
+        assert_eq!(text.panel.item.uid, "ds1.1");
+        assert!(text.panel.sections.is_empty(), "{:?}", text.panel.sections);
+    }
+
+    /// A uid in no view is the 404, in the document: its title, noindex,
+    /// no panel.
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn a_uid_in_no_view_renders_the_404() {
+        for path in ["/zz999", "/sim/zz999"] {
+            let html = render_document(path);
+            assert!(html.contains(">Anattā</h1>"), "{path}: {html}");
+            assert!(
+                html.contains("<title>Anattā — Suttas Map</title>"),
+                "{path}"
+            );
+            assert!(!html.contains("suttacentral.net/zz999"), "{path}: {html}");
+        }
+    }
+
+    /// The map's cookies, read by the server for the first render: the
+    /// legend closed on a desktop (`viz_legend`'s last field 0), the texts in
+    /// French (`viz_textlang` chosen while the interface was in English) —
+    /// the chip says so and the panel's titles are French. Without them: the
+    /// legend open, the texts in Pāli, the titles in the interface's English
+    /// (`translations.json`'s, as App.tsx's `refOf`).
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn the_server_renders_the_maps_cookies() {
+        let html =
+            render_document_with_cookie("/mn10", Some("viz_legend=mn||0; viz_textlang=fr|en"));
+        let aside = legend_aside(&html);
+        assert!(aside.contains("md:hidden"), "{aside}");
+        assert!(!aside.contains("md:flex"), "{aside}");
+        assert!(html.contains("Français"), "the texts chip: {html}");
+        assert!(
+            html.contains("Le récit de l’attention vigilante"),
+            "French titles: {html}"
+        );
+        let html = crate::map::ui::test_support::plain(&render_document("/mn10"));
+        let aside = legend_aside(&html);
+        assert!(aside.contains("md:flex"), "{aside}");
+        assert!(html.contains(">Pāli<"), "the texts chip: {html}");
+        assert!(
+            html.contains(">Mindfulness Meditation<"),
+            "SuttaCentral's English title (translations.json's): {html}"
+        );
+        assert!(
+            !html.contains("Le récit de l’attention vigilante"),
+            "{html}"
+        );
+    }
+
+    /// The links marked `aria-current="page"` in `html` (the rail's entries; the panel's
+    /// trail marks its current chip, a `<span>`, too).
+    #[cfg(feature = "ssr")]
+    fn current_tags(html: &str) -> Vec<&str> {
+        html.match_indices(r#"aria-current="page""#)
+            .map(|(at, _)| {
+                let start = html[..at].rfind('<').expect(html);
+                &html[start..at + html[at..].find('>').expect(html)]
+            })
+            .filter(|tag| tag.starts_with("<a"))
+            .collect()
+    }
+
+    /// 006 review: the rail's Map entry (`/`) is current on every map route — a view, a
+    /// text in a view —, never on a footer page.
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn the_rails_map_entry_is_current_on_every_map_route() {
+        for path in ["/", "/sim", "/sim/mn10", "/mn10", "/tsne/mn10"] {
+            let html = render_layout(Language::En, path);
+            let current = current_tags(&html);
+            assert!(!current.is_empty(), "{path}: no current entry");
+            for tag in current {
+                assert!(tag.contains(r#"href="/""#), "{path}: {tag}");
+            }
+        }
+        for path in ["/terms", "/acknowledgements"] {
+            let html = render_layout(Language::En, path);
+            assert!(
+                current_tags(&html)
+                    .iter()
+                    .all(|tag| !tag.contains(r#"href="/""#)),
+                "{path}: the map is not current"
+            );
+        }
+    }
+
+    /// 006 review: the legend is the server's, its rows and counts in the aside before any
+    /// script runs (it was empty until the browser's data came in): each collection with
+    /// its texts, each link type with its links (the vectorial space's at its default
+    /// threshold), as the browser counts them.
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn the_server_renders_the_legend_with_its_counts() {
+        use crate::map::draw::{Scene, links_at};
+        use crate::map::theme::MapTheme;
+        use crate::map::ui::number;
+        use crate::map::ui::test_support::plain;
+
+        let data = &served().data;
+        for (path, graph) in [("/", &data.parallels), ("/sim", &data.sim)] {
+            let html = plain(&render_document(path));
+            let open = html.find("w-64 max-w-[85vw]").expect(&html);
+            let aside = &html[open..open + html[open..].find("</aside>").expect(&html)];
+            let theme = MapTheme::new(false, graph);
+            let rows = crate::map::ui::legend::collection_rows(graph, &theme, None);
+            assert!(rows.len() > 3, "{path}");
+            for row in rows {
+                let line = format!(
+                    r#"{}<span class="ml-auto tabular-nums text-subtle">{}</span>"#,
+                    row.name,
+                    number(row.count, Language::En)
+                );
+                assert!(aside.contains(&line), "{path}: {line}: {aside}");
+            }
+            let mut scene = Scene::new(graph);
+            if let Some(sim) = &graph.sim {
+                scene.set_links(links_at(&data.pairs, sim, sim.default));
+            }
+            let links = scene.link_counts(graph);
+            for (name, count) in graph.types.iter().zip(&links) {
+                let label = crate::map::ui::type_label(name, Language::En.into());
+                let line = format!(
+                    r#"{label}<span class="ml-auto tabular-nums text-subtle">{}</span>"#,
+                    number(*count, Language::En)
+                );
+                assert!(aside.contains(&line), "{path}: {line}: {aside}");
+            }
+        }
+    }
+
+    /// The Acknowledgements page has the translators table, read from the
+    /// data: the Pāli edition's 7,286 texts (the vectorial space's), then a
+    /// row per language with its count (`translations.json`: 6,516 English,
+    /// 1,191 French, 5,259 Vietnamese).
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn the_acknowledgements_list_the_translators_from_the_data() {
+        use crate::map::ui::test_support::plain;
+        let html = plain(&render_layout(Language::En, "/acknowledgements"));
+        assert!(html.contains("Texts and translators"), "{html}");
+        for count in ["7,286", "6,516", "1,191", "5,259"] {
+            assert!(html.contains(&format!(">{count}<")), "{count}: {html}");
+        }
+        assert!(html.contains("Mahāsaṅgīti Tipiṭaka"), "{html}");
+        let fr = plain(&render_layout(Language::Fr, "/acknowledgements"));
+        assert!(fr.contains("7\u{202f}286"), "{fr}");
     }
 }

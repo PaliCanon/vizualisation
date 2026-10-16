@@ -11,12 +11,13 @@
 //! one place a path's meaning is decided.
 
 use leptos_i18n::td_string;
+use serde::{Deserialize, Serialize};
 
 use crate::catalogue::Locale;
 use crate::pages::PageKind;
 
 /// One of the map's views, each at its own path segment.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(crate) enum View {
     /// SuttaCentral's parallels, the default view, at `/`.
     Parallels,
@@ -49,6 +50,12 @@ impl View {
             Self::Umap => "umap",
             Self::Tsne => "tsne",
         }
+    }
+
+    /// Whether the view is one of the vectorial space's (sim, pca, umap, tsne): the views a
+    /// similarity threshold (`?th=`) applies to.
+    pub(crate) const fn is_vectorial(self) -> bool {
+        !matches!(self, Self::Parallels)
     }
 
     /// The view whose segment is `segment` (never the default view's empty one).
