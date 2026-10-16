@@ -236,6 +236,21 @@ mod tests {
         }
     }
 
+    /// A trailing slash past a view or a text is no map address, at the root and past the
+    /// app's `/map` alike (`map_address` reads the path past the base): main's SSR answers
+    /// `/sim/mn10/`, `/mn10/` and `/sim/` with a 404 and no panel (012 review #10554). The
+    /// map's own `/` stays its home.
+    #[test]
+    fn a_trailing_slash_is_no_address() {
+        for rest in ["/sim/mn10/", "/mn10/", "/sim/", "/sn56.11/", "/sim//"] {
+            assert_eq!(map_address(rest), None, "{rest}");
+            assert_eq!(Route::parse(rest), None, "{rest}");
+        }
+        for rest in ["", "/"] {
+            assert_eq!(map_address(rest), Some((View::Parallels, None)), "{rest:?}");
+        }
+    }
+
     /// A page's path is the page, never a text whose uid it would spell.
     #[test]
     fn a_page_path_is_the_page_not_a_uid() {

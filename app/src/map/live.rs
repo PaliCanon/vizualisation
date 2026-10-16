@@ -277,8 +277,12 @@ fn MapView(
     let query = RwSignal::new(String::new());
     let pointed = RwSignal::new(None::<Pointed>);
     let no_gpu = RwSignal::new(false);
-    // A data file did not arrive: the map says so instead of loading for ever.
+    // The view's data did not arrive: the map says so instead of loading for ever (cleared
+    // when another view's arrives).
     let failed = RwSignal::new(false);
+    // A file every view needs did not arrive (the translations, the English summaries): said
+    // over the map for as long as it is mounted, whatever view comes in.
+    let lost = RwSignal::new(false);
     // Bumped each time a view's data is kept (`views` is not a signal).
     let views_in = RwSignal::new(0_usize);
 
@@ -593,6 +597,7 @@ fn MapView(
         slider,
         pointed,
         failed,
+        lost,
         go,
         choose,
     });
@@ -814,7 +819,7 @@ fn MapView(
                     move || {
                         if no_gpu.get() {
                             None
-                        } else if failed.get() {
+                        } else if failed.get() || lost.get() {
                             Some(view! { <MapError /> }.into_any())
                         } else {
                             graph.with(Option::is_none).then(|| view! { <MapLoading /> }.into_any())
@@ -937,6 +942,7 @@ mod browser {
         pub slider: RwSignal<u32>,
         pub pointed: RwSignal<Option<Pointed>>,
         pub failed: RwSignal<bool>,
+        pub lost: RwSignal<bool>,
         pub go: Callback<(String, Vec<String>, bool)>,
         pub choose: Callback<Option<usize>>,
     }
@@ -1061,7 +1067,7 @@ mod browser {
             translations,
             summaries,
             gloss,
-            failed,
+            lost,
             ..
         } = *w;
         let source = Arc::clone(&w.source);
@@ -1070,43 +1076,54 @@ mod browser {
             spawn_owned(map.as_ref(), async move {
                 match fetch::translations(source).await {
                     Some(tr) => translations.set(Some(tr)),
-                    // Without the titles nothing can be shown or searched: said over the map.
-                    None => failed.set(true),
+                    // Without the titles nothing can be shown or searched: said over the map,
+                    // and a view's data arriving later does not clear it.
+                    None => lost.set(true),
                 }
             });
         }
         let kept = StoredValue::new(Vec::<(Language, Arc<Blurbs>)>::new());
-        let blurbs = move |code: Language| {
-            let source = Arc::clone(&source);
-            async move {
-                let cached = kept.with_value(|kept| {
-                    kept.iter()
-                        .find(|(c, _)| *c == code)
-                        .map(|(_, b)| Arc::clone(b))
-                });
-                if let Some(cached) = cached {
-                    return cached;
-                }
-                let fetched = fetch::blurbs(source, code).await;
-                kept.update_value(|kept| kept.push((code, Arc::clone(&fetched))));
-                fetched
-            }
-        };
+        let blurbs = move |code: Language| kept_blurbs(Arc::clone(&source), kept, code);
         Effect::new(move |_| {
             let language = gloss.get();
             let blurbs = blurbs.clone();
             spawn_owned(map.as_ref(), async move {
-                let en = blurbs(Language::En).await;
+                // English is every text's fallback summary: without it, said over the map.
+                let Some(en) = blurbs(Language::En).await else {
+                    lost.set(true);
+                    return;
+                };
+                // Another language's absent: its texts show their English summary.
                 let lang = if language == Language::En {
                     Arc::clone(&en)
                 } else {
-                    blurbs(language).await
+                    blurbs(language).await.unwrap_or_default()
                 };
                 if gloss.get_untracked() == language {
                     summaries.set(Some(Summaries { language, lang, en }));
                 }
             });
         });
+    }
+
+    /// The summaries in `code`: kept, else fetched and kept; `None` when the file is absent
+    /// (not kept: asked again on the next language change).
+    async fn kept_blurbs(
+        source: Arc<dyn MapData>,
+        kept: StoredValue<Vec<(Language, Arc<Blurbs>)>>,
+        code: Language,
+    ) -> Option<Arc<Blurbs>> {
+        let cached = kept.with_value(|kept| {
+            kept.iter()
+                .find(|(c, _)| *c == code)
+                .map(|(_, b)| Arc::clone(b))
+        });
+        if cached.is_some() {
+            return cached;
+        }
+        let fetched = fetch::blurbs(source, code).await?;
+        kept.update_value(|kept| kept.push((code, Arc::clone(&fetched))));
+        Some(fetched)
     }
 
     /// The threshold applied 200 ms after the slider settles, and written in the address

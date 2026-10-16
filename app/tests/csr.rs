@@ -102,13 +102,14 @@ fn bundled(name: &str) -> Option<Vec<u8>> {
 /// The senders of the asks a fake holds back.
 type Held = Arc<Mutex<Vec<Sender<Option<Vec<u8>>>>>>;
 
-/// A `MapData` over the committed files that records what it is asked and can hold one file
-/// back until the test releases it. Clones share all of it.
+/// A `MapData` over the committed files that records what it is asked, can hold one file
+/// back until the test releases it, and can answer `None` for one. Clones share all of it.
 #[derive(Clone, Default)]
 struct Fake {
     asked: Arc<Mutex<Vec<&'static str>>>,
     hold: Arc<Mutex<Option<&'static str>>>,
     held: Held,
+    absent: Arc<Mutex<Option<&'static str>>>,
 }
 
 impl Fake {
@@ -120,6 +121,16 @@ impl Fake {
             .iter()
             .filter(|n| **n == name)
             .count()
+    }
+
+    /// How many asks, of every file.
+    fn total(&self) -> usize {
+        self.asked.lock().expect("asked").len()
+    }
+
+    /// Answers `None` to every later ask of `name` (as a missing file); `None` serves all.
+    fn absent(&self, name: Option<&'static str>) {
+        *self.absent.lock().expect("absent") = name;
     }
 
     /// Holds every later ask of `name` until [`Fake::release`]; `None` answers at once again.
@@ -143,6 +154,9 @@ impl Fake {
 impl MapData for Fake {
     fn file(&self, name: &'static str) -> MapFile {
         self.asked.lock().expect("asked").push(name);
+        if *self.absent.lock().expect("absent") == Some(name) {
+            return Box::pin(async { None });
+        }
         if *self.hold.lock().expect("hold") == Some(name) {
             let (tx, rx) = oneshot::channel();
             self.held.lock().expect("held").push(tx);
@@ -268,6 +282,29 @@ fn stored(key: &str) -> Option<String> {
         .ok()
         .flatten()
         .and_then(|s| s.get_item(key).ok().flatten())
+}
+
+/// `localStorage[key] = value`, or the entry removed.
+fn store(key: &str, value: Option<&str>) {
+    let storage = window().local_storage().ok().flatten().expect("a storage");
+    match value {
+        Some(value) => storage.set_item(key, value).expect("stored"),
+        None => storage.remove_item(key).expect("removed"),
+    }
+}
+
+/// The map's `MapError`, over the map: its data did not arrive.
+fn map_error() -> bool {
+    text().contains("The map could not load")
+}
+
+/// The element `selector` finds in the host, as an `HtmlElement`; `None` when there is none.
+fn host_element(selector: &str) -> Option<web_sys::HtmlElement> {
+    document()
+        .query_selector(&format!("#host {selector}"))
+        .ok()
+        .flatten()
+        .map(JsCast::unchecked_into)
 }
 
 /// Waits `ms` milliseconds (the page's timers and frames run meanwhile).
@@ -421,6 +458,84 @@ async fn the_map_mounts_and_unmounts_under_map() {
     assert_eq!(map_engine::live_views(), 0);
     assert_eq!(data_engine(), None);
 
+    // ---------- Unmounted while each file is held: never asked again ----------
+    for (name, url, texts) in [
+        ("graph.json", "/map", None),
+        ("graph-sim.json", "/map/sim", None),
+        ("graph-sim.bin", "/map/sim", None),
+        ("translations.json", "/map", None),
+        ("blurbs-en.json", "/map", None),
+        ("blurbs-fr.json", "/map", Some("fr|en")),
+    ] {
+        store("viz_textlang", texts);
+        fake.hold(Some(name));
+        let before = fake.asked(name);
+        visit(url);
+        shown.set(true);
+        until(&format!("{name} asked"), || fake.asked(name) > before).await;
+        sleep(100).await;
+        unmount(&shown).await;
+        let total = fake.total();
+        fake.hold(None);
+        let awaited = fake.release(name);
+        sleep(200).await;
+        assert!(
+            !PANICKED.load(Ordering::SeqCst),
+            "{name}: an unmount during its load panicked"
+        );
+        assert_eq!(awaited, 0, "{name}: nobody awaits it once unmounted");
+        assert_eq!(
+            fake.total(),
+            total,
+            "{name}: no file asked after the unmount"
+        );
+        assert_eq!(map_engine::live_views(), 0, "{name}");
+        assert_eq!(data_engine(), None, "{name}");
+    }
+    store("viz_textlang", None);
+
+    // ---------- A file absent: the map says so; a language's summaries absent: none ----------
+    for (name, url) in [
+        ("graph.json", "/map"),
+        ("graph-sim.json", "/map/sim"),
+        ("graph-sim.bin", "/map/sim"),
+        ("translations.json", "/map"),
+        ("blurbs-en.json", "/map"),
+    ] {
+        fake.absent(Some(name));
+        let ahead = fake.asked("graph-sim.bin");
+        visit(url);
+        shown.set(true);
+        until(&format!("MapError without {name}"), map_error).await;
+        if url == "/map" && name != "graph.json" {
+            // The view's data in (the vectorial space's asked ahead after it): still said.
+            until("the view installed", || fake.asked("graph-sim.bin") > ahead).await;
+            sleep(100).await;
+            assert!(map_error(), "{name}: MapError stays once the view is in");
+        }
+        unmount(&shown).await;
+        fake.absent(None);
+        assert_eq!(map_engine::live_views(), 0, "{name}");
+        assert!(!PANICKED.load(Ordering::SeqCst), "{name}: a panic");
+    }
+    store("viz_textlang", Some("fr|en"));
+    fake.absent(Some("blurbs-fr.json"));
+    let before = fake.asked("blurbs-fr.json");
+    mount_at(&shown, "/map/mn10").await;
+    until("MN 10's English summary", || {
+        text().contains("Here the Buddha details the seventh factor")
+    })
+    .await;
+    assert!(
+        fake.asked("blurbs-fr.json") > before,
+        "the French summaries asked"
+    );
+    assert!(!text().contains("Le Bouddha détaille"), "{}", text());
+    assert!(!map_error(), "no MapError without blurbs-fr.json");
+    unmount(&shown).await;
+    fake.absent(None);
+    store("viz_textlang", None);
+
     // ---------- 20 mount-unmount cycles ----------
     let mut after_unmount = Vec::new();
     let mut memory = Vec::new();
@@ -457,8 +572,24 @@ async fn the_map_mounts_and_unmounts_under_map() {
         "wasm memory after the 4th unmount {fourth}, after the 20th {last}: {memory:?}"
     );
 
-    // ---------- The preferences in localStorage, no cookie ----------
+    // ---------- The preferences in localStorage, no cookie, read back on a mount ----------
     mount_at(&shown, "/map").await;
+    host_element(r#"button[aria-label="Hide Majjhima Nikāya"]"#)
+        .expect("MN's eye")
+        .click();
+    until("the hidden collection stored", || {
+        stored("viz_legend").is_some_and(|v| v.split('|').nth(1) == Some("mn"))
+    })
+    .await;
+    host_element(r#"button[aria-controls="viz-texts"]"#)
+        .expect("the texts chip")
+        .click();
+    host_element("#viz-texts-2").expect("Français").click();
+    until("the texts language stored", || {
+        stored("viz_textlang").as_deref() == Some("fr|en")
+    })
+    .await;
+    assert!(!cookies().contains("viz_"), "no cookie: {}", cookies());
     let toggle = document()
         .query_selector(r#"#host button[aria-pressed][title="Show / hide the collections"]"#)
         .ok()
@@ -466,11 +597,30 @@ async fn the_map_mounts_and_unmounts_under_map() {
         .expect("the legend's toggle")
         .unchecked_into::<web_sys::HtmlElement>();
     toggle.click();
-    until("the legend stored", || stored("viz_legend").is_some()).await;
+    until("the legend stored closed", || {
+        stored("viz_legend").is_some_and(|v| v.ends_with("|0"))
+    })
+    .await;
+    assert_eq!(stored("viz_legend").as_deref(), Some("|mn|0"));
+    assert!(!cookies().contains("viz_"), "no cookie: {}", cookies());
+
+    unmount(&shown).await;
+    mount_at(&shown, "/map").await;
     assert!(
-        stored("viz_legend").is_some_and(|v| v.ends_with("|0")),
-        "{:?}",
-        stored("viz_legend")
+        host_element(r#"button[aria-label="Show Majjhima Nikāya"]"#).is_some(),
+        "MN read back hidden: {}",
+        text()
+    );
+    assert_eq!(
+        host_element("#viz-texts-2").and_then(|li| li.get_attribute("aria-selected")),
+        Some("true".to_owned()),
+        "Français read back"
+    );
+    assert_eq!(
+        host_element(r#"button[aria-pressed][title="Show / hide the collections"]"#)
+            .and_then(|b| b.get_attribute("aria-pressed")),
+        Some("false".to_owned()),
+        "the legend read back closed"
     );
     assert!(!cookies().contains("viz_"), "no cookie: {}", cookies());
 

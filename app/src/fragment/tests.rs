@@ -15,7 +15,7 @@ use palicanon_ui_lib::Language;
 use super::{MapData, MapFile, MapHead, MapProvider, MapRoutes};
 use crate::map::first::{FirstRequest, first_render};
 use crate::map::texts_lang::TextsLang;
-use crate::map::ui::test_support::plain;
+use crate::map::ui::test_support::{plain, tag_around};
 use crate::route::map_address;
 
 /// A data source the server never asks: it would answer nothing.
@@ -235,4 +235,57 @@ fn the_head_renderer_gets_the_maps_head() {
     assert_eq!(path, "/sim");
     let (_, heads) = render(Mount::App, "/map/MN10");
     assert_eq!(heads, [MapHead::NotFound]);
+}
+
+/// "Read on SuttaCentral" leaves the host's window: an `https` link with `target="_blank"`
+/// and `rel="noopener"` (the app opens it in the system browser), under `/map` and at the
+/// root alike (012 review #10507).
+#[test]
+fn the_read_link_is_an_https_link_in_a_new_tab() {
+    for (mount, path) in [
+        (Mount::App, "/map/mn10"),
+        (Mount::App, "/map/sim/mn10"),
+        (Mount::Root, "/mn10"),
+    ] {
+        let (html, _) = render(mount, path);
+        let at = html
+            .find("Read on SuttaCentral")
+            .unwrap_or_else(|| panic!("{path}: the read link: {html}"));
+        let start = html[..at].rfind("<a ").expect(&html);
+        let tag = tag_around(&html[start..], "<a ");
+        assert!(
+            tag.contains(r#"href="https://suttacentral.net/mn10""#),
+            "{path}: {tag}"
+        );
+        assert!(tag.contains(r#"target="_blank""#), "{path}: {tag}");
+        assert!(tag.contains(r#"rel="noopener""#), "{path}: {tag}");
+        assert!(
+            !html[start..at].contains("</a>"),
+            "{path}: the label is inside the link: {}",
+            &html[start..at]
+        );
+    }
+}
+
+/// A trailing slash past a text or a view (`/sim/mn10/`, `/mn10/`, `/sim/`) is no address
+/// of the map, as on the site before the fragment (main's SSR answers 404 there, no panel):
+/// the map's 404 under `/map` and at the root, never a text's panel (012 review #10554).
+#[test]
+fn a_trailing_slash_is_the_maps_404_as_on_the_site() {
+    for (mount, path) in [
+        (Mount::App, "/map/sim/mn10/"),
+        (Mount::App, "/map/mn10/"),
+        (Mount::App, "/map/sim/"),
+        (Mount::Root, "/sim/mn10/"),
+        (Mount::Root, "/mn10/"),
+        (Mount::Root, "/sim/"),
+    ] {
+        let (html, heads) = render(mount, path);
+        assert!(
+            !html.contains("https://suttacentral.net/mn10"),
+            "{path}: no panel: {html}"
+        );
+        assert!(html.contains(">Anattā</h1>"), "{path}: {html}");
+        assert_eq!(heads, [MapHead::NotFound], "{path}");
+    }
 }

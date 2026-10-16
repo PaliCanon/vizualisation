@@ -68,8 +68,9 @@ pub type MapFile = Pin<Box<dyn Future<Output = Option<Vec<u8>>> + Send>>;
 /// map keeps nothing while it is not shown.
 pub trait MapData: Send + Sync + 'static {
     /// The bytes of the data file `name`; `None` when it is absent or cannot be read (the
-    /// implementation logs why). `blurbs-vi.json` absent gives the texts no summary; any
-    /// other file absent says so over the map (`MapError`).
+    /// implementation logs why). `blurbs-fr.json` or `blurbs-vi.json` absent gives that
+    /// language's texts their English summary, none of their own; any other file absent
+    /// (`blurbs-en.json` included) says so over the map (`MapError`).
     fn file(&self, name: &'static str) -> MapFile;
 }
 

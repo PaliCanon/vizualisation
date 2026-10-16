@@ -62,16 +62,14 @@ const fn blurbs_file(language: Language) -> &'static str {
     }
 }
 
-/// The summaries in `language` (`blurbs-<code>.json`); empty when there is no such file
-/// (data.ts's `loadBlurbs` answers `{}`).
-pub(crate) async fn blurbs(data: Arc<dyn MapData>, language: Language) -> Arc<Blurbs> {
+/// The summaries in `language` (`blurbs-<code>.json`); `None` when the file is absent or
+/// unreadable (logged). The caller decides: English's absent is the map's error, another
+/// language's gives its texts no summary of their own (data.ts's `loadBlurbs` answered `{}`).
+pub(crate) async fn blurbs(data: Arc<dyn MapData>, language: Language) -> Option<Arc<Blurbs>> {
     let file = blurbs_file(language);
-    let Some(bytes) = data.file(file).await else {
-        return Arc::new(Blurbs::default());
-    };
-    Arc::new(
-        Blurbs::from_json(&bytes)
-            .map_err(|e| log(&format!("{file}: {e}")))
-            .unwrap_or_default(),
-    )
+    let bytes = data.file(file).await?;
+    Blurbs::from_json(&bytes)
+        .map_err(|e| log(&format!("{file}: {e}")))
+        .ok()
+        .map(Arc::new)
 }

@@ -457,6 +457,27 @@ mod tests {
         }
     }
 
+    /// A trailing slash past a text or a view is a 404 with the not-found page, not indexed,
+    /// no panel: what main's SSR answered before the fragment (read on main at 75f3173:
+    /// `/mn10/`, `/sim/mn10/` and `/sim/` 404, `/mn10` and `/sim/mn10` 200; 012 review
+    /// #10554).
+    #[tokio::test]
+    async fn a_trailing_slash_is_a_404_as_before_the_fragment() {
+        for path in ["/sim/mn10/", "/mn10/", "/sim/"] {
+            let response = get_from(prod(), path).await;
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+            let body = axum::body::to_bytes(response.into_body(), 1 << 24)
+                .await
+                .unwrap();
+            let body = String::from_utf8(body.to_vec()).unwrap();
+            assert!(
+                body.contains(r#"<meta name="robots" content="noindex">"#),
+                "{path}: {body}"
+            );
+            assert!(!body.contains("Read on SuttaCentral"), "{path}: {body}");
+        }
+    }
+
     /// The sitemap lists the texts too: one `<loc>` per text, at its
     /// canonical address, after the home and the pages.
     #[tokio::test]
