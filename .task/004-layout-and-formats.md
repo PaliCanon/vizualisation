@@ -1,6 +1,6 @@
 # 004 (A) The force layout and the data formats as Rust crates
 
-status: open · rank: 7 · level: standard · type: feature · request: user, 2026-10-12 ("remplace react par lepsos"), validated 2026-10-14 ("on fait la reecriture ! jaimerai bien que ce soit dans les guidelines des autres repo") · session: vizualisation-002-leptos (design dce546795076c4c v4, discussion d49d768dcc92341, process d4b32bf84ae3f40) · process: ../../docs/workflows/development-process.mmd · after: [001]
+status: merged · rank: 7 · level: standard · type: feature · request: user, 2026-10-12 ("remplace react par lepsos"), validated 2026-10-14 ("on fait la reecriture ! jaimerai bien que ce soit dans les guidelines des autres repo") · session: vizualisation-002-leptos (design dce546795076c4c v4, discussion d49d768dcc92341, process d4b32bf84ae3f40) · process: ../../docs/workflows/development-process.mmd · after: [001]
 
 ## Summary
 Rank: difficulty 7 (a port of ngraph.forcelayout with matching behaviour, a new crate of types every later task reads), impact 6 (the data contract of 005–007; no production change yet) → 7.
@@ -85,4 +85,10 @@ S1 (1a then 1b) alone first, merged; then three lanes in parallel (layout L1-L2,
 | Review | done | reviewer: graph 004-review (d99950231804140) beside design v4 `crates`; sage #6699 (L: nothing), #6717/#6726 (sim.sha256 neither checked nor required); gemini #6740/#6753/#6767 (live_layout not gated to wasm32; edge-case tests); deep: no answer (two empty) |
 | Fix (review round 1) | done | rulings in process; 8106d82: sha256 of graph-sim.bin checked when present (absent transitional until 007), LiveLayout gated to wasm32, NaN/inf refused in to_json, negative lengths refused, step(0) idempotent; rows 5 and 7 green before (kept as regressions); Octree near f64::MAX ruled out |
 | Check | done | orchestrator, tip 8106d82: no new visible result (rust-engine.ts not switched); `npm run build:engine` 0; headless Chrome on the branch: SuttaCentral and vectorial views drawn (data-engine BrowserWebGpu, no alert), screenshot read |
+| Merge | done | S1 squash c3ad0f3 (PR #4); the rest squash dcff35e (PR #5), CI 10/10 green |
+
+## Retro
+Retro in `004-retro-discussion` (d5d1b43c29bbc46, #7019; gemini #7050). Parity with ngraph landed at 1e-10 against a 1e-3 bound; the review found one real gap (graph-sim.bin's sha256 never checked).
+- **Errors**: the lead stalled three times waiting on long cold cargo runs; a hand-back claimed `npm run build` passed without saying it used a temporary node_modules symlink; the plan quoted unprobed numbers (11 warnings vs 6, 5% octree error vs 16%); several red runs were vacuous (stubs already rejected); scripted edits silently missed after rustfmt (and the orchestrator's 005 S4 commits on a red run, same family); Deep answered empty twice, Gemini hit 429 on every first try.
+- **Changes**: plan numbers come from a probe, quoted; a test that would pass on the stub gets a plausible-wrong stub or a positive twin; scripted edits assert their match and a `git diff --stat` is read before the checks; a check run through a workaround says so in the hand-back; long commands run into a log with a one-line state posted; checks and commit never in one command; skip Deep after its first empty answer.
 
