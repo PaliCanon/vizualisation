@@ -45,9 +45,11 @@ pub const NO_GROUP_COLOR: &str = "#8a8a8a";
 /// page's fallbacks (theme.ts lines 30–31) and ui-lib's dark tokens.
 pub const DARK_PAGE: (&str, &str) = ("#20262e", "#c9a84c");
 
-/// The same on the light theme: the React page's light tokens (`src/styles.css`), which
-/// the ui-lib the site's CSS imports also has.
-pub const LIGHT_PAGE: (&str, &str) = ("#fdf6e3", "#84590a");
+/// The same on the light theme: ui-lib's light page (`--ps-page`, `style/theme.css` at
+/// v0.1.2), so the canvas matches the page around it, and a bright amber for the points:
+/// the React page's light gold (`#84590a`) drew them near black on a flat disc (user,
+/// 2026-10-16, variant B of two).
+pub const LIGHT_PAGE: (&str, &str) = ("#f8f6f0", "#c9952e");
 
 /// The colours the map is drawn with (theme.ts's `MapTheme`).
 #[derive(Clone, Debug, PartialEq)]
@@ -143,6 +145,16 @@ impl MapTheme {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The light map draws on ui-lib's light page (`--ps-page`, `style/theme.css` at v0.1.2)
+    /// so the canvas and the page around it are one colour, its points in a bright amber:
+    /// the React page's `#84590a` drew them near black (user, 2026-10-16: B chosen).
+    #[test]
+    fn the_light_map_is_ui_libs_page_with_a_bright_amber() {
+        let theme = MapTheme::new(true, &crate::map::fixture());
+        assert_eq!(theme.background, "#f8f6f0");
+        assert_eq!(theme.gold, "#c9952e");
+    }
     use crate::map::fixture;
 
     #[test]
