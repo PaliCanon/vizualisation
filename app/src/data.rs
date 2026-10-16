@@ -251,6 +251,23 @@ impl TextIndex {
         self.0.get(uid)
     }
 
+    /// The index of `uid` in `view`'s nodes, `None` when the view lacks it.
+    pub(crate) fn position(&self, uid: &str, view: View) -> Option<usize> {
+        self.get(uid)?
+            .views
+            .iter()
+            .find(|(v, _)| *v == view)
+            .map(|(_, at)| *at)
+    }
+
+    /// The canonical view of `uid` (`open_text::canonical_view` over [`View::ALL`]): the
+    /// sitemap's, and the first render's through `open_text`.
+    pub(crate) fn canonical(&self, uid: &str) -> Option<View> {
+        crate::map::open_text::canonical_view(uid, &View::ALL, &|uid: &str, view: View| {
+            self.position(uid, view)
+        })
+    }
+
     /// Every text, ordered by uid.
     pub(crate) fn iter(&self) -> impl Iterator<Item = (&str, &TextEntry)> {
         self.0.iter().map(|(uid, entry)| (uid.as_str(), entry))

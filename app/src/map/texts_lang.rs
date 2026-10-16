@@ -155,6 +155,21 @@ mod tests {
     }
 
     #[test]
+    fn a_cookie_naming_an_unknown_language_is_pali() {
+        // A language the site does not have, as the choice or as the interface at the
+        // choice (a cookie from another version, or edited): Pāli, as a first visit.
+        for interface in Language::ALL {
+            for value in ["de|en", "fr|de", "pli|xx", "de|de", "|en", "fr|"] {
+                assert_eq!(
+                    texts_lang(Some(value), interface),
+                    TextsLang::Pali,
+                    "{value} in {interface:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn the_choice_holds_while_the_interface_language_does() {
         // App.tsx:91 `if (uiLang === lastUiLang.current) return;`
         assert_eq!(texts_lang(Some("fr|en"), Language::En), FR);

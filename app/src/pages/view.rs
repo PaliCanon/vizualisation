@@ -172,9 +172,12 @@ fn PagesNav(t: Strings, current: PageKind) -> impl IntoView {
 /// (Acknowledgements: `credits`), then the sections.
 #[component]
 fn Body(page: &'static PageText, credits: Option<Credits>) -> impl IntoView {
+    // Its rows read the language tracked: the table follows a change as the page does.
     let table = credits.map(|credits| {
-        let rows = credits.rows(palicanon_ui_lib::language_signal().get_untracked());
-        view! { <TranslatorsTable rows=rows pali_texts=credits.pali_texts /> }
+        move || {
+            let rows = credits.rows(palicanon_ui_lib::language_signal().get());
+            view! { <TranslatorsTable rows=rows pali_texts=credits.pali_texts /> }
+        }
     });
     view! {
         <h1 class="font-serif text-3xl font-semibold text-heading">{page.title}</h1>
@@ -508,6 +511,41 @@ mod tests {
         let html = render(Language::En, PageKind::Terms);
         let inside = tag_of(&html, r#"href="/legal" class="text-gold underline"#);
         assert!(!inside.contains("target"), "{inside}");
+    }
+
+    /// The translators table follows a language change (design v4: every string of the
+    /// page does): rendered under a memo, it is rendered again once the language moves, in
+    /// the new language — its counts grouped as the language groups them, its headers.
+    #[test]
+    fn the_translators_table_follows_a_language_change() {
+        use crate::map::first::Credits;
+        let credits = Credits {
+            pali_texts: 7286,
+            languages: vec![
+                ("en".to_owned(), vec!["Bhikkhu Sujato".to_owned()], 6516),
+                ("fr".to_owned(), vec!["Môhan Wijayaratna".to_owned()], 1191),
+            ],
+        };
+        Owner::new().with(|| {
+            let language = provide_language();
+            language.set(Language::En);
+            leptos_meta::provide_meta_context();
+            let page = PageKind::Acknowledgements.text(Locale::en);
+            let table = Memo::new(move |_| {
+                let html = view! { <Body page=page credits=Some(credits.clone()) /> }.to_html();
+                let start = html.find("<table").expect(&html);
+                let end = html.find("</table>").expect(&html);
+                html[start..end].replace("<!>", "")
+            });
+            let en = table.get();
+            assert!(en.contains(">6,516<"), "{en}");
+            assert!(en.contains(">Language<"), "{en}");
+            language.set(Language::Fr);
+            let fr = table.get();
+            assert!(fr.contains(">6\u{202f}516<"), "{fr}");
+            assert!(fr.contains(">Langue<"), "{fr}");
+            assert!(fr.contains("Môhan Wijayaratna"), "{fr}");
+        });
     }
 
     #[test]

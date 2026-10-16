@@ -105,6 +105,26 @@ impl Credits {
 }
 
 impl FirstRender {
+    /// What the browser runs on when the page holds no first render (a `SharedValue` lost:
+    /// the page cut, a serialization failure): the empty decisions, and an error in the
+    /// console, not a silently empty map.
+    #[allow(
+        dead_code,
+        reason = "app.rs's first_render calls it in the browser (lane B of 006's fix round 1)"
+    )]
+    pub(crate) fn not_in_page() -> FirstRender {
+        Self::not_in_page_with(|message| leptos::logging::error!("{message}"))
+    }
+
+    /// [`FirstRender::not_in_page`], the error given to `log`.
+    fn not_in_page_with(log: impl FnOnce(&str)) -> FirstRender {
+        log(
+            "vizualisation: the page holds no first render (its SharedValue is missing): \
+             the map starts empty",
+        );
+        FirstRender::default()
+    }
+
     /// The opened text, when the address opened one.
     pub(crate) fn opened(&self) -> Option<&OpenedText> {
         match &self.open {
@@ -201,15 +221,7 @@ pub(crate) fn first_render(
     let Some(uid) = request.uid else {
         return first;
     };
-    let position = |uid: &str, view: View| {
-        served
-            .texts
-            .get(uid)?
-            .views
-            .iter()
-            .find(|(v, _)| *v == view)
-            .map(|(_, at)| *at)
-    };
+    let position = |uid: &str, view: View| served.texts.position(uid, view);
     let (index_in_view, canonical) = match open_text(uid, request.view, &View::ALL, &position) {
         Open::NotFound => {
             first.open = FirstOpen::NotFound;
@@ -300,10 +312,6 @@ pub(crate) fn of_request() -> FirstRender {
         return FirstRender::default();
     };
     let path = parts.uri.path();
-    let th = parts
-        .uri
-        .query()
-        .and_then(|query| query.split('&').find_map(|pair| pair.strip_prefix("th=")));
     let language = palicanon_ui_lib::language_signal().get_untracked();
     let texts = texts_lang(
         crate::map::cookies::read(texts_lang::COOKIE).as_deref(),
@@ -314,13 +322,14 @@ pub(crate) fn of_request() -> FirstRender {
         Some(Route::Map { view, uid }) => (view, uid),
         _ => (View::Parallels, None),
     };
+    let th = crate::map::address::th_param(parts.uri.query(), view);
     let mut first = first_render(
         &served,
         &FirstRequest {
             path,
             view,
             uid: uid.as_deref(),
-            th,
+            th: th.as_deref(),
             language,
             texts,
             light,
@@ -331,4 +340,63 @@ pub(crate) fn of_request() -> FirstRender {
         served.data.sim.nodes.len(),
     ));
     first
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_page_without_its_first_render_says_so() {
+        let mut logged = Vec::new();
+        let first = FirstRender::not_in_page_with(|message| logged.push(message.to_owned()));
+        assert_eq!(first, FirstRender::default());
+        assert_eq!(logged.len(), 1, "one error: {logged:?}");
+        assert!(logged[0].contains("first render"), "{logged:?}");
+    }
+
+    /// The committed data as the server serves it.
+    #[cfg(feature = "ssr")]
+    fn served() -> crate::data::Served {
+        use std::sync::{Arc, OnceLock};
+        static SERVED: OnceLock<crate::data::Served> = OnceLock::new();
+        SERVED
+            .get_or_init(|| {
+                let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public");
+                let data = crate::data::Data::load(&dir).expect("the committed data");
+                crate::data::Served::new(Arc::new(data))
+            })
+            .clone()
+    }
+
+    /// The first render of `/mn10` with its glosses in `language`.
+    #[cfg(feature = "ssr")]
+    fn mn10_in(language: Language) -> PanelText {
+        let first = first_render(
+            &served(),
+            &FirstRequest {
+                path: "/mn10",
+                view: View::Parallels,
+                uid: Some("mn10"),
+                th: None,
+                language,
+                texts: crate::map::texts_lang::TextsLang::Pali,
+                light: false,
+            },
+        );
+        first.opened().expect("mn10 opens").panel.clone()
+    }
+
+    /// Vietnamese has no blurbs file: a text's summary is SuttaCentral's English, as in
+    /// English; French has its own.
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn a_language_without_blurbs_shows_the_english_one() {
+        let served = served();
+        let en = served.data.blurbs[0].get("mn10").expect("mn10 has a blurb");
+        assert_eq!(mn10_in(Language::En).item.blurb.as_deref(), Some(en));
+        assert_eq!(mn10_in(Language::Vi).item.blurb.as_deref(), Some(en), "vi");
+        let fr = served.data.blurbs[1].get("mn10").expect("mn10 in French");
+        assert_eq!(mn10_in(Language::Fr).item.blurb.as_deref(), Some(fr));
+    }
 }

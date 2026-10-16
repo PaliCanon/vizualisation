@@ -38,13 +38,19 @@ impl<V, F: Fn(&str, V) -> Option<usize>> Positions<V> for F {
     }
 }
 
-/// What `uid` at `view` opens; `views` are every view, in canonical order.
-pub fn open_text<V: Copy>(uid: &str, view: V, views: &[V], index: &impl Positions<V>) -> Open<V> {
-    let Some(canonical_view) = views
+/// The canonical view of `uid`: the first of `views` (every view, in canonical order) that
+/// has it; `None` when none does. The one rule the server's first render, the head and the
+/// sitemap follow.
+pub fn canonical_view<V: Copy>(uid: &str, views: &[V], index: &impl Positions<V>) -> Option<V> {
+    views
         .iter()
         .copied()
         .find(|v| index.position(uid, *v).is_some())
-    else {
+}
+
+/// What `uid` at `view` opens; `views` are every view, in canonical order.
+pub fn open_text<V: Copy>(uid: &str, view: V, views: &[V], index: &impl Positions<V>) -> Open<V> {
+    let Some(canonical_view) = canonical_view(uid, views, index) else {
         return Open::NotFound;
     };
     Open::Panel {
@@ -137,6 +143,29 @@ mod tests {
                 index_in_view: None,
                 canonical_view: View::Sim
             }
+        );
+    }
+
+    #[test]
+    fn with_no_view_nothing_opens() {
+        let (p, s) = small();
+        let idx = views_of(&[(View::Parallels, &p), (View::Sim, &s)]);
+        let at = at(&idx);
+        for view in View::ALL {
+            assert_eq!(
+                open_text("mn10", view, &[], &at),
+                Open::NotFound,
+                "{view:?}"
+            );
+            assert_eq!(canonical_view("mn10", &[], &at), None, "{view:?}");
+        }
+        assert_eq!(
+            open_text("mn10", View::Sim, &[View::Sim], &at),
+            Open::Panel {
+                index_in_view: Some(1),
+                canonical_view: View::Sim
+            },
+            "the canonical is among the views given"
         );
     }
 

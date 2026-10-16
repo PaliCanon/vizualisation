@@ -41,6 +41,10 @@ const LIGHT_TYPES: [(&str, &str); 6] = [
 /// A collection with no colour of its own (theme.ts line 32's `?? "#8a8a8a"`).
 pub const NO_GROUP_COLOR: &str = "#8a8a8a";
 
+/// A link type with no colour of its own, on either theme: a mid grey, seen on the dark page
+/// and on the light one (the dark theme's `full` is white, unseen on the light page).
+pub const NO_TYPE_COLOR: &str = "#8a8a8a";
+
 /// The page's background (`--ps-page`) and gold (`--ps-gold`) on the dark theme: the React
 /// page's fallbacks (theme.ts lines 30–31) and ui-lib's dark tokens.
 pub const DARK_PAGE: (&str, &str) = ("#20262e", "#c9a84c");
@@ -139,6 +143,11 @@ impl MapTheme {
             .iter()
             .find(|(type_name, _)| *type_name == name)
             .map(|(_, color)| *color)
+    }
+
+    /// The colour a link of type `name` is drawn in: the theme's, else [`NO_TYPE_COLOR`].
+    pub fn link_color(&self, name: &str) -> &'static str {
+        self.type_color(name).unwrap_or(NO_TYPE_COLOR)
     }
 }
 

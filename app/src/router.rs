@@ -374,6 +374,37 @@ mod tests {
         assert!(!headers.contains("immutable"), "{headers}");
     }
 
+    /// Every data file behind the dev password has one `Cache-Control`, the
+    /// gate's `private, no-store`, never `immutable`; with the gate off (prod)
+    /// its one header is `IMMUTABLE`.
+    #[tokio::test]
+    async fn a_data_file_is_private_behind_the_gate_and_immutable_without() {
+        let pair = STANDARD.encode(format!("dev:{PASSWORD}"));
+        for name in crate::data::FILES {
+            let (url, _) = hashed(name);
+            let request = Request::get(&url)
+                .header(ORIGIN_HEADER, SECRET)
+                .header(header::AUTHORIZATION, format!("Basic {pair}"))
+                .body(Body::empty())
+                .unwrap();
+            let gated = dev().oneshot(request).await.unwrap();
+            assert_eq!(gated.status(), StatusCode::OK, "{url}");
+            let values: Vec<_> = gated
+                .headers()
+                .get_all(header::CACHE_CONTROL)
+                .iter()
+                .collect();
+            assert_eq!(values, ["private, no-store"], "{url}");
+            let open = get_from(prod(), &url).await;
+            let values: Vec<_> = open
+                .headers()
+                .get_all(header::CACHE_CONTROL)
+                .iter()
+                .collect();
+            assert_eq!(values, [IMMUTABLE], "{url}");
+        }
+    }
+
     #[tokio::test]
     async fn a_page_behind_the_password_is_not_cached() {
         let (_, headers) = status("/", true, true).await;

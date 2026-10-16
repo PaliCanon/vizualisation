@@ -19,15 +19,16 @@ pub const POINT_SIZE: f32 = 7.0;
 /// The links' opacity factor (rust-engine.ts line 17, `LINKS`).
 pub const LINKS: f64 = 1.5;
 
-/// Each link type's colour on the dark page and opacity (data.ts lines 33–40, `TYPE_STYLE`);
-/// the first, `full`, is the style of a type it does not list.
-const TYPE_STYLE: [(&str, &str, f64); 6] = [
-    ("full", "#ffffff", 0.22),
-    ("sections", "#c7d2fe", 0.16),
-    ("resembling", "#94a3b8", 0.1),
-    ("mentions", "#64748b", 0.08),
-    ("retells", "#64748b", 0.08),
-    ("similar", "#c9a84c", 0.1),
+/// Each link type's opacity (data.ts lines 33–40, `TYPE_STYLE`; its colours are the
+/// theme's, `MapTheme::link_color`); the first, `full`, is the opacity of a type it does not
+/// list.
+const TYPE_STYLE: [(&str, f64); 6] = [
+    ("full", 0.22),
+    ("sections", 0.16),
+    ("resembling", 0.1),
+    ("mentions", 0.08),
+    ("retells", 0.08),
+    ("similar", 0.1),
 ];
 
 /// A buffer value: the engine's buffers are single precision, as the page's `Float32Array`s.
@@ -45,15 +46,30 @@ fn point(i: usize) -> u32 {
 pub type Adjacency = Vec<Vec<(usize, u32)>>;
 
 /// The adjacency of `n` nodes from flat `[a, b, type, …]` links (rust-engine.ts lines
-/// 222–229, `rebuildAdj`).
-///
-/// # Panics
-/// When a link names a node at or past `n` (the data files are checked at boot, task 004).
+/// 222–229, `rebuildAdj`). A link naming a node at or past `n` is skipped, never a panic
+/// (the data files are checked at boot, task 004; this is the guard behind that check): one
+/// warning per adjacency built names how many.
 pub fn adjacency(n: usize, edges: &[u32]) -> Adjacency {
-    let mut adj = vec![Vec::new(); n];
+    adjacency_with(n, edges, |skipped| {
+        leptos::logging::warn!("map: {skipped} link(s) name a node past the graph's {n}: skipped");
+    })
+}
+
+/// [`adjacency`], the count of links skipped given to `warn`, once, when there are any.
+fn adjacency_with(n: usize, edges: &[u32], warn: impl FnOnce(usize)) -> Adjacency {
+    let mut adj: Adjacency = vec![Vec::new(); n];
+    let mut skipped = 0usize;
     for &[a, b, t] in edges.as_chunks::<3>().0 {
-        adj[a as usize].push((b as usize, t));
-        adj[b as usize].push((a as usize, t));
+        let (a, b) = (a as usize, b as usize);
+        if a >= n || b >= n {
+            skipped += 1;
+            continue;
+        }
+        adj[a].push((b, t));
+        adj[b].push((a, t));
+    }
+    if skipped > 0 {
+        warn(skipped);
     }
     adj
 }
@@ -135,16 +151,17 @@ pub struct TypeStyle {
 
 /// The style of link type `t` of `graph` on `theme` (rust-engine.ts lines 250–254,
 /// `typeStyle`, over data.ts lines 33–40 `TYPE_STYLE`): the theme's colour for the type,
-/// else the type's own (an unknown type is drawn as `full`); the opacity 2.2 times
-/// stronger on a light page.
+/// else the themes' fallback (`NO_TYPE_COLOR`; the page drew an unknown type in `full`'s
+/// white, unseen on the light page) at `full`'s opacity; the opacity 2.2 times stronger on a
+/// light page.
 pub fn type_style(graph: &Graph, theme: &MapTheme, t: u32) -> TypeStyle {
     let name = graph.types.get(t as usize).map_or("", String::as_str);
-    let (_, color, opacity) = TYPE_STYLE
+    let (_, opacity) = TYPE_STYLE
         .iter()
-        .find(|(type_name, ..)| *type_name == name)
+        .find(|(type_name, _)| *type_name == name)
         .unwrap_or(&TYPE_STYLE[0]);
     TypeStyle {
-        color: theme.type_color(name).unwrap_or(color),
+        color: theme.link_color(name),
         opacity: opacity * if theme.light { 2.2 } else { 1.0 },
     }
 }
@@ -234,6 +251,14 @@ impl Scene {
             .is_none_or(|on| on.get(i).copied().unwrap_or(false))
     }
 
+    /// The selection as drawn: the selected node when it is shown, else none (a text the
+    /// legend or the texts' language hides draws no highlight and no links, and dims
+    /// nothing).
+    fn drawn_selection(&self, graph: &Graph) -> Option<usize> {
+        self.selected
+            .filter(|&i| i < graph.nodes.len() && self.shown(graph, i))
+    }
+
     /// Whether node `i`'s group is shown and the texts' language has it (rust-engine.ts lines
     /// 218–220, `shown`).
     pub fn shown(&self, graph: &Graph, i: usize) -> bool {
@@ -282,11 +307,12 @@ impl Scene {
 
     /// The segments (rust-engine.ts lines 256–277, `pushSegments`): every link of a shown
     /// type between two shown texts in gold, at its type's opacity (a quarter of it while a
-    /// text is selected); then the selected text's links to shown texts in their type's
+    /// shown text is selected); then the selected text's links to shown texts in their type's
     /// colour. Colours are sRGB here, as the page gave them.
     pub fn segments(&self, graph: &Graph, theme: &MapTheme) -> Segments {
         let [r, g, b] = rgb(&theme.gold).map(single);
-        let dim = if self.selected.is_some() { 0.25 } else { 1.0 };
+        let selected = self.drawn_selection(graph);
+        let dim = if selected.is_some() { 0.25 } else { 1.0 };
         let mut segments = Segments::default();
         for &[a, b_end, t] in self.edges.as_chunks::<3>().0 {
             if !self.type_shown(t)
@@ -299,7 +325,7 @@ impl Scene {
             let alpha = (type_style(graph, theme, t).opacity * LINKS * dim).min(1.0);
             segments.colors.extend([r, g, b, single(alpha)]);
         }
-        if let Some(i) = self.selected {
+        if let Some(i) = selected {
             for &(j, t) in self.adj.get(i).map_or(&[][..], Vec::as_slice) {
                 if !self.type_shown(t) || !self.shown(graph, j) {
                     continue;
@@ -313,10 +339,12 @@ impl Scene {
     }
 
     /// The highlight (rust-engine.ts lines 178–189, `select`): the selected text 2, its
-    /// shown neighbours by a shown link type 1.
+    /// shown neighbours by a shown link type 1; nothing, undimmed, when the selected text is
+    /// hidden.
     pub fn highlight(&self, graph: &Graph) -> Highlight {
         let mut hl = vec![0.0; graph.nodes.len()];
-        if let Some(i) = self.selected.filter(|&i| i < hl.len()) {
+        let selected = self.drawn_selection(graph);
+        if let Some(i) = selected {
             hl[i] = 2.0;
             for &(j, t) in self.adj.get(i).map_or(&[][..], Vec::as_slice) {
                 if self.type_shown(t) && self.shown(graph, j) {
@@ -326,7 +354,7 @@ impl Scene {
         }
         Highlight {
             hl,
-            dim: self.selected.is_some(),
+            dim: selected.is_some(),
         }
     }
 
@@ -617,9 +645,26 @@ mod tests {
         let l = type_style(&g, &light, 0);
         assert_eq!(l.color, "#2c1810");
         assert!((l.opacity - 0.22 * 2.2).abs() < 1e-12);
-        // data.ts:252 `TYPE_STYLE[type] ?? TYPE_STYLE.full`
+        // data.ts:252 `TYPE_STYLE[type] ?? TYPE_STYLE.full`: `full`'s opacity, but not its
+        // colour (white, unseen on the light page): the themes' fallback.
         g.types[1] = "unknown".to_owned();
-        assert_eq!(type_style(&g, &light, 1).color, "#ffffff");
+        for theme in [&light, &dark] {
+            let style = type_style(&g, theme, 1);
+            assert_eq!(style.color, crate::map::theme::NO_TYPE_COLOR);
+            let contrast = contrast(style.color, &theme.background);
+            assert!(contrast >= 3.0, "light={}: {contrast}", theme.light);
+        }
+        assert!((type_style(&g, &dark, 1).opacity - 0.22).abs() < 1e-12);
+    }
+
+    /// The WCAG contrast ratio of two `#rrggbb` colours.
+    fn contrast(a: &str, b: &str) -> f64 {
+        let luminance = |hex: &str| {
+            let [r, g, b] = linear(hex);
+            0.2126 * r + 0.7152 * g + 0.0722 * b
+        };
+        let (la, lb) = (luminance(a), luminance(b));
+        (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
     }
 
     #[test]
@@ -776,6 +821,59 @@ mod tests {
     }
 
     #[test]
+    fn a_hidden_selection_is_not_drawn() {
+        // The legend hides dn1's collection while dn1 is the open text: no link of it, no
+        // highlight, nothing dimmed — the map draws as if nothing were selected.
+        let g = fixture();
+        let theme = MapTheme::new(false, &g);
+        let mut s = Scene::new(&g);
+        s.group_on[0] = false;
+        let unselected = (s.segments(&g, &theme), s.highlight(&g));
+        s.selected = Some(0);
+        assert_eq!(s.segments(&g, &theme), unselected.0);
+        assert_eq!(s.segments(&g, &theme).ends, [1, 2, 1, 3]);
+        assert_eq!(s.highlight(&g), unselected.1);
+        assert_eq!(
+            s.highlight(&g),
+            Highlight {
+                hl: vec![0.0; 5],
+                dim: false
+            }
+        );
+        // The texts' language lacks it: the same.
+        s.group_on[0] = true;
+        s.selected = None;
+        s.available = Some(vec![true, false, true, true, true]);
+        let unselected = (s.segments(&g, &theme), s.highlight(&g));
+        s.selected = Some(1);
+        assert_eq!((s.segments(&g, &theme), s.highlight(&g)), unselected);
+    }
+
+    #[test]
+    fn a_link_past_the_nodes_is_skipped_with_one_warning() {
+        let mut warned = Vec::new();
+        let adj = adjacency_with(3, &[0, 1, 0, 0, 7, 1, 9, 2, 0, 1, 2, 1], |skipped| {
+            warned.push(skipped);
+        });
+        assert_eq!(adj, [vec![(1, 0)], vec![(0, 0), (2, 1)], vec![(1, 1)]]);
+        assert_eq!(warned, [2], "one warning for the two links");
+        let mut warned = Vec::new();
+        let g = fixture();
+        assert_eq!(
+            adjacency_with(5, &g.edges, |skipped| warned.push(skipped)),
+            adjacency(5, &g.edges)
+        );
+        assert_eq!(warned, Vec::<usize>::new(), "no warning on good links");
+        let mut s = Scene::new(&g);
+        s.set_links(Links {
+            edges: vec![2, 4, 0, 4, 5, 0],
+            sims: HashMap::new(),
+        });
+        assert_eq!(s.adj.len(), 5);
+        assert_eq!(s.adj[4], [(2, 0)]);
+    }
+
+    #[test]
     fn neighbours_leave_out_texts_the_language_lacks() {
         // App.tsx:537 `(engine.adj[selected] ?? []).filter(([j]) => !available || available[j])`
         let g = fixture();
@@ -798,6 +896,20 @@ mod tests {
         assert_eq!(s.neighbours_by_type(&g, 1), [vec![0, 3, 2], vec![]]);
         s.sims = [((1, 2), 0.9), ((1, 3), 0.6)].into();
         assert_eq!(s.neighbours_by_type(&g, 1)[0], [2, 3, 0]);
+    }
+
+    #[test]
+    fn leading_zeros_do_not_change_a_numbers_place() {
+        // `localeCompare(…, { numeric: true })` reads `02` as 2.
+        assert_eq!(natural_cmp("MN 02", "MN 3"), Ordering::Less);
+        assert_eq!(natural_cmp("MN 02", "MN 10"), Ordering::Less);
+        assert_eq!(natural_cmp("MN 02", "MN 1"), Ordering::Greater);
+        assert_eq!(natural_cmp("SN 1.009", "SN 1.10"), Ordering::Less);
+        // `02` and `2` tie on the number; the order stays total and antisymmetric.
+        for (a, b) in [("MN 02", "MN 2"), ("MN 002", "MN 02"), ("MN 0", "MN 00")] {
+            assert_ne!(natural_cmp(a, b), Ordering::Equal, "{a} {b}");
+            assert_eq!(natural_cmp(a, b), natural_cmp(b, a).reverse(), "{a} {b}");
+        }
     }
 
     #[test]

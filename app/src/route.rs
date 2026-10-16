@@ -52,6 +52,12 @@ impl View {
         }
     }
 
+    /// Whether the view is one of the vectorial space's (sim, pca, umap, tsne): the views a
+    /// similarity threshold (`?th=`) applies to.
+    pub(crate) const fn is_vectorial(self) -> bool {
+        !matches!(self, Self::Parallels)
+    }
+
     /// The view whose segment is `segment` (never the default view's empty one).
     fn from_segment(segment: &str) -> Option<Self> {
         Self::ALL

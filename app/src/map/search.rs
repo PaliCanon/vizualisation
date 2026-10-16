@@ -52,8 +52,10 @@ pub fn index(graph: &Graph, titles: Option<&LangTranslations>) -> Vec<Entry> {
 /// The nodes `query` finds, best first, at most [`MAX_HITS`] (App.tsx lines 360–373): a
 /// query of fewer than two characters (normalized) finds nothing; a uid or acronym equal to
 /// it scores 3, one that starts with it 2, a title containing it (three characters or
-/// more) 1; ties go to the text with more links (`degree`), then to the graph's order.
-/// Texts the texts' language does not have (`available`) are left out.
+/// more) 1; ties go to the text with more links (`degree`), then to the graph's order: the
+/// score and the links compared as a pair (the page summed `score * 1000 + degree`, which a
+/// text of 1000 links or more overturned). Texts the texts' language does not have
+/// (`available`) are left out.
 pub fn hits(
     query: &str,
     index: &[Entry],
@@ -65,12 +67,12 @@ pub fn hits(
     if len < 2 {
         return Vec::new();
     }
-    let mut scored: Vec<(usize, usize)> = index
+    let mut scored: Vec<(usize, (u8, usize))> = index
         .iter()
         .enumerate()
         .filter(|(i, _)| available.is_none_or(|on| on.get(*i).copied().unwrap_or(false)))
         .filter_map(|(i, entry)| {
-            let score = if entry.uid == q || entry.acronym == q {
+            let score: u8 = if entry.uid == q || entry.acronym == q {
                 3
             } else if entry.uid.starts_with(&q) || entry.acronym.starts_with(&q) {
                 2
@@ -79,7 +81,7 @@ pub fn hits(
             } else {
                 return None;
             };
-            Some((i, score * 1000 + degree(i)))
+            Some((i, (score, degree(i))))
         })
         .collect();
     // Stable, as the page's `Array.prototype.sort`: ties keep the graph's order.
@@ -155,6 +157,27 @@ mod tests {
         // App.tsx:365 `if (available && !available[i]) return;`
         let available = [true, false, true, true, true];
         assert_eq!(fixture_hits("mn", Some(&available)), [2, 3]);
+    }
+
+    #[test]
+    fn the_score_outranks_any_number_of_links() {
+        // The page summed `score * 1000 + degree`: a prefix with 1001 links passed an exact
+        // match. The order is the score, then the links, then the graph's.
+        let idx: Vec<Entry> = ["mn1", "mn10", "mn11", "mn12"]
+            .iter()
+            .map(|uid| Entry {
+                uid: (*uid).to_owned(),
+                acronym: (*uid).to_owned(),
+                text: String::new(),
+            })
+            .collect();
+        let degree = |i: usize| [0, 1001, 5000, usize::MAX][i];
+        assert_eq!(hits("mn1", &idx, None, degree), [0, 3, 2, 1]);
+        assert_eq!(
+            hits("mn1", &idx, None, |_| 7),
+            [0, 1, 2, 3],
+            "ties: graph order"
+        );
     }
 
     #[test]

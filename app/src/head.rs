@@ -71,24 +71,18 @@ const JSON_LD: &str = concat!(
 );
 
 /// `sitemap.xml`: the map's home, the footer pages, then every text of
-/// `texts` once, at its canonical address (its first view, `open_text`'s
-/// canonical: `/mn10`, `/sim/ds1.1`).
+/// `texts` once, at its canonical address (`TextIndex::canonical`, the rule
+/// of `open_text` the first render's head follows: `/mn10`, `/sim/ds1.1`).
 #[cfg(feature = "ssr")]
 #[must_use]
 pub(crate) fn sitemap(texts: &crate::data::TextIndex) -> String {
-    use crate::route::Route;
+    use crate::map::address::address;
     let pages = std::iter::once("/")
         .chain(PageKind::ALL.map(PageKind::path))
         .map(str::to_owned);
-    let texts = texts.iter().filter_map(|(uid, entry)| {
-        let (view, _) = entry.views.first()?;
-        Some(
-            Route::Map {
-                view: *view,
-                uid: Some(uid.to_owned()),
-            }
-            .path(),
-        )
+    let texts = texts.iter().filter_map(|(uid, _)| {
+        let view = texts.canonical(uid)?;
+        Some(address(view, Some(uid), None))
     });
     let urls = pages.chain(texts).fold(String::new(), |mut urls, path| {
         let _ = writeln!(
@@ -113,6 +107,56 @@ mod tests {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public");
         let data = crate::data::Data::load(&dir).expect("the committed data");
         crate::data::TextIndex::build(&data)
+    }
+
+    /// A text's URL in the sitemap is its page's canonical: the address of the
+    /// view the server's first render names canonical (the head's `<link
+    /// rel="canonical">`), for texts of every kind (the parallels', the
+    /// vectorial space's only), asked from any view. One uid in 40 of the
+    /// index, plus `mn10` and `ds1.1`: a first render is a panel each.
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn a_texts_sitemap_url_is_its_pages_canonical() {
+        use crate::map::address::address;
+        use crate::map::first::{FirstRequest, first_render};
+        use crate::map::texts_lang::TextsLang;
+        use crate::route::View;
+        use palicanon_ui_lib::Language;
+
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../public");
+        let served = crate::data::Served::new(std::sync::Arc::new(
+            crate::data::Data::load(&dir).expect("the committed data"),
+        ));
+        let xml = sitemap(&served.texts);
+        let uids: Vec<&str> = served
+            .texts
+            .iter()
+            .map(|(uid, _)| uid)
+            .step_by(40)
+            .chain(["mn10", "ds1.1"])
+            .collect();
+        for (k, uid) in uids.iter().enumerate() {
+            let view = View::ALL[k % View::ALL.len()];
+            let path = address(view, Some(uid), None);
+            let first = first_render(
+                &served,
+                &FirstRequest {
+                    path: &path,
+                    view,
+                    uid: Some(uid),
+                    th: None,
+                    language: Language::En,
+                    texts: TextsLang::Pali,
+                    light: false,
+                },
+            );
+            let canonical = first.opened().expect(uid).canonical;
+            let loc = format!(
+                "<loc>{CANONICAL_BASE}{}</loc>",
+                address(canonical, Some(uid), None)
+            );
+            assert_eq!(xml.matches(&loc).count(), 1, "{uid} from {path}: {loc}");
+        }
     }
 
     /// The home and every page once, then every text once at its canonical

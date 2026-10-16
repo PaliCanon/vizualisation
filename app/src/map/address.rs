@@ -8,7 +8,9 @@ use crate::map::model::SimInfo;
 use crate::route::{Route, View};
 
 /// The address of the map in `view`, on `uid` when there is one, with `th` (the threshold as
-/// the URL writes it, `0.62`) when given: `/sim/mn10?th=0.62`.
+/// the URL writes it, `0.62`) when given and `view` is vectorial: `/sim/mn10?th=0.62`. A
+/// text's canonical address is `address(canonical view, Some(uid), None)`: the head's and
+/// the sitemap's.
 pub(crate) fn address(view: View, uid: Option<&str>, th: Option<&str>) -> String {
     let path = Route::Map {
         view,
@@ -16,9 +18,44 @@ pub(crate) fn address(view: View, uid: Option<&str>, th: Option<&str>) -> String
     }
     .path();
     match th {
-        Some(th) if !th.is_empty() => format!("{path}?th={th}"),
+        Some(th) if !th.is_empty() && view.is_vectorial() => format!("{path}?th={th}"),
         _ => path,
     }
+}
+
+/// The threshold `?th=` gives `view` in the query `query` (the part after `?`): its value
+/// percent-decoded; `None` when the query has none, an empty one, one that is not a number,
+/// or when `view` is not a vectorial view (the parallels have no threshold). The server's: the
+/// browser's router hands the query already decoded.
+#[cfg(any(feature = "ssr", test))]
+pub(crate) fn th_param(query: Option<&str>, view: View) -> Option<String> {
+    if !view.is_vectorial() {
+        return None;
+    }
+    let raw = query?
+        .split('&')
+        .find_map(|pair| pair.strip_prefix("th="))?;
+    let th = percent_decode(raw)?.trim().to_owned();
+    th.parse::<f64>().is_ok_and(f64::is_finite).then_some(th)
+}
+
+/// `s` with its `%XX` escapes decoded (`+` is not a space here: a number has none); `None`
+/// on a broken escape or bytes that are not UTF-8.
+#[cfg(any(feature = "ssr", test))]
+fn percent_decode(s: &str) -> Option<String> {
+    let mut bytes = Vec::with_capacity(s.len());
+    let mut rest = s.as_bytes();
+    while let Some((&byte, tail)) = rest.split_first() {
+        if byte == b'%' {
+            let hex = std::str::from_utf8(tail.get(..2)?).ok()?;
+            bytes.push(u8::from_str_radix(hex, 16).ok()?);
+            rest = &tail[2..];
+        } else {
+            bytes.push(byte);
+            rest = tail;
+        }
+    }
+    String::from_utf8(bytes).ok()
 }
 
 /// The threshold a view opens at: `?th=` when it is a number inside the view's range, else
@@ -134,6 +171,31 @@ mod tests {
                 threshold(th, &sim)
             );
         }
+    }
+
+    #[test]
+    fn th_is_decoded_and_only_a_vectorial_views() {
+        let th = |query: &str, view: View| th_param(Some(query), view);
+        assert_eq!(th("th=0.62", View::Sim).as_deref(), Some("0.62"));
+        assert_eq!(th("q=mn&th=0%2E62", View::Pca).as_deref(), Some("0.62"));
+        assert_eq!(th("th=%200.7", View::Umap).as_deref(), Some("0.7"));
+        assert_eq!(th("a=1&th=0.5&b=2", View::Tsne).as_deref(), Some("0.5"));
+        for garbage in [
+            "th=", "th=abc", "th=%zz", "th=NaN", "th=inf", "th=%FF", "x=0.6", "",
+        ] {
+            assert_eq!(th(garbage, View::Sim), None, "{garbage}");
+        }
+        assert_eq!(th_param(None, View::Sim), None);
+        assert_eq!(
+            th("th=0.62", View::Parallels),
+            None,
+            "the parallels have none"
+        );
+        assert_eq!(
+            address(View::Parallels, Some("mn10"), Some("0.62")),
+            "/mn10",
+            "nor does their address"
+        );
     }
 
     #[test]

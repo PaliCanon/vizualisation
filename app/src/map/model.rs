@@ -60,9 +60,11 @@ pub fn translator_of<'a>(gloss: Option<&'a LangTranslations>, uid: &str) -> Opti
 }
 
 /// SuttaCentral's summary of `uid`: in the glosses' language, else in English (App.tsx
-/// lines 302–305, `blurbOf`).
+/// lines 302–305, `blurbOf`); an empty summary is none, as [`text_ref`]'s empty title (a
+/// language without a blurbs file, Vietnamese, gives an empty `lang`).
 pub fn blurb_of<'a>(lang: &'a Blurbs, en: &'a Blurbs, uid: &str) -> Option<&'a str> {
-    lang.get(uid).or_else(|| en.get(uid))
+    let said = |blurbs: &'a Blurbs| blurbs.get(uid).filter(|blurb| !blurb.trim().is_empty());
+    said(lang).or_else(|| said(en))
 }
 
 /// Where node `i` is: `"Sutta Nipāta · Khuddaka Nikāya"`, its collection then its group,
@@ -203,6 +205,18 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_blurb_falls_back_to_english() {
+        // App.tsx:304 `blurbs.lang[uid] ?? blurbs.en[uid]`, with an empty summary taken as
+        // none (as `text_ref`'s empty title): SuttaCentral's English says something.
+        let fr = Blurbs::from_json(br#"{"mn1":"","mn2":"   "}"#).expect("blurbs");
+        let en = Blurbs::from_json(br#"{"mn1":"The Buddha","mn2":"Defilements"}"#).expect("blurbs");
+        assert_eq!(blurb_of(&fr, &en, "mn1"), Some("The Buddha"));
+        assert_eq!(blurb_of(&fr, &en, "mn2"), Some("Defilements"));
+        let none = Blurbs::from_json(br#"{"mn1":""}"#).expect("blurbs");
+        assert_eq!(blurb_of(&none, &none, "mn1"), None, "empty in both");
+    }
+
+    #[test]
     fn the_place_names_a_collection_and_group_once() {
         // TextPanel.tsx:34-35 `[collections[coll]?.name, langs[group]?.name]`, kept once by `fold`
         let mut g = fixture();
@@ -255,5 +269,18 @@ mod tests {
             (next[0].as_str(), next[MAX_TRAIL - 1].as_str()),
             ("sn1", "an1")
         );
+    }
+
+    #[test]
+    fn the_trail_keeps_the_last_thirty_texts() {
+        // App.tsx:255 `[...cur, uid].slice(-30)`
+        assert_eq!(MAX_TRAIL, 30);
+        let mut trail: Vec<String> = Vec::new();
+        for k in 0..=MAX_TRAIL + 5 {
+            trail = next_trail(&trail, &format!("sn{k}"), true).expect("a new text");
+            assert_eq!(trail.len(), (k + 1).min(MAX_TRAIL), "after sn{k}");
+        }
+        let expected: Vec<String> = (6..=MAX_TRAIL + 5).map(|k| format!("sn{k}")).collect();
+        assert_eq!(trail, expected, "the oldest dropped, the order kept");
     }
 }
