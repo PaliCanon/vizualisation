@@ -239,7 +239,7 @@ fn MapChips(
 }
 
 /// The legend's toggle icon: a panel with its left column (the React page's `PanelIcon`,
-/// not in ui-lib v0.1.2).
+/// not in ui-lib v0.3.0).
 #[component]
 fn PanelIcon() -> impl IntoView {
     view! {
