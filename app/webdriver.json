@@ -1,0 +1,10 @@
+{
+  "goog:chromeOptions": {
+    "args": [
+      "--disable-features=WebGPU",
+      "--use-angle=swiftshader",
+      "--enable-unsafe-swiftshader",
+      "--window-size=1280,800"
+    ]
+  }
+}

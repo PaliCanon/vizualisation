@@ -13,6 +13,10 @@ the repository holds both:
   `?th=` the threshold, the browser's history the trail of texts visited; the legend and the
   texts' language kept in the `viz_legend` and `viz_textlang` cookies; `/sitemap.xml` lists
   every text once, at its first view;
+- the Map fragment (012): the same map, client side only (`csr`), for the PaliCanon app, which
+  mounts `MapRoutes` under its own `/map` with a `MapProvider` giving its bundled data files and
+  no head (`app/src/fragment.rs`: what a host gives and needs); its preferences in
+  `localStorage`, everything released when the app hides it;
 - `src/`, `index.html`: the React site, still what `dev.viz.palicanon.app` serves (Cloudflare Pages)
   until 008 removes it.
 
@@ -76,10 +80,16 @@ cargo fmt --all --check
 leptosfmt --check app
 cargo clippy -p vizualisation --features ssr --all-targets -- -D warnings
 cargo clippy -p vizualisation --lib --features hydrate --target wasm32-unknown-unknown -- -D warnings
+cargo clippy -p vizualisation --no-default-features --features csr --target wasm32-unknown-unknown --lib --test csr -- -D warnings
 cargo clippy -p map-engine -p map-layout -p map-formats --all-targets -- -D warnings
 cargo clippy -p map-engine --lib --target wasm32-unknown-unknown -- -D warnings
 cargo test -p vizualisation --features ssr
 cargo test -p map-engine -p map-layout -p map-formats
+# The fragment in a headless Chrome (WebGL2 on SwiftShader, app/webdriver.json); chromedriver
+# matching the local Chrome, wasm-bindgen-test-runner matching Cargo.lock's wasm-bindgen:
+CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner CHROMEDRIVER=<chromedriver> \
+  WASM_BINDGEN_TEST_TIMEOUT=900 cargo test -p vizualisation --no-default-features --features csr \
+  --target wasm32-unknown-unknown --test csr
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps -p vizualisation --features ssr
 cargo deny check advisories bans sources licenses
 cargo leptos build

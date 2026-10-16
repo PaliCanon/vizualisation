@@ -102,6 +102,25 @@ any_spawner = { version = "0.3", features = ["tokio"] }
 # The router tests send requests through it (`tower::ServiceExt::oneshot`).
 tower = { version = "0.5", features = ["util"] }
 
+# The browser test of the fragment (tests/csr.rs), run by wasm-bindgen-test-runner in a
+# headless Chrome (task 012): the runner's crate, the page's events and storage, and the
+# engine's count of its live views.
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+map-engine = { version = "0.1.0", path = "../engine" }
+web-sys = { version = "0.3", features = [
+  "HtmlDocument",
+  "History",
+  "Location",
+  "PointerEvent",
+  "PointerEventInit",
+  "PopStateEvent",
+  "Storage",
+] }
+
 [features]
 # The site (map.palicanon.app) is built with `ssr` (the server) and `hydrate` (the browser
 # takes the server's page over); the PaliCanon app with `csr` alone (the browser builds the

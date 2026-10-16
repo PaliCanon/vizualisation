@@ -78,6 +78,10 @@ jobs:
             args: -p vizualisation --features ssr --all-targets
           - name: app hydrate wasm32
             args: -p vizualisation --lib --features hydrate --target wasm32-unknown-unknown
+          # The PaliCanon app's build (task 012): csr alone, on wasm32, with the browser
+          # test's code (tests/csr.rs).
+          - name: app csr wasm32
+            args: -p vizualisation --no-default-features --features csr --target wasm32-unknown-unknown --lib --test csr
           - name: map host
             args: -p map-engine -p map-layout -p map-formats --all-targets --target x86_64-unknown-linux-gnu
           # The inline tests are host-only (learn-pali's "core-wasm" entry is --lib too).
@@ -113,6 +117,44 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --locked -p vizualisation --features ssr
       - run: cargo test --locked $MAP_CRATES
+
+  # tests/csr.rs (task 012) in a real browser: the Map fragment mounted under /map by
+  # ui-lib's csr::mount, as the PaliCanon app mounts it, 20 times. wasm-bindgen-test-runner
+  # drives a headless Chrome through chromedriver; ubuntu-latest ships Google Chrome and its
+  # matching chromedriver ($CHROMEWEBDRIVER). The runner must be the wasm-bindgen of
+  # Cargo.lock. Chrome draws with WebGL2 on SwiftShader there (app/webdriver.json): the
+  # test covers the GL release, not WebGPU's.
+  test-browser:
+    name: test (csr, headless Chrome)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: vizualisation
+          persist-credentials: false
+      - uses: ./vizualisation/.github/actions/siblings
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - id: wasm-bindgen
+        run: |
+          set -euo pipefail
+          version="$(cargo pkgid --locked wasm-bindgen | sed 's/.*@//')"
+          if [ -z "$version" ]; then
+            echo "::error::no wasm-bindgen version in Cargo.lock"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen@${{ steps.wasm-bindgen.outputs.version }}
+      - run: CHROMEDRIVER="$CHROMEWEBDRIVER/chromedriver" cargo test --locked -p vizualisation --no-default-features --features csr --target wasm32-unknown-unknown --test csr
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
+          WASM_BINDGEN_TEST_TIMEOUT: "900"
 
   docs:
     name: rustdoc (${{ matrix.name }})
