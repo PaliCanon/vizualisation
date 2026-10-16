@@ -67,14 +67,16 @@ COPY ui-lib/build ./ui-lib/build
 COPY ui-lib/locales ./ui-lib/locales
 COPY ui-lib/src ./ui-lib/src
 COPY ui-lib/style ./ui-lib/style
-# vizualisation: the manifest, the lock and the four members (Cargo loads
+# vizualisation: the manifest, the lock and the five members (Cargo loads
 # the whole workspace, so the engine and its crates are here even though the
-# server does not link them yet), and the scripts (the smoke test).
+# server does not link them yet; i18n-check is app/build.rs's placeholder
+# check, task 012), and the scripts (the smoke test).
 COPY vizualisation/Cargo.toml vizualisation/Cargo.lock ./vizualisation/
 COPY vizualisation/app ./vizualisation/app
 COPY vizualisation/engine ./vizualisation/engine
 COPY vizualisation/layout ./vizualisation/layout
 COPY vizualisation/formats ./vizualisation/formats
+COPY vizualisation/i18n-check ./vizualisation/i18n-check
 COPY vizualisation/scripts ./vizualisation/scripts
 WORKDIR /src/vizualisation
 # The footer badge shows the branch and the short commit this image was built

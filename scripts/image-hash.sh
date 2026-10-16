@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # From search-front/scripts/image-hash.sh. What differs: one sibling (ui-lib;
 # this service has no API client), and the workspace's other members
-# (`engine`, `layout`, `formats`, which the Dockerfile copies) are inputs.
+# (`engine`, `layout`, `formats`, `i18n-check`, which the Dockerfile copies)
+# are inputs.
 #
 # The image tag (task 005, S5): `h-` and 16 hex characters of a SHA-256 over
 # what shapes the image, so the same sources and the same sibling always give
@@ -12,7 +13,7 @@
 #   scripts/image-hash.sh <ui-lib checkout>
 #
 # Inputs: the tracked files (git blob ids) of `app`, `engine`, `layout`,
-# `formats`, `Cargo.toml`, `Cargo.lock`, `Dockerfile` and `scripts` of this
+# `formats`, `i18n-check`, `Cargo.toml`, `Cargo.lock`, `Dockerfile` and `scripts` of this
 # repository (the Dockerfile text, so a base image or a tool version, and the
 # smoke test are in the hash), the data files the image carries
 # (`public/*.json`, `public/graph-sim.bin`, Dockerfile `./data/`), and the
@@ -40,7 +41,7 @@ fi
 
 hash=$(
   {
-    git -C "$root" ls-files -s app engine layout formats Cargo.toml Cargo.lock Dockerfile scripts \
+    git -C "$root" ls-files -s app engine layout formats i18n-check Cargo.toml Cargo.lock Dockerfile scripts \
       'public/*.json' public/graph-sim.bin
     echo "ui-lib $ui_lib_head"
   } | sha | cut -c1-16
