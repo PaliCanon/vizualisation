@@ -5,7 +5,7 @@
 # repository, the services and the secrets keep the name vizualisation); `cloudflare_account_id` keeps
 # this repository's declaration of before task 005 (no default: the
 # git-ignored terraform.tfvars gives it), and `zone` is kept from it too. The
-# Pages variables (`project`, `hosts`) moved to pages.tf with what uses them.
+# Pages site's variables (`project`, `hosts`) went with it in task 008.
 
 variable "gcp_project" {
   description = "The GCP project, shared with the site, the API, learn-pali and search-front."
@@ -25,7 +25,7 @@ variable "bootstrap_image" {
 }
 
 variable "cloudflare_account_id" {
-  description = "Cloudflare account that owns the palicanon.app zone, the Workers and the Pages project."
+  description = "Cloudflare account that owns the palicanon.app zone and the Workers."
   type        = string
 }
 
@@ -46,11 +46,10 @@ variable "zone" {
 # The default holds `dev` ONLY: the first apply must not stand up a public
 # prod host before dev has deployed and been checked from CI. Prod is added
 # afterwards, with `-var-file` or by uncommenting the block below (README,
-# "Order"), then a second apply, with its own origin secret. Not before task
-# 008: an order set when prod's host was viz.palicanon.app, the Pages site's
-# custom domain and DNS record until then (pages.tf), which a Workers Custom
-# Domain cannot take. A Workers Custom Domain cannot take any host that
-# already has a record: check map.palicanon.app has none before the apply.
+# "Order"), then a second apply, with its own origin secret: prod is applied
+# that way (`-var-file=prod.tfvars`), so every apply passes that file, or the
+# plan destroys prod. A Workers Custom Domain cannot take a host that already
+# has a record.
 variable "envs" {
   type = map(object({
     host          = string

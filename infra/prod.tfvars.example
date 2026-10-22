@@ -1,8 +1,7 @@
 # From search-front/infra/prod.tfvars.example (the API URL dropped, the gate
-# added). The second apply, once dev has deployed from CI and been checked,
-# and not before task 008 has removed pages.tf (the order set while prod's
-# host was viz.palicanon.app, the Pages site's until then; map.palicanon.app
-# must hold no DNS record at the apply):
+# added). The second apply, once dev has deployed from CI and been checked
+# (map.palicanon.app must hold no DNS record at the apply), and every apply
+# after it, or the plan destroys prod:
 #   tofu apply -var-file=prod.tfvars   (copy this file to prod.tfvars)
 # `envs` is replaced as a whole, so dev is listed again. Prod has its own
 # origin secret (README, "Prod") and no dev password: create the origin

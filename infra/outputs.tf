@@ -1,7 +1,7 @@
 # From search-front/infra/outputs.tf. What differs: no API token in
 # `secrets`, the dev password secret where the gate asks for it. The Pages
-# outputs of before task 005 moved to pages.tf (`urls` renamed `pages_urls`:
-# `urls` is now the Cloud Run URLs, as search-front's).
+# site's outputs went with it in task 008; `urls` is the Cloud Run URLs, as
+# search-front's.
 
 output "urls" {
   description = "The Cloud Run URL of each environment (the Worker's ORIGIN). It answers 403 to anything but the Worker."
