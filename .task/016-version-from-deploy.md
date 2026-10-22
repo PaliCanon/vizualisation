@@ -111,3 +111,7 @@ flowchart TB
 | Apply | done | orchestrator, 2026-10-22: `tofu plan` with terraform.tfvars + prod.tfvars: no resource change; `tofu apply` complete |
 | Check | done | the user's go for the badge on search/map/learn (2026-10-22); orchestrator: F1–F3 read; the dev metas read after the merge |
 | Merge | done | b630d97 on main (squash), pushed: the dev deploy is the first env write; prod by tag v0.2.3 after the dev metas are read |
+| Prod | done | tag v0.2.3: /health `ok v0.2.3`, the badge metas env=v0.2.3 sha empty; the dev revision env held VIZ_ENV=main, VIZ_SHA=7fc2570 |
+
+## Retro
+One line (rank 3, light path since 2026-10-22): the twin of learn-pali 060 landed in one review round; the lead found two repo differences copied from the model (no workflow_dispatch, the revision ignore) only at integration: a twin task probes the repo's deploy and lifecycle before copying; the lane briefs went to one small file per lane from lane D on (token economy).
