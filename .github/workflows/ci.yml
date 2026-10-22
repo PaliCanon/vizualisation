@@ -13,7 +13,7 @@
 # each beside the app's (they build for wasm32 too); MSRV 1.88; the coverage
 # keeps this repository's job-level CODECOV_TOKEN and its summary; no token
 # check in the bundle job (this service holds no API token, Dockerfile); the
-# React site job stays until task 008. Every cargo step names its packages
+# React site's job went with the site (task 008). Every cargo step names its packages
 # with `-p`, never `--workspace` or `--all-features`: the app's `ssr` and
 # `hydrate` do not build together.
 #
@@ -294,25 +294,6 @@ jobs:
           cargo install wasm-bindgen-cli --version "${{ steps.wbg.outputs.version }}" --locked
       - run: cargo leptos build --release --cargo-locked
 
-  site:
-    # The React site, until task 008 removes it: the engine through
-    # wasm-bindgen, then tsc and vite. Its cargo build loads the workspace,
-    # hence the sibling.
-    name: site (tsc + build)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          path: vizualisation
-          persist-credentials: false
-      - uses: ./vizualisation/.github/actions/siblings
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-      - uses: ./vizualisation/.github/actions/build
-        with:
-          working-directory: vizualisation
-
   scripts:
     # The shell, Python and Node tests that guard the deploy. Every test file
     # has its step here (scripts/check_workflows.py checks it).
@@ -330,7 +311,8 @@ jobs:
       - run: python3 scripts/infra_probe_test.py
       - run: python3 scripts/check_workflows_test.py
       - run: python3 scripts/check_workflows.py
-      - run: python3 scripts/port_strings_test.py
+      # No JavaScript but the Worker's (task 008).
+      - run: python3 scripts/no_js_test.py
       - run: bash scripts/manifest-ref.test.sh
       - run: bash scripts/serving-revision.test.sh
       - run: bash infra/scripts/origin-secret.test.sh

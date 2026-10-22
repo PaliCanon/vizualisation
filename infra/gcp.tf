@@ -35,7 +35,8 @@ resource "google_secret_manager_secret" "origin" {
 # The dev password (the service's DEV_PASSWORD when VIZ_GATE=password), for
 # the gated environments only. Tofu creates the secret and NEVER a version:
 # the value would sit in its state. The user adds the version from the
-# keychain (README, "Order"), the same password the Pages site asked for.
+# keychain (README, "Order"), the same password the React site's Pages
+# function asked for until task 008.
 resource "google_secret_manager_secret" "dev_password" {
   for_each  = local.gated
   secret_id = "vizualisation-dev-password-${each.key}"

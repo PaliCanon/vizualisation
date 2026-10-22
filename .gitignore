@@ -1,10 +1,7 @@
-node_modules/
-dist/
-*.tsbuildinfo
-# SuttaCentral clones (npm run fetch-data): large, re-fetched by script
+# SuttaCentral clones (scripts/fetch-data.sh): large, re-fetched by script
 data/
 # Rust build output (the cargo workspace at the root) and the engine's wasm-bindgen package
-# (npm run build:engine)
+# (README, "The engine alone")
 /target/
 engine/pkg/
 # a2m code-graph cache

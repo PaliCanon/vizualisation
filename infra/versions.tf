@@ -1,7 +1,6 @@
 # From search-front/infra/versions.tf. What differs: the state prefix
 # (`vizualisation`, migrated from `suttasmap` with `tofu init -migrate-state`,
-# README "Order"), and the credentials comment names the Pages scopes this
-# directory still needs until task 008 (pages.tf).
+# README "Order").
 terraform {
   required_version = ">= 1.8"
 
@@ -27,8 +26,7 @@ terraform {
 
 # Credentials come from the environment: gcloud auth application-default
 # login (the state bucket, the GCP resources), and CLOUDFLARE_API_TOKEN (zone
-# DNS and Workers routes, account Workers scripts; and, until task 008, the
-# Pages project, its domains and records of pages.tf). Nothing is read from a
+# DNS and Workers routes, account Workers scripts). Nothing is read from a
 # file in this repository.
 provider "google" {
   project = var.gcp_project

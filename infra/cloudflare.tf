@@ -1,7 +1,6 @@
 # From search-front/infra/cloudflare.tf. What differs: the names
 # (`vizualisation-<env>`) and the zone read through `var.zone` (this
-# directory's variable of before task 005; pages.tf reads the same data
-# source).
+# directory's variable of before task 005).
 #
 # The public name of the site: <host> → a Worker that relays to Cloud Run.
 # Cloudflare sits in front (WAF, rate limits). The zone itself is the site's

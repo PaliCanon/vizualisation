@@ -13,8 +13,8 @@ name: deploy
 # password (read from Secret Manager, `vizualisation-dev-password-dev`, into
 # a 0600 header file) and check the 401 without it; prod's checks send none
 # and check that nothing asks for one (scripts/rollout-check.sh). Replaces
-# the Cloudflare Pages deploy of the React site (task 005, assumption A1: the
-# Pages site keeps its last build until task 008 removes it).
+# the Cloudflare Pages deploy of the React site (task 005); the site and its
+# Pages project were removed in task 008.
 #
 # CI never sets the service's env or secrets: tofu does (infra/).
 #

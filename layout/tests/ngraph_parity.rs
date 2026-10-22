@@ -1,11 +1,16 @@
 //! The Rust layout against ngraph.forcelayout 3.3.1's own trajectory.
 //!
-//! `tests/fixtures/small.json` (made by `gen.cjs`) holds a 300-node, two-cluster graph with
+//! `tests/fixtures/small.json` holds a 300-node, two-cluster graph with
 //! 779 similarity springs, the starting positions, and ngraph's positions after 1, 5, 20 and
 //! 400 steps with the map's parameters and the 0.99 pull. This is a comparison within a
 //! tolerance, not bit equality: the generator of the jitter and the order of float sums
 //! differ, and the layout is not chaotic (a 1e-9 change of the start stays about 1e-9 after
 //! 400 steps), so a faithful port stays close to the end.
+//!
+//! The fixture was made once by `tests/fixtures/gen.cjs`, running ngraph.forcelayout 3.3.1
+//! itself under Node; the generator went with Node in task 008 and is in git history
+//! (`git show 7d2e46f:layout/tests/fixtures/gen.cjs`). The fixture's own `note` still names
+//! it. The committed `small.json` is the reference: it is not regenerated.
 
 use map_layout::{Layout, Link, Params};
 use serde_json::Value;

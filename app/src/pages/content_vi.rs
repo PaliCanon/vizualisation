@@ -1,9 +1,9 @@
-//! The footer pages in Vietnamese: generated from the React site's
-//! `src/locales/vi.json` `pages.*` by `scripts/port_strings.py`
-//! (verbatim; `{{publisher}}` and `{{contact}}` resolved as
-//! `src/components/Pages.tsx` does; the hosts `viz.*` rewritten `map.*`;
-//! `pages.updated` is the catalogue's `pages_updated`). Data, not code:
-//! regenerate rather than edit by hand.
+//! The footer pages in Vietnamese, typed data edited here by hand. Ported in
+//! task 005 from the React site's `src/locales/vi.json` `pages.*` by
+//! `scripts/port_strings.py` (verbatim; `{{publisher}}` and `{{contact}}`
+//! resolved as its `src/components/Pages.tsx` did; the hosts `viz.*`
+//! rewritten `map.*`; `pages.updated` is the catalogue's `pages_updated`).
+//! The React site and the script were removed in task 008 (git history).
 
 use super::types::{AppBlock, Cta, InstagramBlock, PageText, Pages, Section, SiteBlock, Table};
 

@@ -40,9 +40,10 @@ impl Default for Params {
 }
 
 impl Params {
-    /// The values the map's layouts all use: `src/map/rust-engine.ts` (live),
-    /// `scripts/build-similarity.mjs` and `scripts/build-graph.mjs` (offline), with the
-    /// pull to the origin the live layout and `build-similarity` apply.
+    /// The values the map's layouts all use: the engine's live layout
+    /// (`engine/src/live_layout.rs`) and the offline data tools (`build-similarity.mjs`
+    /// and `build-graph.mjs`, removed in task 008, in git history until task 007 ports
+    /// them), with the pull to the origin the live layout and `build-similarity` apply.
     #[must_use]
     pub fn map() -> Self {
         Self {

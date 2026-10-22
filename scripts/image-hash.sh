@@ -17,8 +17,8 @@
 # repository (the Dockerfile text, so a base image or a tool version, and the
 # smoke test are in the hash), the data files the image carries
 # (`public/*.json`, `public/graph-sim.bin`, Dockerfile `./data/`), and the
-# HEAD commit of ui-lib. Not `infra/`, `.task/`, the docs or the React site
-# (`src/`, the rest of `public/`): they do not change the image.
+# HEAD commit of ui-lib. Not `infra/`, `.task/`, the docs or the rest of
+# `public/`: they do not change the image.
 set -euo pipefail
 
 if [ "$#" -ne 1 ]; then

@@ -5,8 +5,8 @@ vizualisation's own resources, in its own tofu state
 `suttasmap`: see "Order", step 3), inside the GCP project it shares with the
 site, the API, learn-pali and search-front (`palicanon-app`,
 `europe-west1`). From search-front/infra/README.md; what differs is the
-password gate of dev, no API token, and the Pages site of before task 005
-kept in `pages.tf` until task 008.
+password gate of dev and no API token. The Pages site of the React map
+(`pages.tf`) was removed in task 008: see "Task 008, the Pages removal".
 
 Per environment (the map `envs` in `variables.tf`: `dev` first, `prod` added
 later, see "Order"):
@@ -19,9 +19,8 @@ later, see "Order"):
 | The deployer's rights | `gcp.tf` | `github-deployer` is read as a data source (the site's infra owns it), never managed here. It may **act as** the runtime account, **read the origin secret** and, on dev, **read the dev password** (the rollout check sends it; see "R3"). |
 | Cloud Run service `vizualisation-<env>` | `gcp.tf` | min 0, max 2 (dev) / 3 (prod), 1 CPU, 512Mi, CPU only while a request is served, public at the Cloud Run layer. `VIZ_GATE` is a plain value (`password` on dev, `off` on prod; the boot refuses to start without it); `ORIGIN_SECRET` and, on dev, `DEV_PASSWORD` come from the secrets (`latest`, read when an instance starts). Startup probe: **TCP 8080** (see "R2"). |
 | A Worker relaying to Cloud Run | `cloudflare.tf`, `worker/proxy.js` | The Worker's `ORIGIN` is the Cloud Run URL and its `PUBLIC_ORIGIN` the host's own `https://` origin (both answer 500 when missing); it adds `x-origin-auth` from its secret `ORIGIN_AUTH` and answers 500 without it. The dev password (HTTP Basic) and the gate's 401 pass through it untouched. Tested with `node --test 'infra/worker/*.test.mjs'`. |
-| A Workers Custom Domain per host | `cloudflare.tf` | `map.dev.palicanon.app` (dev), `map.palicanon.app` (prod, added after task 008). Cloudflare creates the DNS record and the certificate. |
+| A Workers Custom Domain per host | `cloudflare.tf` | `map.dev.palicanon.app` (dev), `map.palicanon.app` (prod, from `prod.tfvars`). Cloudflare creates the DNS record and the certificate. |
 | `scripts/origin-secret` | `scripts/` | `create`, `push`, `check` the origin secret; tested with stub `gcloud`/`curl` (`bash infra/scripts/origin-secret.test.sh`). `check` asks the host's `/health` (dev's `/` is behind the password). |
-| The Pages site of the React map | `pages.tf` | **Removed in task 008.** Unchanged from before task 005 (the project, its two custom domains, the two CNAME records); the first apply must show no change to it. `deploy.yml` no longer deploys to it: it keeps its last build. |
 
 CI owns the image: tofu ignores `image`, `scaling`, `client` and
 `client_version` of the service (`lifecycle.ignore_changes`, the API's rule),
@@ -48,10 +47,9 @@ sends it). Neither is in tofu state.
 for the password (HTTP Basic, any user name, `401` with `WWW-Authenticate`,
 never cached); `/health` is not behind it, so the rollout and
 `origin-secret check` reach it. Prod runs the same image with `VIZ_GATE=off`
-and asks nothing. It replaces the Pages function `functions/_middleware.js`
-and its Pages secret `DEV_PASSWORD` (both removed in task 008), with the same
-password, kept in the keychain (account `palicanon`, service
-`viz-dev-password`).
+and asks nothing. It replaced the React site's Pages function and its Pages
+secret `DEV_PASSWORD` (removed in task 008), with the same password, kept in
+the keychain (account `palicanon`, service `viz-dev-password`).
 
 ### First deploy: the Worker holds the secret first
 
@@ -88,16 +86,16 @@ short window in which the two disagree.
 ## Order: dev first, prod later
 
 `var.envs` holds **dev only** by default. The first apply therefore stands up
-`vizualisation-dev` and `map.dev.palicanon.app` and nothing public in prod.
-Prod waits for task 008, an order set when prod's host was
-`viz.palicanon.app`, the Pages site's custom domain and CNAME record until
-`pages.tf` is removed. The host is now `map.palicanon.app` (user,
-2026-10-16): a Workers Custom Domain cannot take a host that already has a
-record, so check it has none before the prod apply.
+`vizualisation-dev` and `map.dev.palicanon.app` and nothing public in prod;
+prod comes with `-var-file=prod.tfvars` ("Prod"). Both are applied
+(2026-10-22: map.dev.palicanon.app asks for the password, map.palicanon.app
+answers 200), so **every apply passes `-var-file=prod.tfvars`**: without it,
+the plan destroys prod. A Workers Custom Domain cannot take a host that
+already has a record.
 
 ## Only the user (and the orchestrator for step 3), in order
 
-Nothing here has been applied yet (task 005 wrote it, did not run it).
+The first-time order, as dev was stood up (task 005); kept for a new environment.
 
 1. The GitHub App (Contents: read) installed on `ui-lib` and
    `vizualisation`; repository secrets `APP_ID`, `APP_PRIVATE_KEY`, variables
@@ -107,7 +105,8 @@ Nothing here has been applied yet (task 005 wrote it, did not run it).
    (`palisearch/infra/variables.tf`, one line), then its apply (the
    workload identity of the deploy).
 3. **Migrate the state** from the prefix `suttasmap` to `vizualisation`
-   (versions.tf changed it), then check that the Pages site is untouched:
+   (versions.tf changed it), then check that the Pages site (then in
+   `pages.tf`, removed in task 008) is untouched:
 
    ```sh
    gcloud auth application-default login
@@ -117,8 +116,9 @@ Nothing here has been applied yet (task 005 wrote it, did not run it).
    tofu plan                     # Pages: no change; the rest: to add
    ```
 
-   The Cloudflare token needs, besides the Pages scopes it had, account
-   Workers Scripts (edit) and zone Workers Routes (edit), as search-front's.
+   The Cloudflare token needs account Workers Scripts (edit) and zone
+   Workers Routes (edit), as search-front's (and, until task 008, the Pages
+   scopes).
    Once the plan is read, the old prefix `suttasmap/` in the bucket can be
    deleted by hand.
 4. A **targeted** apply of the secrets, the runtime service account and the
@@ -145,7 +145,7 @@ Nothing here has been applied yet (task 005 wrote it, did not run it).
    ```
 
 6. Store the dev password, the value never typed, shown or saved elsewhere
-   (the keychain entry the Pages secret came from):
+   (the keychain entry the React site's Pages secret came from):
 
    ```sh
    printf '%s' "$(security find-generic-password -a palicanon -s viz-dev-password -w)" \
@@ -153,7 +153,7 @@ Nothing here has been applied yet (task 005 wrote it, did not run it).
    ```
 
 7. The rest: `tofu apply` (Cloud Run on the placeholder image, the Worker,
-   the Custom Domain; the plan shows no change to `pages.tf`'s resources).
+   the Custom Domain).
    The first apply may take a few minutes after the Custom Domain is
    created: Cloudflare issues the host's certificate then.
 8. Give the Worker its secret and check it:
@@ -174,12 +174,30 @@ deploy proves nothing about the gates (the rollout does).
 
 ## Prod
 
-After task 008 has removed `pages.tf`, and dev has deployed from CI and been
-checked: copy `prod.tfvars.example` to `prod.tfvars` (git-ignored), and
+Once dev has deployed from CI and been checked: copy `prod.tfvars.example` to `prod.tfvars` (git-ignored), and
 repeat steps 4, 5, 7 and 8 with `prod` (`origin-secret create prod`, `tofu
 apply -var-file=prod.tfvars`, `origin-secret push prod`; no dev password:
 prod's gate is `off`, which `variables.tf` enforces). A `v*` tag then deploys
 the real image.
+
+## Task 008, the Pages removal
+
+Task 008 deleted `pages.tf`. The first plan after it, run from the laptop
+with `-var-file=prod.tfvars`, must show the five resources that file declared
+to destroy, and nothing else (task 008 ran `fmt` and `validate` only, never a
+plan); read it before the apply:
+
+| Resource | What |
+| --- | --- |
+| `cloudflare_pages_project.viz` | the Pages project `palicanon-viz` (production branch `release`) |
+| `cloudflare_pages_domain.prod` | its custom domain `viz.palicanon.app` |
+| `cloudflare_pages_domain.dev` | its custom domain `dev.viz.palicanon.app` |
+| `cloudflare_record.prod` | the CNAME `viz` → `palicanon-viz.pages.dev` |
+| `cloudflare_record.dev` | the CNAME `dev.viz` → `main.palicanon-viz.pages.dev` |
+
+The outputs `pages_urls` and `pages_project` go with them. Afterwards the
+Pages scopes of the Cloudflare token and the `CLOUDFLARE_*` repository
+secrets (the old Pages deploy's) are no longer used.
 
 ## Rulings that shape this directory (search-front 007, kept)
 

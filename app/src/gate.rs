@@ -1,5 +1,6 @@
 //! The password gate of the dev environment (design v4: `VIZ_GATE`), the
-//! behaviour of the Pages function it replaces (`functions/_middleware.js`):
+//! behaviour of the React site's Pages function it replaced
+//! (`functions/_middleware.js`, removed in task 008, in git history):
 //! HTTP Basic, any user name, the password compared in constant time; a
 //! refusal is a 401 asking for it, never cached. Prod runs the same image
 //! with the gate off and no access to the secret (infra).
