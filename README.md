@@ -101,7 +101,10 @@ RUSTDOCFLAGS="-D warnings" cargo doc --no-deps -p vizualisation --features ssr
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps -p map-engine -p map-layout -p map-formats
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps -p map-engine -p map-layout -p map-formats --target wasm32-unknown-unknown
 cargo deny check advisories bans sources licenses
-cargo leptos build --release && scripts/smoke.sh target/release/vizualisation
+cargo leptos build --release
+# The smoke test as the image runs it (the Dockerfile's env: hashed file names, the data dir):
+LEPTOS_OUTPUT_NAME=vizualisation LEPTOS_SITE_ROOT=target/site LEPTOS_SITE_PKG_DIR=pkg \
+  LEPTOS_HASH_FILES=true VIZ_DATA_DIR=public scripts/smoke.sh target/release/vizualisation
 ```
 
 The same in CI (`.github/workflows/ci.yml`, one job per group), plus `cargo check --locked` on Rust
