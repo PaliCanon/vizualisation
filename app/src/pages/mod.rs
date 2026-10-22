@@ -4,7 +4,8 @@
 //!
 //! From search-front/app/src/pages/mod.rs (commit 6d370b4). What differs:
 //! a Legal page (search-front has none); the shapes live in `types.rs`,
-//! written with the texts by `scripts/port_strings.py` (Support carries the
+//! written with the texts by `scripts/port_strings.py` in task 005, by hand
+//! since its removal in task 008 (Support carries the
 //! websites, `SiteBlock`, instead of search-front's search showcase); the
 //! "Last updated" line is the catalogue's `pages_updated`, its date here.
 //!

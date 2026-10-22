@@ -2,7 +2,8 @@
 //! search-front's `app/src/pages/mod.rs` and adapted to the React site's
 //! `pages.*` (rendered by its `src/components/Pages.tsx`) — a Legal page,
 //! and on Support the websites (`pages.support.web`) instead of
-//! search-front's search showcase. Written by `scripts/port_strings.py`.
+//! search-front's search showcase. Written by `scripts/port_strings.py` in
+//! task 005 (removed in task 008, git history); edited by hand since.
 
 /// Every footer page in one language. The "Last updated" line closing
 /// each page is the catalogue's `pages_updated`, not here.

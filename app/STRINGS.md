@@ -1,14 +1,14 @@
 # Strings: the React catalogues → the Leptos app
 
-The React site's i18next catalogues (`src/locales/<lang>.json`, nested) ported by
-`scripts/port_strings.py` (task 005) to:
+A record of the port. The React site's i18next catalogues (`src/locales/<lang>.json`, nested) were
+ported by `scripts/port_strings.py` (task 005) to the two files below. The catalogues and the script
+were removed in task 008 (they are in git history): both files are now ordinary source, edited by
+hand, and this page maps where each old key went.
 
 - `app/locales/<lang>.json`: the `leptos_i18n` 0.6 catalogue, flat snake_case keys, values
   verbatim, every key but `pages.*` (and `pages.updated`, kept as `pages_updated`).
 - `app/src/pages/content_<lang>.rs`: `pages.*` as typed const data (`PAGES`, types in
   `app/src/pages/types.rs`), `{{publisher}}` and `{{contact}}` resolved as `Pages.tsx` does.
-
-Regenerate with `python3 scripts/port_strings.py`; check with `python3 scripts/port_strings_test.py`.
 
 **Plurals.** i18next's `tooltip.links_one` / `_other` become two plain keys holding the word alone,
 `tooltip_link` and `tooltip_links` (vi: the same word twice), as search-front's `results_one` /
