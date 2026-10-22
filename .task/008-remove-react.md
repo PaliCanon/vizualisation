@@ -1,6 +1,6 @@
 # 008 (E) React, Vite and Node removed; Pages retired
 
-status: open · rank: 6 · level: standard · type: refactor · request: user, 2026-10-12 ("remplace react par lepsos"), validated 2026-10-14 ("on fait la reecriture ! jaimerai bien que ce soit dans les guidelines des autres repo") · session: vizualisation-002-leptos (design dce546795076c4c v4, discussion d49d768dcc92341, process d4b32bf84ae3f40) · process: ../../docs/workflows/development-process.mmd · after: [006, 007]
+status: merged · rank: 6 · level: standard · type: refactor · request: user, 2026-10-12 ("remplace react par lepsos"), validated 2026-10-14 ("on fait la reecriture ! jaimerai bien que ce soit dans les guidelines des autres repo") · session: vizualisation-002-leptos (design dce546795076c4c v4, discussion d49d768dcc92341, process d4b32bf84ae3f40) · process: ../../docs/workflows/development-process.mmd · after: [006, 007]
 
 ## Summary
 Rank: difficulty 4 (deletions, README, CLAUDE.md, CI), impact 6 (the old dev host and the Pages project go; prod switches) → 6.
@@ -34,4 +34,9 @@ Assumptions: A3 the README's engine-alone commands build `engine/pkg` (probed: b
 | Verify (local, CI's matrix) | done | the lead's run on b9c3985 (fmt, leptosfmt, clippy ×6, tests ssr 324 / csr 190 / map 122, rustdoc ×3, scripts and the Worker's tests, check_workflows, tofu validate, release build + smoke: 0) plus msrv app 0, msrv map 0, deny 0, coverage 0, test-browser (csr, Chrome 155) 0 — ui-lib at v0.3.1 as CI |
 | Merge | done | squash 3216826 (PR #12) |
 | Infra (Pages) | done | user 2026-10-22: «cess de repondre», «si cest pas le cas supprime les variables cloudflare»: `tofu apply` of the targeted plan — 5 destroyed (palicanon-viz, domains and CNAMEs viz and dev.viz), 0 changed; viz and dev.viz stopped resolving at the authoritative NS ~20 s later; repo secrets CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN deleted (no workflow read them; APP_ID, APP_PRIVATE_KEY remain). No deploy: 008 changes nothing the site serves |
+
+## Retro
+Thread: retro-discussion d2a514909328947 (#13971; gemini flash-lite #14014).
+- **Errors**: the shared ../ui-lib moved to 0.3.2 mid-gate and --locked failed (the brief named the shared sibling only implicitly); the brief left out two items of the task Summary (the public/ statics, the CLOUDFLARE_* secrets); the orchestrator's local CI script was purged from /tmp and rewritten from ci.yml; all nine review findings were false (sage, a 20b model, asserted lines that do not exist; gemini on the lite model after 429s); slices S1 before S4 although port_strings_test.py read src/locales; a README command was not run as written; the smoke test's 8 s wait is flaky under load; zsh did not split an unquoted variable of -target flags; a deleted proxied record kept resolving ~20 s; Actions still blocked by billing (v0.2.1 never deployed), so the merge rests on the local matrix.
+- **Changes**: a lead's brief gives it its own ui-lib sibling at the pinned tag; the brief is diffed against the Summary's removal list (statics, secrets, infra) before launch; a deletion's Plan lists the tests that read each deleted path and orders slices by it; every command written into a README is run as written before the commit; the local CI-extra script lives in a repository, not in /tmp; flags built from variables go in a zsh array; a review on a lite model is flagged as such. Follow-up: SMOKE_WAIT configurable in app/tests/site_scripts.rs. 007 stays deferred: the data is frozen until it is done.
 
