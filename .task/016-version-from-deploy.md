@@ -110,3 +110,4 @@ flowchart TB
 ```
 | Apply | done | orchestrator, 2026-10-22: `tofu plan` with terraform.tfvars + prod.tfvars: no resource change; `tofu apply` complete |
 | Check | done | the user's go for the badge on search/map/learn (2026-10-22); orchestrator: F1–F3 read; the dev metas read after the merge |
+| Merge | done | b630d97 on main (squash), pushed: the dev deploy is the first env write; prod by tag v0.2.3 after the dev metas are read |
