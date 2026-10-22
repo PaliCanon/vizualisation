@@ -20,10 +20,13 @@ Plan + Build by the lead (2026-10-22, user: «je pense quon peut virer le js»):
 | S6 README + CLAUDE.md | both | the Rust workspace only, hosts, data committed, checks matrix |
 | S7 public/ statics | the 22 React-only files of `public/` (ruling: orchestrator, 2026-10-22) | before/after GET of /favicon.ico, /og.png, /lotus.png, /robots.txt, /sitemap.xml, /apple-touch-icon.png, a /support/*.jpg on the release binary: same status and bytes |
 
-Assumptions: A1 prod is applied from a local `infra/prod.tfvars` (map.palicanon.app 200): the post-merge apply passes `-var-file=prod.tfvars`. A2 lowercase `pages` in `app/` is the app's footer pages, kept.
+Built in this order (S4 before S1: `port_strings_test.py` read `src/locales/` and failed once `src/` was gone): S4 4404d39, S1 ae141ef, S2 29dec38, S3 cf9308c, S5 af2cee1, S6 8f7617a, S7 5dfcb61, then 400e7c7 (README: the smoke test needs the Dockerfile's env). Checks from `<scratchpad>/008/lead/ws/vizualisation` (worktree moved there, ui-lib v0.3.1 as its own sibling: the shared ../ui-lib moved to 0.3.2 mid-gate; ruling of the orchestrator).
+
+Assumptions: A3 the README's engine-alone commands build `engine/pkg` (probed: both exit 0). A1 prod is applied from a local `infra/prod.tfvars` (map.palicanon.app 200): the post-merge apply passes `-var-file=prod.tfvars`. A2 lowercase `pages` in `app/` is the app's footer pages, kept.
 
 ## Log
 | Step | Result | Output |
 | --- | --- | --- |
 | Define | done | design v4 validated by the user 2026-10-14 |
 | Plan | done | `## Lanes` S1–S7 (lead) |
+| Build | done | S1–S7 in 8 commits (4404d39…400e7c7), 65 files removed; matrix on the tip all 0: fmt, leptosfmt, clippy ×6, tests ssr 324 / csr 190 / map 122 passed, rustdoc ×3, scripts (check_workflows 84, no_js 5, infra_probe 2, sh ×3, worker node 31), tofu fmt/init/validate; release build + smoke.sh 0; no tofu plan/apply |
