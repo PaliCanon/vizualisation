@@ -30,3 +30,8 @@ Assumptions: A3 the README's engine-alone commands build `engine/pkg` (probed: b
 | Define | done | design v4 validated by the user 2026-10-14 |
 | Plan | done | `## Lanes` S1–S7 (lead) |
 | Build | done | S1–S7 in 8 commits (4404d39…400e7c7), 65 files removed; matrix on the tip all 0: fmt, leptosfmt, clippy ×6, tests ssr 324 / csr 190 / map 122 passed, rustdoc ×3, scripts (check_workflows 84, no_js 5, infra_probe 2, sh ×3, worker node 31), tofu fmt/init/validate; release build + smoke.sh 0; no tofu plan/apply |
+| Review | done | reviewer: 008-review (d72322f9e20a247, sage #13774 #13868), 008-review-gemini (dd65aca4c3e4742, #13748 #13798): 9 findings, all ruled out on b9c3985 with the line that disproves each (process thread) |
+| Verify (local, CI's matrix) | done | the lead's run on b9c3985 (fmt, leptosfmt, clippy ×6, tests ssr 324 / csr 190 / map 122, rustdoc ×3, scripts and the Worker's tests, check_workflows, tofu validate, release build + smoke: 0) plus msrv app 0, msrv map 0, deny 0, coverage 0, test-browser (csr, Chrome 155) 0 — ui-lib at v0.3.1 as CI |
+| Merge | done | squash 3216826 (PR #12) |
+| Infra (Pages) | planned | `tofu plan -refresh=false -target` the five Pages resources, -var-file=prod.tfvars: 5 to destroy (project palicanon-viz, domains and CNAMEs viz and dev.viz), nothing else; waiting for the user (viz.palicanon.app dies, or redirects to map.palicanon.app); the CLOUDFLARE_* repo secrets (unused by every workflow) waiting too |
+
