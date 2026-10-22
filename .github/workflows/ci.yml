@@ -311,6 +311,8 @@ jobs:
       - run: python3 scripts/infra_probe_test.py
       - run: python3 scripts/check_workflows_test.py
       - run: python3 scripts/check_workflows.py
+      # No JavaScript but the Worker's (task 008).
+      - run: python3 scripts/no_js_test.py
       - run: bash scripts/manifest-ref.test.sh
       - run: bash scripts/serving-revision.test.sh
       - run: bash infra/scripts/origin-secret.test.sh

@@ -97,6 +97,7 @@ coverage, the deploy's own tests and `tofu fmt`/`validate`:
 
 ```sh
 python3 scripts/check_workflows_test.py && python3 scripts/check_workflows.py
+python3 scripts/no_js_test.py
 bash scripts/manifest-ref.test.sh && bash scripts/serving-revision.test.sh
 bash infra/scripts/origin-secret.test.sh
 node --test 'infra/worker/*.test.mjs'
