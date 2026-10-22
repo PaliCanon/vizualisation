@@ -11,7 +11,7 @@
 //! `Cargo.toml`, `Cargo.lock`, `Dockerfile` and `scripts` (the Dockerfile's
 //! text and the smoke test are in the hash, so a fix to either changes the
 //! tag), plus the HEAD of `ui-lib`. Nothing else: `infra/`, `.task/`, the
-//! README, the React site (`src/`, `public/`).
+//! README, the `LICENSE`, the rest of `public/`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -81,7 +81,7 @@ impl Workspace {
         write(&viz, "infra/main.tf", "# infra\n");
         write(&viz, ".task/005.md", "# task\n");
         write(&viz, "README.md", "# readme\n");
-        write(&viz, "src/main.tsx", "// react\n");
+        write(&viz, "LICENSE", "license\n");
         write(&viz, "public/graph.json", "{}\n");
         write(&viz, "public/graph-sim.bin", "bin\n");
         write(&viz, "public/sitemap.xml", "<urlset/>\n");
@@ -178,7 +178,7 @@ fn files_outside_the_inputs_do_not() {
         ("infra/main.tf", "# infra 2\n"),
         (".task/005.md", "# task 2\n"),
         ("README.md", "# readme 2\n"),
-        ("src/main.tsx", "// react 2\n"),
+        ("LICENSE", "license 2\n"),
         ("public/sitemap.xml", "<urlset></urlset>\n"),
     ]
     .iter()

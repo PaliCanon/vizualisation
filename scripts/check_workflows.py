@@ -4,8 +4,9 @@
 From search-front/scripts/check_workflows.py (task 007 there). What differs:
 one sibling (ui-lib, no api) in the messages; a job that uses a local
 composite action whose steps run cargo needs the siblings too (the React
-site job builds the engine through `.github/actions/build` until task 008);
-and every test file of the repository has its step in ci.yml (task 005, S5).
+site's job built the engine through such an action until task 008 removed
+both; the rule stays for the next one); and every test file of the
+repository has its step in ci.yml (task 005, S5).
 
 No actionlint on the laptop and none in the job: these rules are the ones the
 deploy design depends on, checked as YAML.

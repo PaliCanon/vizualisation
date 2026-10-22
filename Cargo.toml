@@ -55,7 +55,8 @@ hash-files = true
 palicanon-ui-lib = { path = "../ui-lib" }
 
 # A member's own [profile.*] is ignored in a workspace: the engine's size-optimised wasm
-# profile lives here. `npm run build:engine` builds with it.
+# profile lives here. The app's wasm (`lib-profile-release` above) and the engine alone
+# (README, "The engine alone") build with it.
 [profile.wasm-release]
 inherits = "release"
 opt-level = "z"

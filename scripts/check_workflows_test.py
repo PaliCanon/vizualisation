@@ -6,8 +6,8 @@ real workflows pass. Run: python3 scripts/check_workflows_test.py
 From search-front/scripts/check_workflows_test.py. What differs: the
 checkout is `vizualisation/` and the sibling ui-lib alone; two rules of our
 own, each with its tests: a job that uses a local composite action running
-cargo needs the siblings too (`SiblingsThroughAnAction`: the React site job
-builds the engine through `.github/actions/build`), and every test file of
+cargo needs the siblings too (`SiblingsThroughAnAction`: the React site's
+job built the engine through such an action until task 008), and every test file of
 the repository is run by a step of ci.yml (`EveryTestFileHasItsStep`, the
 task's S5 row). The real-ci test of the Worker glob is covered by the
 latter.
@@ -578,23 +578,24 @@ class SiblingsForCargo(unittest.TestCase):
 
 
 class SiblingsThroughAnAction(unittest.TestCase):
-    """The site job runs cargo inside `.github/actions/build` (npm run
-    build:engine): the workspace's [patch] reaches ../ui-lib there too, so a
-    job using a local action that runs cargo needs the siblings."""
+    """A job may run cargo inside a local composite action (the React site's
+    job did, `.github/actions/build`, until task 008): the workspace's
+    [patch] reaches ../ui-lib there too, so a job using a local action that
+    runs cargo needs the siblings. The actions below are made up."""
 
     BUILD = """
 runs:
   using: composite
   steps:
     - shell: bash
-      run: npm run build:engine && cargo --version
+      run: cargo build -p map-engine --target wasm32-unknown-unknown
 """
     NO_CARGO = """
 runs:
   using: composite
   steps:
     - shell: bash
-      run: npm ci
+      run: wasm-bindgen --version
 """
     JOB = SiblingsForCargo.JOB
 

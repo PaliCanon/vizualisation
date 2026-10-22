@@ -16,9 +16,7 @@ the repository holds both:
 - the Map fragment (012): the same map, client side only (`csr`), for the PaliCanon app, which
   mounts `MapRoutes` under its own `/map` with a `MapProvider` giving its bundled data files and
   no head (`app/src/fragment.rs`: what a host gives and needs); its preferences in
-  `localStorage`, everything released when the app hides it;
-- `src/`, `index.html`: the React site, still what `dev.viz.palicanon.app` serves (Cloudflare Pages)
-  until 008 removes it.
+  `localStorage`, everything released when the app hides it.
 
 Also: the 3D engine (`engine/`, Rust → WebAssembly, generic: it knows no text), the force layout
 (`layout/`, a port of ngraph.forcelayout), the data files' types (`formats/`), the scripts that build
@@ -42,12 +40,14 @@ variable stops the service at boot, naming the variable, never its value. **No `
 The app depends on `palicanon-ui-lib` by git tag (`v0.3.0`), with the workspace's `[patch]` to
 `../ui-lib` (a worktree reaches it through the `wt/ui-lib` symlink).
 
-The React site, until 008:
+### The engine alone
+
+The app builds the engine into its own bundle. To build it alone, as a wasm-bindgen package in
+`engine/pkg` (git-ignored), with `wasm-bindgen-cli` at Cargo.lock's version:
 
 ```sh
-npm install
-npm run build:engine        # the 3D engine (Rust -> wasm) -> engine/pkg
-npm run dev                 # port 5390
+cargo build -p map-engine --target wasm32-unknown-unknown --profile wasm-release
+wasm-bindgen --target web --out-dir engine/pkg target/wasm32-unknown-unknown/wasm-release/map_engine.wasm
 ```
 
 ## Data
@@ -111,7 +111,7 @@ Functions stay under 50 lines (`clippy.toml`).
 ## Deploy
 
 `main` deploys `map.dev.palicanon.app`, a `v*` tag `map.palicanon.app` (prod is added to `infra/`
-once dev is checked, after 008; the React site keeps `viz.palicanon.app` on Pages until 008) — `.github/workflows/deploy.yml`,
+once dev is checked, after 008) — `.github/workflows/deploy.yml`,
 from search-front's. Cloudflare (a Worker per host) is the only way in: the service answers 403 to
 any request without the Worker's `x-origin-auth` secret. Dev asks for a password (`VIZ_GATE=password`,
 `DEV_PASSWORD` from Secret Manager; the value in the keychain: account `palicanon`, service
