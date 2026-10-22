@@ -19,10 +19,9 @@ the repository holds both:
   `localStorage`, everything released when the app hides it.
 
 Also: the 3D engine (`engine/`, Rust → WebAssembly, generic: it knows no text), the force layout
-(`layout/`, a port of ngraph.forcelayout), the data files' types (`formats/`), the scripts that build
-the data (`scripts/`) and the data (`public/`), the infra (`infra/`). **Never holds**: SuttaCentral's
-clones (`data/`, made again by `npm run fetch-data`), pali-embedder's vectors (read from
-`../pali-embedder` by `npm run build-sim`), any secret.
+(`layout/`, a port of ngraph.forcelayout), the data files' types (`formats/`), the deploy's scripts
+(`scripts/`) and the data (`public/`), the infra (`infra/`). **Never holds**: SuttaCentral's
+clones (`data/`, made by `scripts/fetch-data.sh`), pali-embedder's vectors, any secret.
 
 ## Run it
 
@@ -57,12 +56,10 @@ Everything shown comes from **SuttaCentral** ([sc-data](https://github.com/sutta
 space, computed by [pali-embedder](https://github.com/Lsh0x/pali-embedder) on SuttaCentral's Pāli
 text, with the *Digital Pāḷi Dictionary* bringing each word to its base form.
 
-```sh
-npm run fetch-data          # SuttaCentral: sc-data + bilara-data (partial clones in data/)
-npm run build-graph         # SuttaCentral view   -> public/graph.json
-npm run build-sim           # vectorial space     -> public/graph-sim.json + .bin
-npm run build-translations  # translated texts    -> public/translations.json
-```
+The files are committed; the Node scripts that built them (`scripts/build-graph.mjs`,
+`build-similarity.mjs`, `build-translations.mjs`) were removed in task 008 and are in git history
+(`7d2e46f`) until task 007 ports them to Rust. `scripts/fetch-data.sh` still makes the SuttaCentral
+clones in `data/`.
 
 | File | Holds | Source |
 |---|---|---|
@@ -70,8 +67,8 @@ npm run build-translations  # translated texts    -> public/translations.json
 | `public/graph-sim.json`, `.bin` | The whole canon (7,286 texts), pairs of texts by similarity | pali-embedder: bilara-data `root/pli/ms` + DPD |
 | `public/translations.json` | Texts translated into en / fr / vi on SuttaCentral, with their titles | bilara-data `translation/`, sc-data `html_text/*/pli` |
 
-The vectors are read from `../pali-embedder/out/pali-lsa-kept-512.*` (Pāli LSA with formulas, rare
-bigrams and WCCN). The data tools move to Rust in task 007.
+The vectors were read from `../pali-embedder/out/pali-lsa-kept-512.*` (Pāli LSA with formulas, rare
+bigrams and WCCN).
 
 ## Checks
 
