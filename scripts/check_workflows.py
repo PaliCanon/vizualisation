@@ -37,7 +37,7 @@ Rules:
   on the public host after it, `--refused` on the bare Cloud Run URL; the
   last two never given the secret; exit 3, a Cloudflare challenge, a
   `::warning::` and not a failure); no inline `curl`; the image build given
-  `BUILD_BRANCH` (`github.ref_name`) and `BUILD_SHA` (`github.sha`); the
+  no build args (the release is not in the image, task 016); the
   "already running" skip compares the image of the revision that SERVES the
   traffic (read by `scripts/serving-revision.sh`, which falls back to the
   latest ready revision when the 100% entry follows the latest; an empty
@@ -56,6 +56,15 @@ Rules:
   back (`describe | scripts/serving-revision.sh`) and, when the previous
   revision does not serve, ends in `::error::rollback did not restore <prev>`
   and `exit 5`; otherwise the caller's arm exits with the check's code.
+- the release wiring (task 016, twin of learn-pali 060): R1 no
+  `docker/build-push-action` has `build-args`; R2 `--set-env-vars` appears in
+  no `run:` line (it would wipe every other variable of the revision); R3
+  every `gcloud run deploy` carries `--update-env-vars
+  "$(scripts/release-values.sh)"`, and one exists; R4 the "already running"
+  step compares the release with `scripts/release-values.sh same`; R5 the step
+  calling the direct `rollout-check.sh` sets `ROLLOUT_EXPECT_ENV` and
+  `ROLLOUT_EXPECT_SHA` from `release-values.sh env` / `sha` before the call
+  and has an arm for exit 8 that ends in an `::error::` and an `exit`.
 Exit 0 clean, 1 with one line per violation.
 """
 
@@ -131,19 +140,107 @@ def run_lines(doc):
 
 
 def check_build_args(name, doc):
-    """The image build gets the branch and the commit the badge shows."""
-    wanted = {"BUILD_BRANCH": "${{ github.ref_name }}", "BUILD_SHA": "${{ github.sha }}"}
-    given = {}
-    for step in steps_of(doc):
-        if step.get("uses", "").startswith("docker/build-push-action"):
-            for line in str((step.get("with") or {}).get("build-args", "")).splitlines():
-                key, _, value = line.strip().partition("=")
-                given[key] = value
+    """R1: the image build takes no build args.
+
+    Design sentence (016, 060): "No build args: the release is not in the
+    image, so its hash does not change with the ref." The release is written
+    onto the revision by the rollout step.
+    """
     return [
-        f"{name}: build-args: {key}={value} is required on the image build"
-        for key, value in wanted.items()
-        if given.get(key) != value
+        f"{name}: build-args: the image takes no build args (the release is the revision's env, not the image's)"
+        for step in steps_of(doc)
+        if step.get("uses", "").startswith("docker/build-push-action")
+        and "build-args" in (step.get("with") or {})
     ]
+
+
+def check_no_set_env_vars(name, doc):
+    """R2: `--set-env-vars` is never used.
+
+    It replaces every variable of the revision and would wipe `RUST_LOG`,
+    `VIZ_GATE` and the origin secret reference; the deploy only updates the
+    release's two (`--update-env-vars`). Comment lines are not uses.
+    """
+    return [
+        f"{name}: --set-env-vars: never used, it wipes every other variable of the revision (use --update-env-vars): {line.strip()[:60]}"
+        for line in run_lines(doc)
+        if "--set-env-vars" in line
+    ]
+
+
+RELEASE_FLAG = '--update-env-vars "$(scripts/release-values.sh)"'
+
+
+def check_deploy_writes_release(name, doc):
+    """R3: every `gcloud run deploy` writes the release, and one exists.
+
+    Design sentence: "gcloud run deploy ... --update-env-vars
+    "$(scripts/release-values.sh)" --no-traffic" (the values come from the
+    script, never a literal).
+    """
+    deploys = [
+        line
+        for step in steps_of(doc)
+        for line in logical_lines(step.get("run", ""))
+        if re.search(r"\bgcloud\s+run\s+deploy\b", line)
+    ]
+    if not deploys:
+        return [f"{name}: --update-env-vars: no step runs `gcloud run deploy`, so nothing writes the release"]
+    return [
+        f"{name}: --update-env-vars: a `gcloud run deploy` must carry {RELEASE_FLAG} (the release from the script): {line[:60]}"
+        for line in deploys
+        if RELEASE_FLAG not in line
+    ]
+
+
+def check_skip_compares_release(name, doc):
+    """R4: the "already running" step compares the release, not only the image.
+
+    Design sentence: "Already running means the serving revision has this
+    image AND this release" (`scripts/release-values.sh same`).
+    """
+    skip = next((s for s in steps_of(doc) if "running=" in s.get("run", "")), None)
+    if skip is None or any("release-values.sh same" in l for l in logical_lines(skip["run"])):
+        return []
+    return [f"{name}: skip: the step writing `running=` must compare the release with `scripts/release-values.sh same` (the image no longer changes with the ref)"]
+
+
+def check_gate_release(name, doc):
+    """R5: the direct gate is given the release and its exit 8 is reported.
+
+    Design sentence: the gate asserts the page serves the deployed release
+    (`ROLLOUT_EXPECT_ENV`, `ROLLOUT_EXPECT_SHA`, exit 8 = another release):
+    the step sets both from `release-values.sh env` / `sha` before the call
+    and has an arm for exit 8 that ends in an `::error::` and an `exit`.
+    """
+    step = next(
+        (
+            s for s in steps_of(doc)
+            if any(
+                "rollout-check.sh" in l and "--via-worker" not in l and "--refused" not in l
+                for l in logical_lines(s.get("run", ""))
+            )
+        ),
+        None,
+    )
+    if step is None:
+        return []
+    lines = shell_contexts(step["run"])
+    call = next(at for at, (l, _) in enumerate(lines) if "rollout-check.sh" in l)
+    found = []
+    for var, mode in (("ROLLOUT_EXPECT_ENV", "env"), ("ROLLOUT_EXPECT_SHA", "sha")):
+        pattern = rf'^(export\s+)?{var}="?\$\(scripts/release-values\.sh {mode}\)"?$'
+        if not any(re.match(pattern, l) for l, _ in lines[:call]):
+            found.append(f'{name}: release: {var}="$(scripts/release-values.sh {mode})" must be set before the direct rollout-check.sh call')
+    arm = [(l, c) for l, c in lines if any(_exit_code_test("8").search(x) for x in c)]
+    if not arm:
+        found.append(f"{name}: release: the direct rollout-check.sh call needs an arm for exit 8 (the page serves another release)")
+        return found
+    if not any("::error::" in l for l, _ in arm):
+        found.append(f"{name}: release: the exit 8 arm must report an ::error:: (another release than the deployed one)")
+    if not any(l.startswith("exit") for l, _ in arm):
+        found.append(f"{name}: release: the exit 8 arm must end in an exit")
+    return found
 
 
 def check_rollout_calls(name, doc):
@@ -506,7 +603,18 @@ def check_deploy(name, doc):
         found.append(f"{name}: concurrency: a group per environment (deploy-<env> derived from github.ref) is required")
     if doc.get("concurrency", {}).get("cancel-in-progress") is not False:
         found.append(f"{name}: concurrency: cancel-in-progress must be false (never cancel a rollout)")
-    return found + check_build_args(name, doc) + check_serving_skip(name, doc) + check_rollback(name, doc) + check_rollout_calls(name, doc)
+    for rule in (
+        check_build_args,
+        check_no_set_env_vars,
+        check_deploy_writes_release,
+        check_skip_compares_release,
+        check_gate_release,
+        check_serving_skip,
+        check_rollback,
+        check_rollout_calls,
+    ):
+        found += rule(name, doc)
+    return found
 
 
 def check(workflows, actions):

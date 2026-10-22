@@ -24,6 +24,10 @@ async fn main() {
     for line in config.log_lines() {
         println!("{line}");
     }
+    println!(
+        "{}",
+        vizualisation::release::ReleaseInfo::server().log_line()
+    );
     let dir = std::env::var(DATA_VAR).unwrap_or_else(|_| "public".into());
     let data = match Data::load(std::path::Path::new(&dir)) {
         Ok(data) => std::sync::Arc::new(data),

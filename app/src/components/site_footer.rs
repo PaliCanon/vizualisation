@@ -1,7 +1,7 @@
 //! The page footer: ui-lib's [`Footer`] with the site's five pages
 //! (Acknowledgements · Terms · Privacy · Legal · Support, each a page of
-//! `crate::pages`), as the React `Footer.tsx`. At its left, this build's
-//! env badge (`crate::app`'s [`BADGE`]) and the three outbound icons
+//! `crate::pages`), as the React `Footer.tsx`. At its left, this deploy's
+//! release badge (from the [`ReleaseInfo`] the document provides) and the three outbound icons
 //! (App Store, Instagram, Ko-fi: the React `SocialLinks`).
 //!
 //! From learn-pali/app/src/components/site_footer.rs (commit cd65d7b; the
@@ -18,9 +18,9 @@ use leptos::prelude::*;
 use leptos_i18n::td_string;
 use palicanon_ui_lib::{EnvBadge, Footer, FooterLink};
 
-use crate::app::BADGE;
 use crate::catalogue::{Strings, strings};
 use crate::pages::PageKind;
+use crate::release::ReleaseInfo;
 
 /// The App Store link from the footer, tagged with the React map's
 /// campaign (`appStoreUrl("PaliWebMap")`).
@@ -35,7 +35,9 @@ pub(crate) const KOFI: &str = "https://ko-fi.com/tipitaka";
 #[component]
 pub fn SiteFooter() -> impl IntoView {
     let t = strings();
+    let info = use_context::<ReleaseInfo>().unwrap_or_else(ReleaseInfo::unknown);
     move || {
+        let info = info.clone();
         view! {
             <Footer
                 links=links(t)
@@ -43,7 +45,7 @@ pub fn SiteFooter() -> impl IntoView {
                 leading=move || {
                     view! {
                         <div class="flex items-center gap-4">
-                            <EnvBadge env=BADGE.env sha=BADGE.sha />
+                            <EnvBadge env=info.env.clone() sha=info.sha.clone() />
                             <SocialLinks t=t />
                         </div>
                     }
@@ -174,8 +176,20 @@ mod tests {
 
     use super::*;
 
+    /// The footer with `info` provided as the release context.
+    fn render_for(info: ReleaseInfo) -> String {
+        Owner::new().with(|| {
+            provide_context(info);
+            view! { <SiteFooter /> }.to_html()
+        })
+    }
+
+    /// The footer on a `main` deploy.
     fn render() -> String {
-        Owner::new().with(|| view! { <SiteFooter /> }.to_html())
+        render_for(ReleaseInfo::from_vars(
+            Some("main".to_owned()),
+            Some("34c489c".to_owned()),
+        ))
     }
 
     /// Without the hydration markers (`<!--…-->`) between elements.
@@ -263,9 +277,7 @@ mod tests {
     #[test]
     fn the_footer_has_the_three_social_icons_after_the_badge() {
         let html = render();
-        let badge = html
-            .find(&format!(r#"title="{} · {}""#, BADGE.env, BADGE.sha))
-            .expect(&html);
+        let badge = html.find(r#"title="main · 34c489c""#).expect(&html);
         let mut last = badge;
         for (url, label) in [
             (APP_STORE, "Get the iPhone app"),
@@ -280,6 +292,25 @@ mod tests {
             assert!(tag.contains(r#"target="_blank""#), "{tag}");
         }
         assert!(last < html.find("<nav").expect(&html), "{html}");
+    }
+
+    /// A tag's badge is its name alone: no sha, no separator.
+    #[test]
+    fn a_tags_badge_has_no_sha_and_no_separator() {
+        let html = render_for(ReleaseInfo::from_vars(Some("v0.1.8".to_owned()), None));
+        assert!(html.contains(r#"title="v0.1.8""#), "{html}");
+        assert!(html.contains(">v0.1.8<"), "{html}");
+        assert!(!html.contains('·'), "{html}");
+    }
+
+    /// With no release provided (a host that did not), the badge says
+    /// `unknown`, never `dev`.
+    #[test]
+    fn without_a_release_the_badge_says_unknown() {
+        let html = Owner::new().with(|| view! { <SiteFooter /> }.to_html());
+        assert!(html.contains(r#"title="unknown""#), "{html}");
+        assert!(!html.contains(r#"title="dev""#), "{html}");
+        assert!(!html.contains('·'), "{html}");
     }
 
     /// No credits: the footer renders no credits list (the one `<ul>` is

@@ -17,7 +17,12 @@
 #       secret comes from HEADER_FILE (one line, `x-origin-auth: <secret>`,
 #       passed to curl as `-H @file`) or from the ORIGIN_SECRET environment
 #       variable (given to curl on its standard input): never on a command
-#       line, never printed.
+#       line, never printed. The release it must serve (task 016) comes from
+#       the environment: ROLLOUT_EXPECT_ENV (non-empty: `main`, a branch name
+#       or a tag) and ROLLOUT_EXPECT_SHA (must be SET; empty for a tag, which
+#       has no sha). Either missing is a usage error (2) before any request:
+#       a gate that silently skips is no gate. The other modes neither read
+#       nor need them.
 #   scripts/rollout-check.sh --via-worker [--password-file FILE] URL
 #       the public host: the Worker adds the header, this script sends none
 #       (and refuses to be given the secret).
@@ -35,8 +40,11 @@
 # password fails.
 #
 # Checks, each named in the output: `health` (/health is 200 and says ok),
-# `gate` (as above), `root` (/ is 200 and names the page), `wasm` (the .wasm
-# the page links is served), `css` (the stylesheet the page links, by its
+# `gate` (as above), `root` (/ is 200 and names the page), `release` (direct
+# mode: the page's `<meta name="viz-release-env">` and `<meta
+# name="viz-release-sha">` carry the intended values: what a browser gets, not
+# what the workflow computed; the attributes may come in any order), `wasm`
+# (the .wasm the page links is served), `css` (the stylesheet the page links, by its
 # hashed name in a release build, is 200 and text/css), `guard` (direct mode: without the header, or
 # with a wrong one, / is 403; /health without it is 403), `refused`, and,
 # through the Worker only (Chrome cannot add the origin header), `hydrate`:
@@ -53,6 +61,8 @@
 # $ROLLOUT_CHROME_TIMEOUT seconds (60), past which it fails.
 # Exit 0 all good, 1 a check failed (named), 2 usage (or no usable Chrome,
 # or a password file whose Basic value is not user:password),
+# 8 (direct mode only) the served release metas differ from the intended
+# ones: a wrong release is not a flaky curl,
 # 3 Cloudflare answered with a challenge (cf-mitigated, or a challenge page
 # in Chrome): the runner is not allowed, which says nothing about the
 # service, and is never a pass. 4 (--via-worker only) the Worker itself answered
@@ -129,6 +139,22 @@ if [ "$mode" = direct ]; then
     echo "rollout-check: no secret: give a HEADER_FILE or set ORIGIN_SECRET" >&2
     exit 2
   fi
+  # The intended release (task 016): both given, before any request.
+  if [ -z "${ROLLOUT_EXPECT_ENV:-}" ]; then
+    echo "rollout-check: usage: direct mode needs ROLLOUT_EXPECT_ENV, the intended release env (non-empty: main, a branch name or a tag)" >&2
+    exit 2
+  fi
+  if [ -z "${ROLLOUT_EXPECT_SHA+set}" ]; then
+    echo "rollout-check: usage: direct mode needs ROLLOUT_EXPECT_SHA set (empty for a tag, which has no sha)" >&2
+    exit 2
+  fi
+  # The secret's value, in a file: grep -F -f reads it, so it is on no
+  # command line, and shown() can keep it out of a message.
+  if [ "$secret_mode" = file ]; then
+    sed -E 's/^[Xx]-[Oo]rigin-[Aa]uth:[[:space:]]*//; s/[[:space:]]*$//' "$header_file" > "$work/secret.value"
+  else
+    printf '%s' "$ORIGIN_SECRET" > "$work/secret.value"
+  fi
 elif [ -n "$header_file" ] || [ -n "${ORIGIN_SECRET:-}" ]; then
   echo "rollout-check: this mode never sends the origin secret: give none" >&2
   exit 2
@@ -199,6 +225,54 @@ expect() { # check name label status want
 
 asks_password() { grep -iq '^www-authenticate:' "$work/$1.head" 2>/dev/null; }
 
+# meta_content NAME: prints the content attribute of the first <meta> tag of
+# the root page whose name attribute is NAME, whatever the order of its
+# attributes (the tag may span lines). Returns 1 when there is no such tag, 2
+# when it has no content.
+meta_content() {
+  local tag found=""
+  while IFS= read -r tag; do
+    if grep -Eq "[[:space:]]name=(\"$1\"|'$1')" <<<"$tag"; then
+      found=$tag
+      break
+    fi
+  done < <(tr '\r\n' '  ' < "$work/root.body" | grep -aEo '<meta[[:space:]][^>]*>')
+  [ -n "$found" ] || return 1
+  local attr
+  attr="$(grep -aEo "[[:space:]]content=(\"[^\"]*\"|'[^']*')" <<<"$found" | head -n 1)"
+  [ -n "$attr" ] || return 2
+  attr="${attr#*content=}"
+  printf '%s' "${attr:1:${#attr}-2}"
+}
+
+# shown VALUE: a served value for a message: printable, short, and never the
+# origin secret (a page that echoes it must not make this script print it).
+shown() {
+  if grep -aFq -f "$work/secret.value" <<<"$1"; then
+    printf '<the origin secret>'
+  else
+    printf '%s' "$1" | tr -cd '[:print:]' | head -c 100
+  fi
+}
+
+# die_release MESSAGE: exit 8, a wrong release is no flaky curl (never 1).
+die_release() {
+  echo "rollout-check: FAIL release: $1" >&2
+  exit 8
+}
+
+# check_release META WANT: the served meta must equal the intended value.
+check_release() {
+  local served rc=0
+  served="$(meta_content "$1")" || rc=$?
+  case "$rc" in
+    1) die_release "the page has no <meta name=\"$1\"> (intended '$2')" ;;
+    2) die_release "the <meta name=\"$1\"> has no content attribute (intended '$2')" ;;
+  esac
+  [ "$served" = "$2" ] \
+    || die_release "$1: expected '$2', the page serves '$(shown "$served")'"
+}
+
 who=auth
 [ "$mode" = worker ] && who=anon
 
@@ -235,6 +309,12 @@ if [ -z "$password_file" ]; then
 fi
 echo "rollout-check: gate ok ($([ -n "$password_file" ] && echo password || echo off))"
 echo "rollout-check: root ok"
+
+if [ "$mode" = direct ]; then
+  check_release viz-release-env "$ROLLOUT_EXPECT_ENV"
+  check_release viz-release-sha "$ROLLOUT_EXPECT_SHA"
+  echo "rollout-check: release ok"
+fi
 
 wasm="$(grep -aEo '/pkg/[^"'"'"' <>]*\.wasm' "$work/root.body" | head -n 1)"
 [ -n "$wasm" ] || fail wasm "the page links no .wasm"

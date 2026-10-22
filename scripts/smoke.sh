@@ -26,7 +26,7 @@
 #
 # Checks, each named in the output: `listen` (the binary stays up and
 # listens, and stops within SMOKE_WAIT of a SIGTERM), `health` (/health
-# with the origin header is 200, its first line `ok <commit>`, and a line
+# with the origin header is 200, its first line `ok <release>`, and a line
 # gives graph.json's stamp),
 # `guard` (without the header, or with a wrong one, / is 403, and /health
 # without it is 403), `gate` (/ and the .wasm without the password are 401,
@@ -110,7 +110,7 @@ run_checks() { # port secret password
   expect_status health "$work/health" 200 "/health with the header"
   tr -d '\r' <"$work/health" | sed '1,/^$/d' >"$work/health-body"
   head -n 1 "$work/health-body" | grep -aEq '^ok [^[:space:]]' \
-    || fail health "/health does not say ok <commit> on its first line"
+    || fail health "/health does not say ok <release> on its first line"
   grep -aq '^graph\.json: ' "$work/health-body" || fail health "/health gives no graph.json stamp"
   echo "smoke: health ok"
 

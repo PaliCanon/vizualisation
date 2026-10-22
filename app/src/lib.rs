@@ -24,23 +24,27 @@ pub mod map;
 #[cfg(feature = "ssr")]
 pub mod origin;
 mod pages;
+pub mod release;
 mod route;
 #[cfg(feature = "ssr")]
 pub mod router;
-
-// `build.rs` includes this same file (`#[path]`) for the env badge's pure
-// decisions; declared here too so `cargo test -p vizualisation` covers it.
-#[allow(dead_code)]
-mod git_info;
 
 /// Browser entry point: hydrate the server-rendered page from its root
 /// (`<div id="pc-app">`, written by [`app::shell`]), not from `<body>`,
 /// whose first child behind Cloudflare is an injected decoy link
 /// (search-front 017, ui-lib 063); `<html>` then carries `data-hydrated`,
-/// which `scripts/rollout-check.sh` reads.
+/// which `scripts/rollout-check.sh` reads. The release the server wrote in
+/// `<head>` is read first and provided to the app (task 016).
 #[cfg(feature = "hydrate")]
 #[wasm_bindgen::prelude::wasm_bindgen]
 pub fn hydrate() {
+    use leptos::prelude::*;
+
     console_error_panic_hook::set_once();
-    palicanon_ui_lib::hydrate(app::App);
+    // The release the server wrote in `<head>`, read before the app
+    // mounts: the badge is the server's, never recomputed here (task 016).
+    palicanon_ui_lib::hydrate(|| {
+        provide_context(release::ReleaseInfo::from_document());
+        view! { <app::App /> }
+    });
 }

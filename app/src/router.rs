@@ -31,14 +31,13 @@ const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 /// ending in `z` and answers them itself.
 pub const HEALTH_PATH: &str = "/health";
 
-/// The short commit this build came from (`build.rs`).
-const BUILD_SHA: &str = env!("VIZUALISATION_GIT_SHA");
-
 /// The health probe: behind the origin guard only, so the rollout check
 /// reaches it through the Worker without the dev password. Public data only:
-/// the build's commit and what each data file was built from.
+/// the deploy's release (first line: `ok <env>`, then ` <sha>` for a branch
+/// build, [`ReleaseInfo::health_line`]) and what each data file was built
+/// from.
 async fn health(axum::extract::State(data): axum::extract::State<Arc<Data>>) -> String {
-    let mut lines = vec![format!("ok {BUILD_SHA}")];
+    let mut lines = vec![crate::release::ReleaseInfo::server().health_line()];
     lines.extend(data.stamp_lines());
     lines.join("\n") + "\n"
 }
@@ -279,7 +278,15 @@ mod tests {
         let stamps = data().stamp_lines();
         assert_eq!(stamps.len(), 2, "two graph files");
         assert_eq!(lines.len(), 3, "{body}");
-        assert_eq!(lines[0], format!("ok {BUILD_SHA}"), "{body}");
+        assert_eq!(
+            lines[0],
+            crate::release::ReleaseInfo::server().health_line(),
+            "{body}"
+        );
+        assert!(lines[0].starts_with("ok "), "{body}");
+        // The test process sets no `VIZ_ENV`: a local run (the env-driven
+        // line is checked on the real binary, `tests/boot_process.rs`).
+        assert_eq!(lines[0], "ok dev", "{body}");
         assert_eq!(&lines[1..], stamps.as_slice(), "{body}");
     }
 

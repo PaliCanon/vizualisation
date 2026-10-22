@@ -116,6 +116,7 @@ python3 scripts/infra_probe_test.py
 python3 scripts/no_js_test.py
 bash scripts/manifest-ref.test.sh && bash scripts/serving-revision.test.sh
 bash infra/scripts/origin-secret.test.sh
+bash scripts/release-values.test.sh && bash infra/scripts/lifecycle.test.sh
 node --test 'infra/worker/*.test.mjs'
 (cd infra && tofu fmt -check -recursive && tofu init -backend=false && tofu validate)
 ```
@@ -149,3 +150,5 @@ check (`scripts/rollout-check.sh --via-worker`) also loads `/`, `/sim/mn10` and 
 headless Chrome (`$CHROME`; on dev through a launcher page that carries the password, never on
 Chrome's command line) and fails on a hydration panic or a page without `<html data-hydrated>`
 (search-front 017, ui-lib 063).
+
+The footer badge is the deploy's, not the image's: `deploy.yml` writes `VIZ_ENV` (the tag `v0.1.8`, or `main`) and `VIZ_SHA` (empty for a tag, else 7 characters) on the Cloud Run revision with `gcloud run deploy --update-env-vars` (never `--set-env-vars`, which would wipe `RUST_LOG`, `VIZ_GATE` and the `ORIGIN_SECRET` reference); the server reads them at start (absent: `dev`), writes two `<meta name="viz-release-...">` and the browser reads them back; `/health` says `ok <env>[ <sha>]`; `scripts/rollout-check.sh` asserts the metas before the traffic moves (exit 8). Tofu ignores the container env: `tofu apply` it before the first deploy that writes the env (`infra/README.md`). The Map fragment of the PaliCanon app has no footer, so no badge.

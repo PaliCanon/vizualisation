@@ -17,15 +17,27 @@ later, see "Order"):
 | Secret `vizualisation-origin-secret-<env>` | `gcp.tf` | The value the Worker sends as `x-origin-auth` and the service requires. Tofu creates the secret and **never a version** (the value would sit in its state); `scripts/origin-secret` makes it. |
 | Secret `vizualisation-dev-password-dev` | `gcp.tf` | The password the dev gate asks for (the service's `DEV_PASSWORD`), for the environments whose `gate` is `password`: dev only. Same rule: no version in tofu; the user adds it from the keychain (step 6). Prod has no such secret, so its account cannot read it. |
 | The deployer's rights | `gcp.tf` | `github-deployer` is read as a data source (the site's infra owns it), never managed here. It may **act as** the runtime account, **read the origin secret** and, on dev, **read the dev password** (the rollout check sends it; see "R3"). |
-| Cloud Run service `vizualisation-<env>` | `gcp.tf` | min 0, max 2 (dev) / 3 (prod), 1 CPU, 512Mi, CPU only while a request is served, public at the Cloud Run layer. `VIZ_GATE` is a plain value (`password` on dev, `off` on prod; the boot refuses to start without it); `ORIGIN_SECRET` and, on dev, `DEV_PASSWORD` come from the secrets (`latest`, read when an instance starts). Startup probe: **TCP 8080** (see "R2"). |
+| Cloud Run service `vizualisation-<env>` | `gcp.tf` | min 0, max 2 (dev) / 3 (prod), 1 CPU, 512Mi, CPU only while a request is served, public at the Cloud Run layer. `VIZ_GATE` is a plain value (`password` on dev, `off` on prod; the boot refuses to start without it); `ORIGIN_SECRET` and, on dev, `DEV_PASSWORD` come from the secrets (`latest`, read when an instance starts); **`VIZ_ENV` and `VIZ_SHA` are written by the deploy, not by tofu**. Startup probe: **TCP 8080** (see "R2"). |
 | A Worker relaying to Cloud Run | `cloudflare.tf`, `worker/proxy.js` | The Worker's `ORIGIN` is the Cloud Run URL and its `PUBLIC_ORIGIN` the host's own `https://` origin (both answer 500 when missing); it adds `x-origin-auth` from its secret `ORIGIN_AUTH` and answers 500 without it. The dev password (HTTP Basic) and the gate's 401 pass through it untouched. Tested with `node --test 'infra/worker/*.test.mjs'`. |
 | A Workers Custom Domain per host | `cloudflare.tf` | `map.dev.palicanon.app` (dev), `map.palicanon.app` (prod, from `prod.tfvars`). Cloudflare creates the DNS record and the certificate. |
 | `scripts/origin-secret` | `scripts/` | `create`, `push`, `check` the origin secret; tested with stub `gcloud`/`curl` (`bash infra/scripts/origin-secret.test.sh`). `check` asks the host's `/health` (dev's `/` is behind the password). |
 
-CI owns the image: tofu ignores `image`, `scaling`, `client` and
+CI owns the image: tofu ignores `image`, `env`, the revision name, `scaling`, `client` and
 `client_version` of the service (`lifecycle.ignore_changes`, the API's rule),
 so a deploy never shows up as drift, and CI never touches the environment or
-the secrets. The consequence of ignoring `scaling`: a changed `max_instances`
+the secrets. The release (a tag `v0.1.8`, or `main · <sha7>`)
+is written onto the revision by the deploy with `gcloud run deploy --update-env-vars`
+(never `--set-env-vars`, which would wipe `RUST_LOG`, `VIZ_GATE` and the `ORIGIN_SECRET`
+reference), setting `VIZ_ENV` and `VIZ_SHA`. The ignore of the container `env` must be applied
+(`tofu apply`) **before the first deploy that writes the env**, or the next apply
+strips them and the badge reads "dev" with no diff shown. A later change to
+`RUST_LOG`, `VIZ_GATE` or `ORIGIN_SECRET` is a `gcloud run services update` or
+`tofu apply -replace`, written down here. After a `tofu apply -replace` the service
+loses the release env (`VIZ_ENV`, `VIZ_SHA`: the badge and `/health` read "dev") until the next push to main
+writes `main · <sha7>` on dev. A prod tag has no push to wait for: restore it by hand with
+`gcloud run deploy <service> --region europe-west1 --update-env-vars VIZ_ENV=<tag>,VIZ_SHA=`
+(the tag's name and an empty sha; this workflow has no manual trigger).
+The consequence of ignoring `scaling`: a changed `max_instances`
 is not applied to an existing service; change it with `gcloud run services
 update --max-instances` and keep `variables.tf` in step.
 

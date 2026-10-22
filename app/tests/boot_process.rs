@@ -66,6 +66,8 @@ fn command(port: u16, env: &[(&str, &str)]) -> Command {
         .env_remove("ORIGIN_SECRET")
         .env_remove("LEPTOS_ENV")
         .env_remove("K_SERVICE")
+        .env_remove("VIZ_ENV")
+        .env_remove("VIZ_SHA")
         .env("LEPTOS_OUTPUT_NAME", "vizualisation")
         .env(
             "VIZ_DATA_DIR",
@@ -311,4 +313,68 @@ fn a_local_run_says_the_origin_is_open() {
         "{}",
         ended.stdout
     );
+}
+
+/// One release case: the variables, the boot's log line, `/health`'s first line.
+type Release = (
+    &'static [(&'static str, &'static str)],
+    &'static str,
+    &'static str,
+);
+
+/// The three environments the release tests boot: the variables, the log
+/// line, the first line of `/health`.
+const RELEASES: [Release; 3] = [
+    (
+        &[("VIZ_ENV", "main"), ("VIZ_SHA", "0123456789abcdef")],
+        "release: env=main sha=0123456",
+        "ok main 0123456",
+    ),
+    (&[], "release: env=dev sha=-", "ok dev"),
+    (
+        &[("VIZ_ENV", "v0.1.8")],
+        "release: env=v0.1.8 sha=-",
+        "ok v0.1.8",
+    ),
+];
+
+#[test]
+fn the_boot_logs_the_release() {
+    for (release, line, _) in RELEASES {
+        let port = free_port();
+        let mut env = vec![("VIZ_GATE", "off")];
+        env.extend_from_slice(release);
+        let service = start(port, &env);
+        let (status, _) = get_with(port, "/", "");
+        assert_eq!(status, 200);
+        let ended = finish(service);
+        assert_eq!(
+            ended.stdout.matches(line).count(),
+            1,
+            "{line}: {}",
+            ended.stdout
+        );
+        assert_eq!(
+            ended.stdout.matches("release: env=").count(),
+            1,
+            "{}",
+            ended.stdout
+        );
+    }
+}
+
+#[test]
+fn health_says_the_release_on_its_first_line() {
+    for (release, _, first) in RELEASES {
+        let port = free_port();
+        let mut env = vec![("VIZ_GATE", "off"), ("ORIGIN_SECRET", ORIGIN_CANARY)];
+        env.extend_from_slice(release);
+        let service = start(port, &env);
+        let header = format!("x-origin-auth: {ORIGIN_CANARY}\r\n");
+        let (status, text) = get_with(port, "/health", &header);
+        let _ = finish(service);
+        assert_eq!(status, 200, "{text}");
+        let body = text.split("\r\n\r\n").nth(1).unwrap_or_default();
+        assert_eq!(body.lines().next(), Some(first), "{text}");
+    }
 }

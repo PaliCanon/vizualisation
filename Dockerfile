@@ -79,14 +79,6 @@ COPY vizualisation/formats ./vizualisation/formats
 COPY vizualisation/i18n-check ./vizualisation/i18n-check
 COPY vizualisation/scripts ./vizualisation/scripts
 WORKDIR /src/vizualisation
-# The footer badge shows the branch and the short commit this image was built
-# from, read at COMPILE time by `app/build.rs` (the image has no .git, so git
-# says "unknown"). CI passes both with `--build-arg`. Declared here, after the
-# COPYs, so a new commit does not invalidate the layers above.
-ARG BUILD_BRANCH
-ARG BUILD_SHA
-ENV BUILD_BRANCH=$BUILD_BRANCH \
-    BUILD_SHA=$BUILD_SHA
 # The build needs no credential only while the lock holds no git source.
 RUN ! grep -q '^source = "git+' Cargo.lock \
     || { echo "Cargo.lock holds a git source: the build would need a GitHub credential (search-front 007)"; exit 1; }
@@ -139,7 +131,7 @@ EXPOSE 8080
 # throwaway origin secret and dev password it makes itself (valid for this run
 # only, never the real ones), and asks it what the rollout will ask:
 # /health is 200 with the origin header and 403 without and says
-# `ok <commit>` and each graph file's stamp, / is 401 without the password
+# `ok <release>` and each graph file's stamp, / is 401 without the password
 # and 200 with it, the .wasm it links is served; then it starts it as prod
 # runs it (VIZ_GATE=off, LEPTOS_ENV=PROD): / is 200 without the password and
 # nothing asks for one; then it boots it without VIZ_GATE, which must exit

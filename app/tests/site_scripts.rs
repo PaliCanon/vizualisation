@@ -200,14 +200,35 @@ const WASM: &str = "/pkg/vizualisation.wasm";
 /// page names).
 const CSS: &str = "/pkg/vizualisation.css";
 
-/// The probe's body as the real service writes it: the commit, then each
+/// The probe's body as the real service writes it: the release, then each
 /// graph file's stamp (`app/src/data.rs`, `stamp_lines`).
 const HEALTHZ: &str = "ok 63bdba3\ngraph.json: none\ngraph-sim.json: none\n";
 
+/// The release the fakes serve by default and the gate is told to expect:
+/// main at a commit (a tag has an empty sha).
+const RELEASE_ENV: &str = "main";
+const RELEASE_SHA: &str = "34c489c";
+
+/// The two release metas as the SSR head writes them (task 016): the env
+/// and the sha, the sha meta always there, `content=""` for a tag.
+fn release_metas(env: &str, sha: &str) -> String {
+    format!(
+        "<meta name=\"viz-release-env\" content=\"{env}\">\
+         <meta name=\"viz-release-sha\" content=\"{sha}\">"
+    )
+}
+
 /// The page the real service renders, as far as the scripts read it.
 fn page(extra: &str) -> String {
+    page_with(&release_metas(RELEASE_ENV, RELEASE_SHA), extra)
+}
+
+/// The same page with the head's release `metas` as given (right after the
+/// viewport meta, where the real head writes them).
+fn page_with(metas: &str, extra: &str) -> String {
     format!(
         "<!DOCTYPE html><html><head><title>Suttas Map — PaliCanon</title>\
+         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{metas}\
          <link rel=\"modulepreload\" href=\"/pkg/vizualisation.js\">\
          <link rel=\"preload\" href=\"{WASM}\" as=\"fetch\" type=\"application/wasm\">\
          <link id=\"leptos\" rel=\"stylesheet\" href=\"{CSS}\">\
@@ -308,6 +329,8 @@ fn start_service(site: &Path, setup: &Setup) -> Service {
         .env_remove("ORIGIN_SECRET")
         .env_remove("LEPTOS_ENV")
         .env_remove("K_SERVICE")
+        .env("VIZ_ENV", RELEASE_ENV)
+        .env("VIZ_SHA", RELEASE_SHA)
         .env("VIZ_GATE", setup.gate)
         .env("LEPTOS_OUTPUT_NAME", "vizualisation")
         .env("LEPTOS_SITE_ROOT", site)
@@ -349,11 +372,23 @@ fn run(script: &Path, args: &[&str], env: &[(&str, &str)]) -> Output {
         .env_remove("VIZ_GATE")
         .env_remove("LEPTOS_ENV")
         .env_remove("K_SERVICE")
+        .env_remove("ROLLOUT_EXPECT_ENV")
+        .env_remove("ROLLOUT_EXPECT_SHA")
         .env("SMOKE_WAIT", "8");
     for (name, value) in env {
         command.env(name, value);
     }
     command.output().expect("bash runs the script")
+}
+
+/// `env` plus the release a direct-mode `rollout-check.sh` is told to
+/// expect (`ROLLOUT_EXPECT_ENV`, `ROLLOUT_EXPECT_SHA`): the one the fakes
+/// and the real binary serve.
+fn expect_release<'a>(env: &[(&'a str, &'a str)]) -> Vec<(&'a str, &'a str)> {
+    let mut all = env.to_vec();
+    all.push(("ROLLOUT_EXPECT_ENV", RELEASE_ENV));
+    all.push(("ROLLOUT_EXPECT_SHA", RELEASE_SHA));
+    all
 }
 
 /// Everything the script printed.
@@ -504,8 +539,9 @@ fn gate_and_page_cases() -> Vec<Case> {
                 "/",
                 200,
                 &format!(
-                    "<html><head><title>Suttas Map</title>\
-                     <link rel=\"preload\" href=\"{WASM}\"></head></html>"
+                    "<html><head><title>Suttas Map</title>{}\
+                     <link rel=\"preload\" href=\"{WASM}\"></head></html>",
+                    release_metas(RELEASE_ENV, RELEASE_SHA)
                 ),
             ),
         ),
@@ -796,6 +832,21 @@ fn utf8(path: &Path) -> &str {
     path.to_str().expect("utf-8")
 }
 
+/// Direct mode reports every check by name.
+fn assert_every_check_reported(text: &str) {
+    for check in [
+        "health ok",
+        "gate ok",
+        "root ok",
+        "release ok",
+        "wasm ok",
+        "css ok",
+        "guard ok",
+    ] {
+        assert!(text.contains(check), "{check} is reported: {text}");
+    }
+}
+
 #[test]
 fn rollout_check_passes_on_the_real_dev_binary() {
     let site = site_root("rollout-dev", true);
@@ -814,7 +865,7 @@ fn rollout_check_passes_on_the_real_dev_binary() {
     let out = run(
         &check_script(),
         &["--password-file", utf8(&pass), &url],
-        &[("ORIGIN_SECRET", SECRET)],
+        &expect_release(&[("ORIGIN_SECRET", SECRET)]),
     );
     let text = printed(&out);
     assert_eq!(
@@ -822,20 +873,11 @@ fn rollout_check_passes_on_the_real_dev_binary() {
         Some(0),
         "dev, secret from the env: {text}"
     );
-    for check in [
-        "health ok",
-        "gate ok",
-        "root ok",
-        "wasm ok",
-        "css ok",
-        "guard ok",
-    ] {
-        assert!(text.contains(check), "{check} is reported: {text}");
-    }
+    assert_every_check_reported(&text);
     let out = run(
         &check_script(),
         &["--password-file", utf8(&pass), &url, utf8(&file)],
-        &[],
+        &expect_release(&[]),
     );
     assert_eq!(
         out.status.code(),
@@ -846,7 +888,7 @@ fn rollout_check_passes_on_the_real_dev_binary() {
     let out = run(&check_script(), &["--refused", &url], &[]);
     assert_eq!(out.status.code(), Some(0), "refused: {}", printed(&out));
     // Without the password file the check is prod's: dev's 401 fails it.
-    let out = run(&check_script(), &[&url, utf8(&file)], &[]);
+    let out = run(&check_script(), &[&url, utf8(&file)], &expect_release(&[]));
     assert_fails_naming(&out, "root", "dev checked as prod");
     let _ = std::fs::remove_file(file);
     let _ = std::fs::remove_file(pass);
@@ -867,7 +909,11 @@ fn rollout_check_passes_on_the_real_prod_binary_and_through_the_worker() {
             secret: true,
         },
     );
-    let out = run(&check_script(), &[&prod_service.url(), utf8(&file)], &[]);
+    let out = run(
+        &check_script(),
+        &[&prod_service.url(), utf8(&file)],
+        &expect_release(&[]),
+    );
     assert_eq!(out.status.code(), Some(0), "prod: {}", printed(&out));
 
     // Through the Worker the service is reached without the header: here a
@@ -918,7 +964,7 @@ fn rollout_check_names_the_check_that_failed() {
         let out = run(
             &check_script(),
             &["--password-file", utf8(&pass), &fake.url()],
-            &[("ORIGIN_SECRET", SECRET)],
+            &expect_release(&[("ORIGIN_SECRET", SECRET)]),
         );
         assert_fails_naming(&out, check, case);
     }
@@ -933,7 +979,7 @@ fn rollout_check_on_prod_refuses_a_password_prompt() {
     let out = run(
         &check_script(),
         &[&good.url()],
-        &[("ORIGIN_SECRET", SECRET)],
+        &expect_release(&[("ORIGIN_SECRET", SECRET)]),
     );
     assert_eq!(out.status.code(), Some(0), "prod: {}", printed(&out));
     let asking =
@@ -941,14 +987,14 @@ fn rollout_check_on_prod_refuses_a_password_prompt() {
     let out = run(
         &check_script(),
         &[&asking.url()],
-        &[("ORIGIN_SECRET", SECRET)],
+        &expect_release(&[("ORIGIN_SECRET", SECRET)]),
     );
     assert_fails_naming(&out, "gate", "prod asks for a password");
     let gated = Fake::start(dev);
     let out = run(
         &check_script(),
         &[&gated.url()],
-        &[("ORIGIN_SECRET", SECRET)],
+        &expect_release(&[("ORIGIN_SECRET", SECRET)]),
     );
     assert_fails_naming(&out, "root", "prod behind the gate");
 }
@@ -956,7 +1002,7 @@ fn rollout_check_on_prod_refuses_a_password_prompt() {
 #[test]
 fn rollout_check_demands_a_secret_and_refuses_to_send_it_to_the_worker() {
     let fake = Fake::start(dev);
-    let out = run(&check_script(), &[&fake.url()], &[]);
+    let out = run(&check_script(), &[&fake.url()], &expect_release(&[]));
     assert_eq!(out.status.code(), Some(2), "no secret: {}", printed(&out));
     let file = header_file("worker");
     let out = run(
@@ -973,7 +1019,11 @@ fn rollout_check_demands_a_secret_and_refuses_to_send_it_to_the_worker() {
     assert_eq!(out.status.code(), Some(2), "{}", printed(&out));
     let bad = temp("rollout-bad");
     std::fs::write(&bad, "authorization: Bearer x\n").expect("a file");
-    let out = run(&check_script(), &[&fake.url(), utf8(&bad)], &[]);
+    let out = run(
+        &check_script(),
+        &[&fake.url(), utf8(&bad)],
+        &expect_release(&[]),
+    );
     assert_eq!(
         out.status.code(),
         Some(2),
@@ -1011,7 +1061,7 @@ fn rollout_check_takes_the_password_as_a_file_of_one_basic_line() {
         let out = run(
             &check_script(),
             &["--password-file", file, &fake.url()],
-            &[("ORIGIN_SECRET", SECRET)],
+            &expect_release(&[("ORIGIN_SECRET", SECRET)]),
         );
         assert_eq!(out.status.code(), Some(2), "{case}: {}", printed(&out));
     }
@@ -1123,9 +1173,399 @@ fn rollout_check_direct_mode_has_no_worker_500() {
     let out = run(
         &check_script(),
         &[&worker_like.url()],
-        &[("ORIGIN_SECRET", SECRET)],
+        &expect_release(&[("ORIGIN_SECRET", SECRET)]),
     );
     assert_fails_naming(&out, "health", "direct mode");
+}
+
+// ------------------------------------------------ rollout-check.sh: release
+
+/// A prod fake whose `/` is `html` for a caller with the secret; the rest
+/// is `prod`.
+fn serving(html: String) -> Fake {
+    Fake::start(move |r| {
+        if r.authed() && r.path == "/" {
+            Resp::new(200, &html).with("content-type", "text/html")
+        } else {
+            prod(r)
+        }
+    })
+}
+
+/// The gate against `fake`, with the origin secret in the environment and
+/// the intended release as given (`None`: the variable is not set).
+fn release_run(fake: &Fake, env: Option<&str>, sha: Option<&str>) -> Output {
+    let mut vars = vec![("ORIGIN_SECRET", SECRET)];
+    if let Some(value) = env {
+        vars.push(("ROLLOUT_EXPECT_ENV", value));
+    }
+    if let Some(value) = sha {
+        vars.push(("ROLLOUT_EXPECT_SHA", value));
+    }
+    run(&check_script(), &[&fake.url()], &vars)
+}
+
+/// What the gate accepts: the metas the page carries, and the release it
+/// is told to expect (env, sha).
+type Passing = (&'static str, String, &'static str, &'static str);
+
+/// Pages that serve the intended release, however the metas are written
+/// (task 016, from learn-pali 060).
+fn passing_releases() -> Vec<Passing> {
+    let mut all = passing_values();
+    all.extend(passing_spellings());
+    all
+}
+
+/// The intended release as an env and a sha: main, a tag, a branch name.
+fn passing_values() -> Vec<Passing> {
+    vec![
+        (
+            "the metas match",
+            release_metas("main", "34c489c"),
+            "main",
+            "34c489c",
+        ),
+        (
+            "a tag: an empty sha",
+            release_metas("v0.1.8", ""),
+            "v0.1.8",
+            "",
+        ),
+        (
+            "a branch name with a slash",
+            release_metas("feat/x", "34c489c"),
+            "feat/x",
+            "34c489c",
+        ),
+    ]
+}
+
+/// The same release, with the metas written in other ways.
+fn passing_spellings() -> Vec<Passing> {
+    let decoys = "<meta name=\"description\" content=\"viz-release-env main\">\
+                  <meta name=\"viz-release-env-x\" content=\"zzz\">\
+                  <meta property=\"viz-release-env\" content=\"zzz\">\
+                  <meta data-name=\"viz-release-env\" content=\"zzz\">";
+    vec![
+        (
+            "content before name, a self-closing tag",
+            "<meta content=\"main\" name=\"viz-release-env\">\
+             <meta content=\"34c489c\" name=\"viz-release-sha\"/>"
+                .to_owned(),
+            "main",
+            "34c489c",
+        ),
+        (
+            "single-quoted attributes",
+            "<meta name='viz-release-env' content='main'>\
+             <meta name='viz-release-sha' content='34c489c'>"
+                .to_owned(),
+            "main",
+            "34c489c",
+        ),
+        (
+            "a tag split over lines",
+            "<meta\n  name=\"viz-release-env\"\n  content=\"main\"\n>\
+             <meta\n  name=\"viz-release-sha\"\n  content=\"34c489c\"\n>"
+                .to_owned(),
+            "main",
+            "34c489c",
+        ),
+        (
+            "lookalike metas are not the metas",
+            format!("{decoys}{}", release_metas("main", "34c489c")),
+            "main",
+            "34c489c",
+        ),
+    ]
+}
+
+/// The gate passes a page that serves the intended release, however its
+/// metas are written, and says `release ok`; a tag expects an empty sha.
+#[test]
+fn rollout_check_release_passes_when_the_page_serves_the_intended_release() {
+    for (case, metas, env, sha) in passing_releases() {
+        let fake = serving(page_with(&metas, ""));
+        let out = release_run(&fake, Some(env), Some(sha));
+        let text = printed(&out);
+        assert_eq!(out.status.code(), Some(0), "{case}: {text}");
+        assert!(text.contains("rollout-check: release ok"), "{case}: {text}");
+    }
+}
+
+/// A page that serves another release: its metas, the release the gate is
+/// told to expect (env, sha) and the fragments the message must hold.
+type Failing = (
+    &'static str,
+    String,
+    &'static str,
+    &'static str,
+    Vec<&'static str>,
+);
+
+/// The shared message of a meta that has no `content`.
+const NO_CONTENT: &str = "has no content attribute";
+
+/// Pages that serve another release, or none, with what the exit-8 message
+/// must say.
+fn failing_releases() -> Vec<Failing> {
+    let mut all = failing_values();
+    all.extend(failing_metas());
+    all
+}
+
+/// The metas are there and say another release.
+fn failing_values() -> Vec<Failing> {
+    let ok = |env: &str| release_metas(env, "34c489c");
+    vec![
+        (
+            "env wrong",
+            ok("dev"),
+            "main",
+            "34c489c",
+            vec!["viz-release-env", "'main'", "'dev'"],
+        ),
+        (
+            "sha wrong",
+            release_metas("main", "deadbee"),
+            "main",
+            "34c489c",
+            vec!["viz-release-sha", "'34c489c'", "'deadbee'"],
+        ),
+        (
+            "a tag expected, the page serves main's sha",
+            release_metas("v0.1.8", "34c489c"),
+            "v0.1.8",
+            "",
+            vec!["viz-release-sha"],
+        ),
+        (
+            "a sha expected, the page serves an empty one",
+            release_metas("main", ""),
+            "main",
+            "34c489c",
+            vec!["viz-release-sha"],
+        ),
+        (
+            "a prefix of the env is not the env",
+            ok("feat"),
+            "feat/x",
+            "34c489c",
+            vec!["viz-release-env"],
+        ),
+    ]
+}
+
+/// A meta is missing, or has no `content`.
+fn failing_metas() -> Vec<Failing> {
+    vec![
+        (
+            "the env meta is missing",
+            "<meta name=\"viz-release-sha\" content=\"34c489c\">".to_owned(),
+            "main",
+            "34c489c",
+            vec!["no <meta name=\"viz-release-env\">", "'main'"],
+        ),
+        (
+            "the sha meta is missing while an empty sha is expected",
+            "<meta name=\"viz-release-env\" content=\"v0.1.8\">".to_owned(),
+            "v0.1.8",
+            "",
+            vec!["no <meta name=\"viz-release-sha\">"],
+        ),
+        (
+            "the env meta has no content",
+            "<meta name=\"viz-release-env\"><meta name=\"viz-release-sha\" content=\"34c489c\">"
+                .to_owned(),
+            "main",
+            "34c489c",
+            vec!["viz-release-env", NO_CONTENT],
+        ),
+        (
+            "the sha meta has no content",
+            "<meta name=\"viz-release-env\" content=\"main\"><meta name=\"viz-release-sha\">"
+                .to_owned(),
+            "main",
+            "34c489c",
+            vec!["viz-release-sha", NO_CONTENT],
+        ),
+        (
+            "a tag: the sha meta has no content attribute at all (not an empty sha)",
+            "<meta name=\"viz-release-env\" content=\"v0.1.8\"><meta name=\"viz-release-sha\">"
+                .to_owned(),
+            "v0.1.8",
+            "",
+            vec!["viz-release-sha", NO_CONTENT],
+        ),
+    ]
+}
+
+/// A wrong release is exit 8 (`release`), never a flaky curl (1): the env
+/// or the sha differs, a meta is absent or has no `content`. It guards the
+/// two metas and the exit code; it does not guard the message's wording
+/// beyond the fragments listed.
+#[test]
+fn rollout_check_release_exits_8_when_the_page_serves_another_release() {
+    for (case, metas, env, sha, fragments) in failing_releases() {
+        let fake = serving(page_with(&metas, ""));
+        let out = release_run(&fake, Some(env), Some(sha));
+        let text = printed(&out);
+        assert_eq!(out.status.code(), Some(8), "{case}: {text}");
+        assert!(
+            text.contains("FAIL release"),
+            "{case}: names release: {text}"
+        );
+        for fragment in fragments {
+            assert!(text.contains(fragment), "{case}: {fragment}: {text}");
+        }
+        assert!(!text.contains(SECRET), "{case}: secret printed: {text}");
+    }
+}
+
+/// The release is judged after the page is named and before the wasm: a
+/// wrong release never reaches the wasm, and a page that is not the map is
+/// the root's failure (1), whatever its metas.
+#[test]
+fn rollout_check_release_is_judged_after_the_root_and_before_the_wasm() {
+    let wrong = serving(page_with(&release_metas("dev", "34c489c"), ""));
+    let out = release_run(&wrong, Some("main"), Some("34c489c"));
+    assert_eq!(out.status.code(), Some(8), "{}", printed(&out));
+    let seen = wrong.seen.lock().expect("lock");
+    assert!(seen.iter().any(|r| r.path == "/"), "the page was read");
+    assert!(
+        seen.iter().all(|r| r.path != WASM),
+        "the wasm was not asked"
+    );
+    drop(seen);
+    let unnamed = serving(format!(
+        "<html><head><title>nginx</title>{}</head></html>",
+        release_metas("dev", "34c489c")
+    ));
+    let out = release_run(&unnamed, Some("main"), Some("34c489c"));
+    assert_fails_naming(&out, "root", "a wrong env on a page that is not the map");
+}
+
+/// The served value is shown printable, cut to 100 characters, and never
+/// as the origin secret: a page that echoes the secret as its env, from the
+/// environment or from a header file, prints `<the origin secret>`.
+#[test]
+fn rollout_check_never_prints_the_origin_secret_in_a_release_message() {
+    let echo = serving(page_with(&release_metas(SECRET, "34c489c"), ""));
+    let out = release_run(&echo, Some("main"), Some("34c489c"));
+    let text = printed(&out);
+    assert_eq!(out.status.code(), Some(8), "secret from the env: {text}");
+    assert!(text.contains("<the origin secret>"), "{text}");
+    assert!(!text.contains(SECRET), "secret printed: {text}");
+    let file = header_file("release-echo");
+    let out = run(
+        &check_script(),
+        &[&echo.url(), utf8(&file)],
+        &[
+            ("ROLLOUT_EXPECT_ENV", "main"),
+            ("ROLLOUT_EXPECT_SHA", "34c489c"),
+        ],
+    );
+    let text = printed(&out);
+    assert_eq!(out.status.code(), Some(8), "secret from a file: {text}");
+    assert!(text.contains("<the origin secret>"), "{text}");
+    assert!(!text.contains(SECRET), "secret printed: {text}");
+    let _ = std::fs::remove_file(file);
+}
+
+/// What is shown of a served value: at most 100 printable characters.
+#[test]
+fn rollout_check_shows_a_served_release_short_and_printable() {
+    let long = format!("{}TAIL", "a".repeat(100));
+    let odd = "x\u{1b}[31my";
+    for (case, value, kept, gone) in [
+        (
+            "cut to 100 characters",
+            long.as_str(),
+            "a".repeat(100),
+            "TAIL",
+        ),
+        ("no control character", odd, "x[31my".to_owned(), "\u{1b}"),
+    ] {
+        let fake = serving(page_with(&release_metas(value, "34c489c"), ""));
+        let out = release_run(&fake, Some("main"), Some("34c489c"));
+        let text = printed(&out);
+        assert_eq!(out.status.code(), Some(8), "{case}: {text}");
+        assert!(text.contains(&kept), "{case}: {kept}: {text}");
+        assert!(!text.contains(gone), "{case}: {gone:?} printed: {text}");
+    }
+}
+
+/// Direct mode needs the intended release before any request: the env
+/// non-empty, the sha set (empty is a tag); a gate that silently skips is
+/// no gate.
+#[test]
+fn rollout_check_release_needs_the_expected_release() {
+    for (case, env, sha, name) in [
+        (
+            "ROLLOUT_EXPECT_ENV unset",
+            None,
+            Some("34c489c"),
+            "ROLLOUT_EXPECT_ENV",
+        ),
+        (
+            "ROLLOUT_EXPECT_ENV empty",
+            Some(""),
+            Some("34c489c"),
+            "ROLLOUT_EXPECT_ENV",
+        ),
+        (
+            "ROLLOUT_EXPECT_SHA unset (empty is fine, unset is not)",
+            Some("main"),
+            None,
+            "ROLLOUT_EXPECT_SHA",
+        ),
+        ("both unset", None, None, "usage"),
+    ] {
+        let fake = Fake::start(prod);
+        let out = release_run(&fake, env, sha);
+        let text = printed(&out);
+        assert_eq!(out.status.code(), Some(2), "{case}: {text}");
+        assert!(text.contains(name), "{case}: names {name}: {text}");
+        assert_eq!(fake.seen.lock().expect("lock").len(), 0, "{case}: sent");
+    }
+}
+
+/// `--refused` and `--via-worker` neither read nor need the intended
+/// release, and do not fail when it is set (even to something the page
+/// does not serve): they run no release check.
+#[test]
+fn rollout_check_via_worker_and_refused_need_no_expectation() {
+    let closed = Fake::start(|_| Resp::new(403, ""));
+    for vars in [
+        vec![],
+        vec![("ROLLOUT_EXPECT_ENV", "zzz"), ("ROLLOUT_EXPECT_SHA", "zzz")],
+    ] {
+        let out = run(&check_script(), &["--refused", &closed.url()], &vars);
+        let text = printed(&out);
+        assert_eq!(out.status.code(), Some(0), "refused: {text}");
+        assert!(text.contains("refused ok"), "{text}");
+    }
+    let open = Fake::start(prod_through_the_worker);
+    let chrome = FakeChrome::new("no-expectation");
+    for (case, extra) in [
+        ("none", vec![]),
+        (
+            "a release the page does not serve",
+            vec![("ROLLOUT_EXPECT_ENV", "zzz"), ("ROLLOUT_EXPECT_SHA", "zzz")],
+        ),
+    ] {
+        let mut vars = chrome.env("ok");
+        vars.extend(extra);
+        let out = run(&check_script(), &["--via-worker", &open.url()], &vars);
+        let text = printed(&out);
+        assert_eq!(out.status.code(), Some(0), "via the Worker, {case}: {text}");
+        assert!(text.contains("hydrate ok"), "{case}: {text}");
+        assert!(
+            !text.contains("release"),
+            "{case}: no release check: {text}"
+        );
+    }
 }
 
 // ------------------------------------------------- rollout-check.sh: hydrate
@@ -1516,11 +1956,11 @@ fn rollout_check_hydrate_runs_through_the_worker_only() {
     let out = run(
         &check_script(),
         &[&fake.url()],
-        &[
+        &expect_release(&[
             ("ORIGIN_SECRET", SECRET),
             ("CHROME", utf8(&chrome.bin)),
             ("FAKE_CHROME_MODE", "panic"),
-        ],
+        ]),
     );
     let text = printed(&out);
     assert_eq!(out.status.code(), Some(0), "{text}");
@@ -1570,9 +2010,13 @@ fn the_secrets_are_sent_but_never_printed_nor_put_on_a_command_line() {
         (
             "env",
             vec![],
-            vec![("ORIGIN_SECRET", SECRET), ("PATH", path.as_str())],
+            expect_release(&[("ORIGIN_SECRET", SECRET), ("PATH", path.as_str())]),
         ),
-        ("file", vec![utf8(&file)], vec![("PATH", path.as_str())]),
+        (
+            "file",
+            vec![utf8(&file)],
+            expect_release(&[("PATH", path.as_str())]),
+        ),
     ] {
         let fake = Fake::start(dev);
         let url = fake.url();

@@ -16,7 +16,12 @@ name: deploy
 # the Cloudflare Pages deploy of the React site (task 005); the site and its
 # Pages project were removed in task 008.
 #
-# CI never sets the service's env or secrets: tofu does (infra/).
+# CI never sets the service's env or secrets: tofu does (infra/), with one
+# exception: the release, the two values VIZ_ENV and VIZ_SHA that the footer
+# badge shows (the tag v0.1.8, or main and its commit). The rollout step
+# writes them onto the revision it creates (scripts/release-values.sh) and the
+# gate checks that the revision's page serves them; nothing about the release
+# is in the image, so the image hash does not change with the ref.
 #
 # Repository variables (not secrets, no value here):
 #   WIF_PROVIDER, DEPLOYER_SA, GCP_PROJECT — the workload identity of the
@@ -114,11 +119,9 @@ jobs:
           tags: |
             ${{ steps.vars.outputs.image_hash }}
             ${{ steps.vars.outputs.image }}:${{ github.sha }}
-          # The footer badge shows these, read at compile time (the image
-          # has no .git): the branch or tag, the commit that was pushed.
-          build-args: |
-            BUILD_BRANCH=${{ github.ref_name }}
-            BUILD_SHA=${{ github.sha }}
+          # No build args, on purpose: the release (the footer badge's tag or
+          # branch, and commit) is not in the image, so its hash does not
+          # change with the ref. The rollout step writes it onto the revision.
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -128,6 +131,14 @@ jobs:
       # the new image while the old revision still serves, and comparing the
       # template would report that as done. The serving revision is also
       # recorded (`serving`), for the rollback of a failed public check.
+      #
+      # "Already running" means the serving revision has this image AND this
+      # release (its VIZ_ENV and VIZ_SHA, absent == empty): the image no
+      # longer changes with the ref, so every push to main, and a tag on
+      # main's image, still makes a revision (same image, new env). A revision
+      # whose JSON does not parse, that names no image, or whose env is not a
+      # list falls open to a deploy and the log says why (never a skip, never
+      # a dead job).
       - name: Is that image already running?
         id: current
         env:
@@ -142,14 +153,45 @@ jobs:
           SERVING=$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format json \
             | scripts/serving-revision.sh) \
             || { echo "::error::no revision serves $SERVICE: the rollback would have nowhere to go"; exit 1; }
-          CURRENT=$(gcloud run revisions describe "$SERVING" --project "$PROJECT" --region "$REGION" \
-            --format='value(spec.containers[0].image)')
+          # The release this run intends (a refused ref fails the step here).
+          INTENDED=$(scripts/release-values.sh)
+          REVISION_JSON=$(gcloud run revisions describe "$SERVING" --project "$PROJECT" --region "$REGION" --format json)
+          CURRENT=$(printf '%s' "$REVISION_JSON" | jq -r '.spec.containers[0].image // empty' 2>/dev/null) || CURRENT=""
           echo "serving=$SERVING" >> "$GITHUB_OUTPUT"
-          if [ "$CURRENT" = "$IMAGE_HASH" ]; then
-            echo "running=true" >> "$GITHUB_OUTPUT"
-            echo "vizualisation: $SERVICE already serves $IMAGE_HASH (revision $SERVING), nothing to deploy"
-          else
+          # An unreadable revision JSON (empty, not JSON, no image) fails OPEN
+          # to a deploy (an extra revision is the worst case) and says why; it
+          # never kills the step. The `gcloud run revisions describe` call
+          # above still fails the step: a transient failure is re-run by hand.
+          if [ -z "$CURRENT" ]; then
+            if printf '%s' "$REVISION_JSON" | jq -e . >/dev/null 2>&1; then
+              REASON="the revision JSON names no image"
+            else
+              REASON="the revision JSON is empty or does not parse"
+            fi
             echo "running=false" >> "$GITHUB_OUTPUT"
+            echo "vizualisation: could not read the serving revision's image/release ($REASON): deploying a new revision"
+          elif [ "$CURRENT" != "$IMAGE_HASH" ]; then
+            echo "running=false" >> "$GITHUB_OUTPUT"
+          else
+            # `same`: 0 = this image and this release, 1 = another release,
+            # 2 = a revision whose env it cannot read (a wrong type): that one
+            # deploys too and says so, never "another release".
+            RELEASE_RC=0
+            scripts/release-values.sh same <<<"$REVISION_JSON" || RELEASE_RC=$?
+            case "$RELEASE_RC" in
+              0)
+                echo "running=true" >> "$GITHUB_OUTPUT"
+                echo "vizualisation: $SERVICE already serves $IMAGE_HASH as $INTENDED (revision $SERVING), nothing to deploy"
+                ;;
+              2)
+                echo "running=false" >> "$GITHUB_OUTPUT"
+                echo "vizualisation: could not read the serving revision's release (its env is not a list): deploying a new revision"
+                ;;
+              *)
+                echo "running=false" >> "$GITHUB_OUTPUT"
+                echo "vizualisation: $SERVICE serves the image but another release ($INTENDED intended): a new revision with the new env"
+                ;;
+            esac
           fi
 
       # Dev only: the password the gate asks for, read from Secret Manager
@@ -170,6 +212,12 @@ jobs:
           printf 'authorization: Basic %s\n' "$BASIC" > "$RUNNER_TEMP/password-header"
           unset VALUE BASIC
 
+      # The revision is created with the release: the two env values VIZ_ENV
+      # and VIZ_SHA, written here and nowhere else, with the flag that updates
+      # the variables one by one (the flag that replaces them all would wipe
+      # RUST_LOG, VIZ_GATE and the origin secret reference, and every request
+      # would then be refused). The gate then checks the page of that revision
+      # says the release (rollout-check.sh exit 8 when it does not).
       - name: Roll out without traffic, check, then serve
         if: steps.current.outputs.running != 'true'
         env:
@@ -179,6 +227,7 @@ jobs:
           SERVICE="vizualisation-$ENV"
           TAG="sha-${GITHUB_SHA::7}"
           gcloud run deploy "$SERVICE" --project "$PROJECT" --region "$REGION" --image "$IMAGE_HASH" \
+            --update-env-vars "$(scripts/release-values.sh)" \
             --no-traffic --tag "$TAG" --quiet
           URL=$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format json \
             | jq -r --arg t "$TAG" '[.status.traffic[] | select(.tag == $t) | .url] | .[0] // empty')
@@ -201,9 +250,21 @@ jobs:
             GATE=(--password-file "$RUNNER_TEMP/password-header")
           fi
 
-          # /health, the gate, the page, the wasm it links, the guard on:
-          # on the tagged revision, before it has any traffic.
-          scripts/rollout-check.sh "${GATE[@]}" "$URL" "$HEADER_FILE"
+          # /health, the gate, the page and the release its viz-release metas
+          # carry, the wasm it links, the guard on: on the tagged revision,
+          # before it has any traffic. Exit 8 is the release check.
+          ROLLOUT_EXPECT_ENV="$(scripts/release-values.sh env)"
+          ROLLOUT_EXPECT_SHA="$(scripts/release-values.sh sha)"
+          export ROLLOUT_EXPECT_ENV ROLLOUT_EXPECT_SHA
+          RC=0
+          scripts/rollout-check.sh "${GATE[@]}" "$URL" "$HEADER_FILE" || RC=$?
+          if [ "$RC" = 8 ]; then
+            echo "::error::the revision at its tagged URL serves another release than the one deployed (its viz-release metas are not env '$ROLLOUT_EXPECT_ENV', sha '$ROLLOUT_EXPECT_SHA'); the traffic is untouched"
+            exit 1
+          elif [ "$RC" != 0 ]; then
+            echo "::error::the revision at its tagged URL failed rollout-check.sh (exit $RC); the traffic is untouched"
+            exit "$RC"
+          fi
 
           gcloud run services update-traffic "$SERVICE" --project "$PROJECT" --region "$REGION" --to-latest --quiet
           echo "vizualisation: $SERVICE now serves $IMAGE_HASH"

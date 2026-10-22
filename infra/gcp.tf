@@ -183,13 +183,19 @@ resource "google_cloud_run_v2_service" "app" {
   }
 
   lifecycle {
-    # CI deploys images; tofu owns everything else (same rule as the API's
-    # infra: the revision name is not ignored, or gcloud's is re-sent → 409).
-    # `scaling` is ignored too, as there: a later `gcloud run` never fights
-    # tofu over it, so max_instances in variables.tf is the value at
-    # creation; changing it afterwards is a `tofu apply -replace` or a
-    # gcloud update, written down in infra/README.md.
-    ignore_changes = [template[0].containers[0].image, scaling, client, client_version]
+    # CI deploys images and writes the release environment (VIZ_ENV, VIZ_SHA)
+    # with `gcloud run deploy --update-env-vars`. Tofu must ignore the container
+    # env, or a later `tofu apply` would revert it back to nothing, and the
+    # badge would read "dev" with no diff shown. The ignore must be applied
+    # (`tofu apply`) before the first deploy that writes the env. Tofu owns
+    # everything else. `gcloud run deploy` names each revision, so
+    # `template[0].revision` is ignored as well (learn-pali's and
+    # search-front's rule): without it every apply after a deploy would
+    # create a new revision with the same image and no traffic. `scaling` is
+    # ignored too: a later `gcloud run` never fights tofu over it, so max_instances in
+    # variables.tf is the value at creation; changing it afterwards is a
+    # `tofu apply -replace` or a gcloud update, written down in infra/README.md.
+    ignore_changes = [template[0].containers[0].image, template[0].revision, template[0].containers[0].env, scaling, client, client_version]
   }
   depends_on = [
     google_secret_manager_secret_iam_member.app_reads_origin,

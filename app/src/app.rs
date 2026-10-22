@@ -2,21 +2,22 @@
 //! app root ([`App`], what hydration mounts), and `AppShell`'s rail with the
 //! services Search, Learn and Map (this one), its routes (the map's views,
 //! the footer pages, the 404: `crate::route`), the footer under each
-//! (`SiteFooter`) carrying the build badge. From search-front/app/src/app.rs
+//! (`SiteFooter`) carrying the release badge. From search-front/app/src/app.rs
 //! (commit 6d370b4) and learn-pali/app/src/app.rs; what differs: three rail
 //! entries, and one view for every route, rendering what the typed table
 //! says (`RoutedPage`).
 
 use leptos::prelude::*;
 use leptos_i18n::td_string;
-use leptos_meta::{HashedStylesheet, MetaTags, provide_meta_context};
+use leptos_meta::provide_meta_context;
+#[cfg(feature = "ssr")]
+use leptos_meta::{HashedStylesheet, MetaTags};
 use leptos_router::components::{Route, Router, Routes};
 use leptos_router::hooks::use_location;
 use leptos_router::path;
-use palicanon_ui_lib::{
-    AppShell, EnvBadgeInfo, HydrationRoot, IconName, NavEntry, NavList, NavSection,
-    language_attribute, provide_language, theme_attribute,
-};
+use palicanon_ui_lib::{AppShell, IconName, NavEntry, NavList, NavSection, provide_language};
+#[cfg(feature = "ssr")]
+use palicanon_ui_lib::{HydrationRoot, language_attribute, theme_attribute};
 
 use crate::catalogue::strings;
 use crate::components::not_found::NotFoundPage;
@@ -26,25 +27,9 @@ use crate::head::{SiteHead, site_map_head};
 use crate::map::first::FirstRender;
 use crate::map::site_data::SiteData;
 use crate::pages::FooterPage;
+#[cfg(feature = "ssr")]
+use crate::release::{ENV_META, ReleaseInfo, SHA_META};
 use crate::route;
-
-/// The branch this build came from (`build.rs`,
-/// `VIZUALISATION_GIT_BRANCH`, from git, or from the `BUILD_BRANCH` the
-/// image build passes when it has no `.git`): `main`, `feat/…` — this
-/// service's own `env` for [`EnvBadgeInfo`] (replaced by `dev` / `prod`
-/// once this deploys, like every other service).
-pub(crate) const BUILD_BRANCH: &str = env!("VIZUALISATION_GIT_BRANCH");
-/// The short commit this build came from (`build.rs`,
-/// `VIZUALISATION_GIT_SHA`, from git, or from `BUILD_SHA`), a trailing `*`
-/// when the worktree had uncommitted changes at build time (git only).
-pub(crate) const BUILD_SHA: &str = env!("VIZUALISATION_GIT_SHA");
-
-/// This build, as the footer's badge shows it (at the footer's left —
-/// `SiteFooter`; nothing on the shell's panel).
-pub(crate) const BADGE: EnvBadgeInfo = EnvBadgeInfo {
-    env: BUILD_BRANCH,
-    sha: BUILD_SHA,
-};
 
 /// The HTML document around the app, rendered on the server. `data-theme`
 /// and `lang` follow the request's cookies ([`theme_attribute`],
@@ -57,14 +42,29 @@ pub(crate) const BADGE: EnvBadgeInfo = EnvBadgeInfo {
 /// here by [`HashedStylesheet`], under the name `cargo-leptos` gave it: a
 /// release build hashes the files (`hash-files`), so the CSS is
 /// `/pkg/vizualisation.<hash>.css`, which a fixed `href` would miss
-/// (learn-pali/app/src/app.rs).
+/// (learn-pali/app/src/app.rs). The deploy's release
+/// ([`ReleaseInfo::server`]) is provided to the app (the footer's badge)
+/// and written in `<head>` for the browser.
+#[cfg(feature = "ssr")]
 pub fn shell(options: LeptosOptions) -> impl IntoView {
+    document(options, ReleaseInfo::server().clone())
+}
+
+/// [`shell`] for a given release (a function of its argument, so a test
+/// renders every case): `release` is provided to the app, written in
+/// `<head>` as two plain metas ([`ENV_META`], [`SHA_META`]; the sha one
+/// always, empty for a tag) and read back by the browser before it mounts.
+#[cfg(feature = "ssr")]
+fn document(options: LeptosOptions, release: ReleaseInfo) -> impl IntoView {
+    provide_context(release.clone());
     view! {
         <!DOCTYPE html>
         <html lang=language_attribute() data-theme=theme_attribute()>
             <head>
                 <meta charset="utf-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1" />
+                <meta name=ENV_META content=release.env />
+                <meta name=SHA_META content=release.sha />
                 <AutoReload options=options.clone() />
                 <HashedStylesheet id="leptos" options=options.clone() />
                 <HydrationScripts options />
@@ -275,6 +275,10 @@ mod tests {
             provide_meta_context();
             provide_context(RequestUrl::new(path));
             provide_request(path, None);
+            provide_context(ReleaseInfo::from_vars(
+                Some("main".to_owned()),
+                Some("34c489c".to_owned()),
+            ));
             let first = first_render();
             let data = site_data(&first);
             provide_context(std::sync::Arc::new(first));
@@ -369,7 +373,7 @@ mod tests {
         }
     }
 
-    /// The whole document of [`shell`] for `path`, with the head the meta
+    /// The whole document of [`document`] for `path`, with the head the meta
     /// context collected injected the way `leptos_axum` does
     /// (learn-pali/app/src/app.rs's `render_document`).
     #[cfg(feature = "ssr")]
@@ -383,12 +387,27 @@ mod tests {
         let options = LeptosOptions::builder()
             .output_name("vizualisation")
             .build();
-        render_document_with(options, path, cookie)
+        render_document_with(options, path, cookie, ReleaseInfo::from_vars(None, None))
     }
 
-    /// [`render_document`] with the given options and cookie.
+    /// [`render_document`] on `/`, for the given release.
     #[cfg(feature = "ssr")]
-    fn render_document_with(options: LeptosOptions, path: &str, cookie: Option<&str>) -> String {
+    fn render_release(env: &str, sha: &str) -> String {
+        let options = LeptosOptions::builder()
+            .output_name("vizualisation")
+            .build();
+        let release = ReleaseInfo::from_vars(Some(env.to_owned()), Some(sha.to_owned()));
+        render_document_with(options, "/", None, release)
+    }
+
+    /// [`render_document`] with the given options, cookie and release.
+    #[cfg(feature = "ssr")]
+    fn render_document_with(
+        options: LeptosOptions,
+        path: &str,
+        cookie: Option<&str>,
+        release: ReleaseInfo,
+    ) -> String {
         use futures::StreamExt;
         use leptos_meta::ServerMetaContext;
         use leptos_router::location::RequestUrl;
@@ -398,7 +417,7 @@ mod tests {
             provide_request(path, cookie);
             provide_context(server);
             provide_context(RequestUrl::new(path));
-            shell(options).to_html()
+            document(options, release).to_html()
         });
         let runtime = tokio::runtime::Builder::new_current_thread()
             .build()
@@ -490,7 +509,7 @@ mod tests {
             .hash_files(true)
             .hash_file(hash_file.to_string_lossy().as_ref().into())
             .build();
-        let html = render_document_with(options, "/", None);
+        let html = render_document_with(options, "/", None, ReleaseInfo::from_vars(None, None));
         let head = &html[..html.find("</head>").expect(&html)];
         assert!(
             head.contains(r#"href="/pkg/vizualisation.ccc333.css""#),
@@ -535,17 +554,95 @@ mod tests {
         }
     }
 
-    /// The build badge sits in the footer only, once, after the page.
+    /// The release badge sits in the footer only, once, after the page.
     #[cfg(feature = "ssr")]
     #[test]
     fn the_badge_sits_in_the_footer_after_the_page() {
         let html = render_layout(Language::En, "/terms");
-        let badge = format!(r#"title="{} · {}""#, BADGE.env, BADGE.sha);
+        let badge = r#"title="main · 34c489c""#;
         let page = html.find("</main>").expect(&html);
         let footer = html.find("<footer").expect(&html);
-        let copies: Vec<usize> = html.match_indices(&badge).map(|(i, _)| i).collect();
+        let copies: Vec<usize> = html.match_indices(badge).map(|(i, _)| i).collect();
         assert_eq!(copies.len(), 1, "one badge, in the footer: {html}");
         assert!(copies[0] > page && copies[0] > footer, "{html}");
+    }
+
+    /// The `<meta name content>` of the document's head, as the server
+    /// writes it.
+    #[cfg(feature = "ssr")]
+    fn meta(name: &str, content: &str) -> String {
+        format!(r#"<meta name="{name}" content="{content}">"#)
+    }
+
+    /// The document's `<head>` ... `</head>`.
+    #[cfg(feature = "ssr")]
+    fn head(html: &str) -> &str {
+        let start = html.find("<head>").expect(html);
+        &html[start..html.find("</head>").expect(html)]
+    }
+
+    /// The release's cases, the deploy's variables to the metas and the
+    /// badge's title: a tag (no sha), `main`, a dispatched branch, a local
+    /// run (a blank env drops a sha with it).
+    #[cfg(feature = "ssr")]
+    const CASES: [(&str, &str, &str, &str, &str); 5] = [
+        ("v0.1.8", "", "v0.1.8", "", "v0.1.8"),
+        ("main", "34c489c", "main", "34c489c", "main · 34c489c"),
+        ("feat/x", "34c489c", "feat/x", "34c489c", "feat/x · 34c489c"),
+        ("", "", "dev", "", "dev"),
+        ("  ", "34c489c", "dev", "", "dev"),
+    ];
+
+    /// Pins: the document's `<head>` carries the release in two metas, the
+    /// sha one always. Does not catch a wrong value that stays after the
+    /// viewport and before the sha.
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn the_head_carries_the_release_in_two_metas_after_the_viewport() {
+        for (env, sha, want_env, want_sha, _) in CASES {
+            let html = render_release(env, sha);
+            let head = head(&html);
+            let viewport = head.find(r#"name="viewport""#).expect(head);
+            let env_at = head.find(&meta(ENV_META, want_env)).expect(head);
+            let sha_at = head.find(&meta(SHA_META, want_sha)).expect(head);
+            assert!(viewport < env_at && env_at < sha_at, "{env}: {head}");
+            assert_eq!(head.matches(r#"name="viz-release-"#).count(), 2, "{head}");
+        }
+    }
+
+    /// A tag has no sha, and the sha meta is there all the same: the client
+    /// tells "a tag" from "no metas" by its presence.
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn a_tag_writes_the_sha_meta_empty() {
+        let html = render_release("v0.1.8", "");
+        assert!(
+            head(&html).contains(r#"<meta name="viz-release-sha" content="">"#),
+            "{html}"
+        );
+    }
+
+    /// The badge is rendered from the same value as the metas: on the whole
+    /// document, a tag's has no sha and no separator, `main` and a branch
+    /// have both, a local run is `dev`.
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn the_footer_badge_shows_the_same_release() {
+        for (env, sha, _, _, title) in CASES {
+            let html = render_release(env, sha);
+            let footer = html.find("<footer").expect(&html);
+            let at = footer + html[footer..].find("title=").expect(&html);
+            assert!(
+                html[at..].starts_with(&format!(r#"title="{title}""#)),
+                "{title}: {html}"
+            );
+            let nav = footer + html[footer..].find("<nav").expect(&html);
+            if !sha.is_empty() && !env.trim().is_empty() {
+                assert!(html[at..nav].contains(sha), "{html}");
+            } else {
+                assert!(!html[at..nav].contains('·'), "no separator: {html}");
+            }
+        }
     }
 
     /// Where the `<div …>` opened at `start` closes: the index of its

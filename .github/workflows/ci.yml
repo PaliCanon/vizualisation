@@ -160,6 +160,10 @@ jobs:
         env:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
           WASM_BINDGEN_TEST_TIMEOUT: "900"
+      - run: CHROMEDRIVER="$CHROMEWEBDRIVER/chromedriver" cargo test --locked -p vizualisation --no-default-features --features csr --target wasm32-unknown-unknown --test release_document
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
+          WASM_BINDGEN_TEST_TIMEOUT: "900"
 
   docs:
     name: rustdoc (${{ matrix.name }})
@@ -311,11 +315,13 @@ jobs:
       - run: python3 scripts/infra_probe_test.py
       - run: python3 scripts/check_workflows_test.py
       - run: python3 scripts/check_workflows.py
+      - run: bash scripts/release-values.test.sh
       # No JavaScript but the Worker's (task 008).
       - run: python3 scripts/no_js_test.py
       - run: bash scripts/manifest-ref.test.sh
       - run: bash scripts/serving-revision.test.sh
       - run: bash infra/scripts/origin-secret.test.sh
+      - run: bash infra/scripts/lifecycle.test.sh
       - uses: actions/setup-node@v4
         with:
           node-version: 22
