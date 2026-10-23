@@ -15,7 +15,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # Pinned by tag (docs conventions/ui-lib.md); in development the workspace's [patch]
 # builds from ../ui-lib, and the tag must hold the standalone manifest.
-palicanon-ui-lib = { version = "0.4", git = "ssh://git@github.com/PaliCanon/ui-lib.git", tag = "v0.4.0" }
+palicanon-ui-lib = { version = "0.4", git = "ssh://git@github.com/PaliCanon/ui-lib.git", tag = "v0.4.3" }
 leptos.workspace = true
 leptos_meta.workspace = true
 leptos_router.workspace = true
