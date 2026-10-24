@@ -1,6 +1,6 @@
 # 018 The map on a phone: the canvas owns the touch gestures
 
-status: review · rank: 2 · level: simple · type: fix · request: the user, 2026-10-24 (« On a quelques soucis sur la map sur tel aussi, se déplacer, zoom etc. c'est pas fluide »)
+status: merged · rank: 2 · level: simple · type: fix · request: the user, 2026-10-24 (« On a quelques soucis sur la map sur tel aussi, se déplacer, zoom etc. c'est pas fluide »)
 worktree: /Users/lsh/projects/palicanon/wt/vizualisation-018/vizualisation (branch `fix/map-touch-action`), paired `wt/vizualisation-018/ui-lib` at v0.4.3
 
 ## Summary
@@ -13,6 +13,12 @@ The map's canvas had no `touch-action`: the browser kept its own gesture handlin
 | --- | --- | --- |
 | Build | ✓ | `touch-none` on the canvas, the SSR test updated |
 | Matrix | ✓ | CI's commands: fmt, leptosfmt, clippy ssr/hydrate, test ssr and csr (native), doc; the browser tests in CI |
-| Check | doing | the user, on the phone, on map.dev.palicanon.app after the dev deploy: drag, pinch; says what still feels wrong, if anything |
+| Check | ✓ | the user, 2026-10-24, on the phone on map.palicanon.app (v0.2.5): « map test niquel » |
 
 ## Retro
+
+## Merge
+060755d on main (squash), 2026-10-24; prod v0.2.5.
+
+## Retro
+No agents: one line. The merge preceded the user's check because dev deploys from main only and the user had no access to dev from the phone: prod was the check. Lesson: a phone check needs prod or a dev host the phone reaches.
