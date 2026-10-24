@@ -637,7 +637,10 @@ pub fn EngineView(
     let t = strings();
     view! {
         <div class="absolute inset-0">
-            <canvas node_ref=canvas class="absolute inset-0 block size-full"></canvas>
+            // `touch-none` (018): the canvas owns every touch gesture; without it the
+            // browser pans and pinch-zooms the page under the pointer events, and a drag
+            // or a pinch on a phone stutters or stops (`pointercancel`).
+            <canvas node_ref=canvas class="absolute inset-0 block size-full touch-none"></canvas>
             <Show when=move || no_gpu.get()>
                 <div role="alert" class="absolute inset-0 grid place-items-center p-6">
                     <div class="max-w-md text-center">
@@ -1792,7 +1795,7 @@ mod tests {
             view! { <EngineView input=input /> }.to_html()
         });
         assert!(
-            html.contains(r#"<canvas class="absolute inset-0 block size-full">"#),
+            html.contains(r#"<canvas class="absolute inset-0 block size-full touch-none">"#),
             "{html}"
         );
         assert!(
