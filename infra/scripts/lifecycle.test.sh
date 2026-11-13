@@ -71,20 +71,23 @@ check "README: it names VIZ_ENV and VIZ_SHA" \
 check "README: it says how to change RUST_LOG or ORIGIN_SECRET afterwards" \
   bash -c '[[ "$1" == *RUST_LOG* && "$1" == *ORIGIN_SECRET* && "$1" == *-replace* ]]' _ "$para"
 # After a `tofu apply -replace` the release env is gone: the README says so and
-# says what restores it (016, like task 060).
-check "README: a replace of the service loses the release env until the next push to main" \
-  bash -c '[[ "$1" == *"until the next push to main"* && "$1" == *VIZ_ENV* ]]' _ "$para"
-# A TAG release is restored by a by-hand gcloud run deploy; the next push to main writes
-# 'main · <sha7>'. deploy.yml has NO workflow_dispatch (016, lead): the README must not
-# promise a branch dispatch, and must say the deploy never uses --set-env-vars.
+# says what restores it (016, like task 060). Since task 022 only a `v*` tag
+# deploys (a push to main is CI only), so the next TAG deploy restores it, or
+# the by-hand gcloud run deploy; a push to main does not.
+check "README: a replace of the service loses the release env until the next tag deploy" \
+  bash -c '[[ "$1" == *"until the next tag deploy"* && "$1" == *VIZ_ENV* ]]' _ "$para"
 has() { bash -c '[[ "$1" == *"$2"* ]]' _ "$1" "$2"; }
-# 016 review F2: after a replace a prod tag has no push to wait for: the by-hand command.
+# A tag release is restored by a by-hand gcloud run deploy. deploy.yml has NO
+# workflow_dispatch (016, lead): the README must not promise a branch dispatch,
+# and must say the deploy never uses --set-env-vars.
 check "README: a tag release is restored by a by-hand gcloud run deploy of the tag's values" \
   has "$para" 'gcloud run deploy <service> --region europe-west1 --update-env-vars VIZ_ENV=<tag>,VIZ_SHA='
 check "README: it says there is no manual trigger in this repo" \
   has "$para" 'no manual trigger'
-check "README: the next push to main writes main and the sha7" \
-  has "$para" '`main · <sha7>`'
+check "README: it says a push to main is CI only and writes no release" \
+  bash -c '[[ "$1" == *"push to main is CI only"* ]]' _ "$para"
+check "README: it no longer promises that the next push to main writes the release" \
+  bash -c '[[ "$1" != *"until the next push to main"* && "$1" != *"main · <sha7>"* ]]' _ "$para"
 check "README: it promises no branch dispatch (deploy.yml has none)" \
   bash -c '[[ "$1" != *"branch dispatch"* && "$1" != *"<branch> · <sha7>"* ]]' _ "$para"
 check "README: it says the deploy never uses --set-env-vars" \

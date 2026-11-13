@@ -31,7 +31,7 @@ Rules:
   a directory as a module and fails with "Cannot find module", F3 of 007);
 - no `docker/build-push-action` takes `secrets:` or `ssh:` (the build needs
   no credential, ruling R1);
-- deploy.yml: a concurrency group per environment that never cancels a
+- deploy.yml: the concurrency group deploy-prod, which never cancels a
   rollout in progress; `rollout-check.sh` called by its real interface (the
   revision URL with the header file before the traffic update, `--via-worker`
   on the public host after it, `--refused` on the bare Cloud Run URL; the
@@ -599,8 +599,8 @@ def check_test_steps(name, doc, files):
 def check_deploy(name, doc):
     found = []
     group = str(doc.get("concurrency", {}).get("group", ""))
-    if "deploy-" not in group or "github.ref" not in group:
-        found.append(f"{name}: concurrency: a group per environment (deploy-<env> derived from github.ref) is required")
+    if group != "deploy-prod":
+        found.append(f"{name}: concurrency: the group must be deploy-prod (one deploy at a time; there is no dev environment)")
     if doc.get("concurrency", {}).get("cancel-in-progress") is not False:
         found.append(f"{name}: concurrency: cancel-in-progress must be false (never cancel a rollout)")
     for rule in (

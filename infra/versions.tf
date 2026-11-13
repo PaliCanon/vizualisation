@@ -25,9 +25,10 @@ terraform {
 }
 
 # Credentials come from the environment: gcloud auth application-default
-# login (the state bucket, the GCP resources), and CLOUDFLARE_API_TOKEN (zone
-# DNS and Workers routes, account Workers scripts). Nothing is read from a
-# file in this repository.
+# login (the state bucket, the GCP resources), and CLOUDFLARE_API_TOKEN (only
+# to destroy the dev Worker resources the state still holds, task 022; drop
+# the cloudflare provider and its requirement after that apply). Nothing is
+# read from a file in this repository.
 provider "google" {
   project = var.gcp_project
   region  = var.region

@@ -1,10 +1,8 @@
 # From search-front/infra/outputs.tf. What differs: no API token in
-# `secrets`, the dev password secret where the gate asks for it. The Pages
-# site's outputs went with it in task 008; `urls` is the Cloud Run URLs, as
-# search-front's.
+# `secrets`. `urls` is the Cloud Run URLs, as search-front's.
 
 output "urls" {
-  description = "The Cloud Run URL of each environment (the Worker's ORIGIN). It answers 403 to anything but the Worker."
+  description = "The Cloud Run URL of each environment. It answers 403 to any request without the origin secret."
   value       = { for k, s in google_cloud_run_v2_service.app : k => s.uri }
 }
 
@@ -23,7 +21,6 @@ output "secrets" {
   value = {
     for k in keys(var.envs) : k => {
       origin_secret = google_secret_manager_secret.origin[k].secret_id
-      dev_password  = try(google_secret_manager_secret.dev_password[k].secret_id, null)
     }
   }
 }

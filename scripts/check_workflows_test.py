@@ -33,9 +33,9 @@ GOOD_DEPLOY = """
 name: deploy
 on:
   push:
-    branches: [main]
+    tags: ["v*"]
 concurrency:
-  group: deploy-${{ startsWith(github.ref, 'refs/tags/') && 'prod' || 'dev' }}
+  group: deploy-prod
   cancel-in-progress: false
 permissions:
   contents: read
@@ -130,6 +130,32 @@ def mutate(old, new):
     return GOOD_DEPLOY.replace(old, new)
 
 
+class RealDeploy(unittest.TestCase):
+    """The real deploy.yml: prod only (the dev environment is gone)."""
+
+    def setUp(self):
+        self.path = pathlib.Path(__file__).parent.parent / ".github" / "workflows" / "deploy.yml"
+        self.text = self.path.read_text()
+        self.doc = yaml.safe_load(self.text)
+
+    def test_only_a_tag_triggers_it(self):
+        push = self.doc[True]["push"]  # YAML 1.1 reads the key `on` as True
+        self.assertNotIn("branches", push)
+        self.assertEqual(push["tags"], ["v*"])
+        self.assertEqual(list(self.doc[True]), ["push"])
+
+    def test_it_is_prod_with_plain_values(self):
+        self.assertEqual(self.doc["concurrency"]["group"], "deploy-prod")
+        self.assertEqual(self.doc["env"]["ENV"], "prod")
+        self.assertEqual(self.doc["env"]["HOST"], "map.palicanon.app")
+
+    def test_no_dev_host_password_or_gate_is_left(self):
+        code = "\n".join(l.split("#", 1)[0] for l in self.text.splitlines())
+        for needle in ("map.dev.", "password", "GATE", "'dev'", "= dev", "-dev"):
+            self.assertNotIn(needle, code, needle)
+        self.assertNotIn("dev", [w.strip("'\"") for w in code.split()])
+
+
 class Rules(unittest.TestCase):
     def test_a_good_deploy_passes(self):
         self.assertEqual(violations(), [])
@@ -151,9 +177,8 @@ class Rules(unittest.TestCase):
         bad = mutate("permissions:\n  contents: read\n  id-token: write\n", "")
         self.assertTrue(any("permissions" in v for v in violations(bad)))
 
-    def test_a_concurrency_group_per_env_is_required(self):
-        bad = mutate("group: deploy-${{ startsWith(github.ref, 'refs/tags/') && 'prod' || 'dev' }}",
-                     "group: deploy")
+    def test_the_prod_concurrency_group_is_required(self):
+        bad = mutate("group: deploy-prod", "group: deploy")
         self.assertTrue(any("concurrency" in v for v in violations(bad)))
 
     def test_a_deploy_must_not_cancel_a_running_rollout(self):

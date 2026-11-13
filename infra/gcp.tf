@@ -1,9 +1,7 @@
 # From search-front/infra/gcp.tf. What differs: the names (`vizualisation-*`);
-# no API token (this service calls no API); the password gate: VIZ_GATE is a
-# plain value per environment, and where it is `password` (dev) a secret
-# `vizualisation-dev-password-<env>` that the runtime account and the
-# deployer may read (the rollout check sends the password). Prod has no such
-# secret and its accounts read none.
+# no API token (this service calls no API); VIZ_GATE is a plain value per
+# environment (`off`: the dev environment and its password gate were removed,
+# task 022).
 
 # Shared with the site's infra (palisearch): read, never managed here.
 data "google_service_account" "deployer" {
@@ -13,33 +11,15 @@ data "google_service_account" "deployer" {
 # The Secret Manager API is enabled by the API's infra (`google_project_service`
 # there); a project-wide switch is not declared twice.
 
-locals {
-  # The environments whose service asks for the dev password.
-  gated = { for k, v in var.envs : k => v if v.gate == "password" }
-}
-
 # ---------------------------------------------------------------- secrets
 
-# The origin secret: the value the Worker sends as `x-origin-auth` and the
-# service requires (403 without it). Created by `infra/scripts/origin-secret
-# create <env>` (a random value that never leaves Secret Manager and the
-# Worker's secret store), never by tofu.
+# The origin secret: the value the service requires as `x-origin-auth` (403
+# without it); the Worker that sent it was removed (task 022). Created by
+# `infra/scripts/origin-secret create <env>` (a random value that never
+# leaves Secret Manager), never by tofu.
 resource "google_secret_manager_secret" "origin" {
   for_each  = var.envs
   secret_id = "vizualisation-origin-secret-${each.key}"
-  replication {
-    auto {}
-  }
-}
-
-# The dev password (the service's DEV_PASSWORD when VIZ_GATE=password), for
-# the gated environments only. Tofu creates the secret and NEVER a version:
-# the value would sit in its state. The user adds the version from the
-# keychain (README, "Order"), the same password the React site's Pages
-# function asked for until task 008.
-resource "google_secret_manager_secret" "dev_password" {
-  for_each  = local.gated
-  secret_id = "vizualisation-dev-password-${each.key}"
   replication {
     auto {}
   }
@@ -62,13 +42,6 @@ resource "google_secret_manager_secret_iam_member" "app_reads_origin" {
   member    = "serviceAccount:${google_service_account.app[each.key].email}"
 }
 
-resource "google_secret_manager_secret_iam_member" "app_reads_dev_password" {
-  for_each  = local.gated
-  secret_id = google_secret_manager_secret.dev_password[each.key].id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.app[each.key].email}"
-}
-
 # `gcloud run deploy` in CI acts as the runtime service account.
 resource "google_service_account_iam_member" "deployer_acts_as" {
   for_each           = var.envs
@@ -85,16 +58,6 @@ resource "google_service_account_iam_member" "deployer_acts_as" {
 resource "google_secret_manager_secret_iam_member" "deployer_reads_origin" {
   for_each  = var.envs
   secret_id = google_secret_manager_secret.origin[each.key].id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${data.google_service_account.deployer.email}"
-}
-
-# On dev the rollout check also sends the password (and checks the 401
-# without it), so CI reads the dev password too. Same consequence as R3, for
-# the dev password only: it guards a preview, not a production secret.
-resource "google_secret_manager_secret_iam_member" "deployer_reads_dev_password" {
-  for_each  = local.gated
-  secret_id = google_secret_manager_secret.dev_password[each.key].id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${data.google_service_account.deployer.email}"
 }
@@ -134,7 +97,7 @@ resource "google_cloud_run_v2_service" "app" {
         name  = "RUST_LOG"
         value = "info"
       }
-      # Required by the boot (exit 2 without it): `password` or `off`, never
+      # Required by the boot (exit 2 without it): `off`, never
       # a default of the image.
       env {
         name  = "VIZ_GATE"
@@ -148,18 +111,6 @@ resource "google_cloud_run_v2_service" "app" {
           secret_key_ref {
             secret  = google_secret_manager_secret.origin[each.key].secret_id
             version = "latest"
-          }
-        }
-      }
-      dynamic "env" {
-        for_each = each.value.gate == "password" ? [each.key] : []
-        content {
-          name = "DEV_PASSWORD"
-          value_source {
-            secret_key_ref {
-              secret  = google_secret_manager_secret.dev_password[env.value].secret_id
-              version = "latest"
-            }
           }
         }
       }
@@ -199,12 +150,11 @@ resource "google_cloud_run_v2_service" "app" {
   }
   depends_on = [
     google_secret_manager_secret_iam_member.app_reads_origin,
-    google_secret_manager_secret_iam_member.app_reads_dev_password,
     google_service_account_iam_member.deployer_acts_as,
   ]
 }
 
-# Invokable by anyone at the Cloud Run layer: the Worker has no Google
+# Invokable by anyone at the Cloud Run layer: callers have no Google
 # identity to present. What keeps the `*.run.app` URL from being a way round
 # Cloudflare is the service itself: it refuses (403) any request without the
 # origin secret (design v4).

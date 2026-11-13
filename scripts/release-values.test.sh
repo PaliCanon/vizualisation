@@ -188,7 +188,7 @@ same() {
   err="$(cat "$work/err")"
 }
 rev() { # ENV-ARRAY-JSON -> a revision document holding it (hand-written shape of `gcloud run revisions describe --format json`)
-  printf '{"metadata":{"name":"vizualisation-dev-00001-aaa"},"spec":{"containers":[{"image":"registry/vizualisation:h-1","env":%s}]}}' "$1"
+  printf '{"metadata":{"name":"vizualisation-prod-00001-aaa"},"spec":{"containers":[{"image":"registry/vizualisation:h-1","env":%s}]}}' "$1"
 }
 NOENV='{"metadata":{"name":"r"},"spec":{"containers":[{"image":"registry/vizualisation:h-1"}]}}'
 same branch main "$SHA" "$NOENV"
@@ -269,6 +269,8 @@ assert_file_has "the current step reads the revision as JSON" "$work/step-curren
 assert_file_has "the rollout step expects the env" "$work/step-rollout.sh" 'ROLLOUT_EXPECT_ENV="\$\(scripts/release-values\.sh env\)"'
 assert_file_has "the rollout step expects the sha" "$work/step-rollout.sh" 'ROLLOUT_EXPECT_SHA="\$\(scripts/release-values\.sh sha\)"'
 assert_file_has "the rollout step has its own message for exit 8" "$work/step-rollout.sh" '"\$RC" = 8'
+assert_file_lacks "the rollout step has no dev gate (the dev environment is gone)" "$work/step-rollout.sh" 'GATE|password-file|ENV" = dev'
+assert_file_has "the rollout check keeps its arguments, no gate" "$work/step-rollout.sh" 'scripts/rollout-check\.sh "\$URL" "\$HEADER_FILE"'
 
 # 016 review F3 (deep 14503, item 4): the "already running?" step falls OPEN on a revision it
 # cannot read: running=false and a line saying why, never a silent skip. Run the REAL step
@@ -290,7 +292,7 @@ IMG="registry/vizualisation:h-1"
 current() { # REVISION-DOCUMENT -> runs the real step as the main push of $SHA; sets $running, $log, $code
   printf '%s' "$1" > "$work/stub-revision.json"
   : > "$work/github-output"
-  log="$(cd "$root" && env -i PATH="$work/bin:$PATH" ENV=dev PROJECT=p REGION=r IMAGE_HASH="$IMG" \
+  log="$(cd "$root" && env -i PATH="$work/bin:$PATH" ENV=prod PROJECT=p REGION=r IMAGE_HASH="$IMG" \
     GITHUB_OUTPUT="$work/github-output" STUB_REVISION="$work/stub-revision.json" \
     GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main GITHUB_SHA="$SHA" bash "$work/step-current.sh" 2>&1)"
   code=$?

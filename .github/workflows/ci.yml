@@ -299,7 +299,7 @@ jobs:
       - run: cargo leptos build --release --cargo-locked
 
   scripts:
-    # The shell, Python and Node tests that guard the deploy. Every test file
+    # The shell and Python tests that guard the deploy. Every test file
     # has its step here (scripts/check_workflows.py checks it).
     name: scripts, workflows, Worker
     runs-on: ubuntu-latest
@@ -316,19 +316,12 @@ jobs:
       - run: python3 scripts/check_workflows_test.py
       - run: python3 scripts/check_workflows.py
       - run: bash scripts/release-values.test.sh
-      # No JavaScript but the Worker's (task 008).
+      # No JavaScript at all (tasks 008, 022).
       - run: python3 scripts/no_js_test.py
       - run: bash scripts/manifest-ref.test.sh
       - run: bash scripts/serving-revision.test.sh
       - run: bash infra/scripts/origin-secret.test.sh
       - run: bash infra/scripts/lifecycle.test.sh
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      # A quoted glob, not the directory: node 22 (the job's) runs a directory
-      # argument as a module and fails with "Cannot find module" (search-front
-      # 007 F3).
-      - run: node --test 'infra/worker/*.test.mjs'
 
   tofu:
     name: tofu (fmt, validate)
