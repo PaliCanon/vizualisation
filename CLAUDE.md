@@ -6,7 +6,7 @@
 
 This repository: the 3D map of the Pāli canon at map.palicanon.app, in Rust only (design `002 design`
 v4; the React site went in task 008). A Cargo workspace: `app/` (Leptos SSR + hydrate on ui-lib,
-Cloud Run; also the csr Map fragment the PaliCanon app mounts), `engine/` (Rust →
+served from the lsh-tech server; also the csr Map fragment the PaliCanon app mounts), `engine/` (Rust →
 wasm32 map renderer, generic), `layout/` (force layout, port of ngraph.forcelayout), `formats/` (the
 data files' types, their only reader and writer), `i18n-check/` (the catalogue's placeholder check).
 The data (`public/graph*.json`, `graph-sim.bin`, `translations.json`, `blurbs-*.json`) is committed:
@@ -22,7 +22,9 @@ CI and the image build from it, never refetch it. The Node tools that built it a
 - App: `VIZ_GATE=off cargo leptos watch` (port 3301).
 - Strings: `app/locales/*.json` (the `leptos_i18n` catalogue) and `app/src/pages/content_*.rs` (the
   footer pages) are ordinary source, edited by hand (their port from React: `app/STRINGS.md`).
-- Deploy: push to main is CI only; tag v* → prod on Cloud Run (`vizualisation-prod`; public prod is
-  served from the lsh-tech server). The dev environment is removed (task 022): no deployment uses
-  `VIZ_GATE=password`. Infra in `infra/`, applied from the laptop with no `-var-file` (prod is the
-  default; `infra/README.md`).
+- Deploy: push to main is CI only; tag v* builds the image and pushes it to GHCR
+  (`ghcr.io/palicanon/vizualisation`), nothing more. Prod runs on the lsh-tech server (`Lsh0x/lsh-tech`,
+  `stacks/palicanon/prod`, pulled by digest, behind a Cloudflare tunnel); its stack is updated by hand
+  with the digest and `h-` tag from the job's summary. Cloud Run, the Worker and the dev environment are
+  gone; their guards (`K_SERVICE`, `ORIGIN_SECRET`, `x-origin-auth`) stay in the app, dead in prod.
+  `infra/` holds nothing managed (`infra/README.md`).

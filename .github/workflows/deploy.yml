@@ -1,32 +1,29 @@
 name: deploy
 
-# Tag v* → prod (vizualisation-prod, map.palicanon.app); a push to main
-# deploys nothing (there is no dev environment). The image is
-# content-addressed: built only when its inputs changed, rolled out with no
-# traffic first, checked through the revision's tagged URL with the origin
-# header, then given the traffic, then checked again through the public host
-# and (it must refuse) the bare Cloud Run URL.
+# Tag v* builds the image and pushes it to GHCR (ghcr.io/palicanon/vizualisation);
+# that is all this workflow does. A push to main deploys nothing (CI only).
+#
+# Prod runs on the lsh-tech server (ssh.lsh.tech, repo Lsh0x/lsh-tech, stack
+# stacks/palicanon/prod): it pulls the image BY DIGEST, and the stack is
+# updated by hand with the digest and the `h-` tag that the job summary
+# prints. Nothing here reaches the server.
+#
+# The image is content-addressed: its tag `h-...` is a hash of what shapes it
+# (app, engine, layout, formats, i18n-check, the Cargo files, the Dockerfile,
+# scripts/, the data files, and the ui-lib commit built against;
+# scripts/image-hash.sh), so it is built only when those inputs changed. The
+# release (the tag v0.1.8, the commit) is NOT in the image, so the hash does
+# not change with the ref: a release tag on an image that already exists is
+# added to it without a rebuild.
 #
 # From search-front/.github/workflows/deploy.yml. What differs: one sibling
-# (ui-lib), the service and image names; the checks send no password and
-# check that nothing asks for one (scripts/rollout-check.sh). Replaces
-# the Cloudflare Pages deploy of the React site (task 005); the site and its
-# Pages project were removed in task 008.
+# (ui-lib), the image name, and the registry (GHCR, signed in with the run's
+# own GITHUB_TOKEN).
 #
-# CI never sets the service's env or secrets: tofu does (infra/), with one
-# exception: the release, the two values VIZ_ENV and VIZ_SHA that the footer
-# badge shows (the tag v0.1.8, or main and its commit). The rollout step
-# writes them onto the revision it creates (scripts/release-values.sh) and the
-# gate checks that the revision's page serves them; nothing about the release
-# is in the image, so the image hash does not change with the ref.
-#
-# Repository variables (not secrets, no value here):
-#   WIF_PROVIDER, DEPLOYER_SA, GCP_PROJECT — the workload identity of the
-#   `github-deployer` service account (the site's infra, palisearch).
 # Repository secrets: APP_ID, APP_PRIVATE_KEY — the GitHub App (Contents:
 #   read on ui-lib and vizualisation) that the `siblings` action mints its
-#   token from. Nothing else is a secret here: the image build takes no
-#   credential (Dockerfile).
+#   token from. The push to GHCR uses the automatic GITHUB_TOKEN. Nothing
+#   else is a secret here: the image build takes no credential (Dockerfile).
 
 on:
   push:
@@ -38,13 +35,6 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write
-
-env:
-  ENV: prod
-  HOST: map.palicanon.app
-  REGION: europe-west1
-  PROJECT: ${{ vars.GCP_PROJECT }}
 
 # Two checkouts side by side: the build context is the folder holding
 # vizualisation/ and ui-lib/. Commands run in vizualisation/.
@@ -53,8 +43,11 @@ defaults:
     working-directory: vizualisation
 
 jobs:
-  site:
+  image:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -65,15 +58,8 @@ jobs:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
-      - uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
-          service_account: ${{ vars.DEPLOYER_SA }}
-      - uses: google-github-actions/setup-gcloud@v2
-      - run: gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
-
       # The tag is computed ONCE, after both checkouts, and used by the
-      # build, the existence check and the rollout (scripts/image-hash.sh:
+      # build, the existence check and the summary (scripts/image-hash.sh:
       # the tracked inputs, the Dockerfile text and scripts/ included, plus
       # the ui-lib commit built against).
       - name: Compute the input hash and image refs
@@ -81,11 +67,22 @@ jobs:
         run: |
           set -euo pipefail
           TAG=$(scripts/image-hash.sh ../ui-lib)
-          IMAGE="$REGION-docker.pkg.dev/$PROJECT/palicanon/vizualisation"
+          IMAGE=ghcr.io/palicanon/vizualisation
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
           echo "image_hash=$IMAGE:$TAG" >> "$GITHUB_OUTPUT"
           echo "vizualisation: input hash $TAG (ui-lib $(git -C ../ui-lib rev-parse --short HEAD))"
+
+      # The password goes through `with:`, never through a `run:` line.
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # `docker buildx imagetools` needs buildx, so it is set up before the
+      # existence check, whether or not the build runs.
+      - uses: docker/setup-buildx-action@v3
 
       - name: Check whether that image already exists
         id: check-image
@@ -93,15 +90,13 @@ jobs:
           IMAGE_HASH: ${{ steps.vars.outputs.image_hash }}
         run: |
           set -euo pipefail
-          if gcloud artifacts docker images describe "$IMAGE_HASH" --project "$PROJECT" --quiet >/dev/null 2>&1; then
+          if docker buildx imagetools inspect "$IMAGE_HASH" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "vizualisation: $IMAGE_HASH already built, skipped"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: docker/setup-buildx-action@v3
-        if: steps.check-image.outputs.exists != 'true'
       - uses: docker/build-push-action@v6
         if: steps.check-image.outputs.exists != 'true'
         with:
@@ -112,230 +107,50 @@ jobs:
           # No `secrets:`, no `ssh:`: the build takes no credential (the
           # sibling is COPYed and the lock holds no git source).
           push: true
+          # The `h-` tag is what the existence check reads; the release tag
+          # (v0.1.8) is a second name for the same image.
           tags: |
             ${{ steps.vars.outputs.image_hash }}
-            ${{ steps.vars.outputs.image }}:${{ github.sha }}
-          # No build args, on purpose: the release (the footer badge's tag or
-          # branch, and commit) is not in the image, so its hash does not
-          # change with the ref. The rollout step writes it onto the revision.
+            ${{ steps.vars.outputs.image }}:${{ github.ref_name }}
+          # Links the package to this repository on GitHub.
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          # No build args, on purpose: the release is not in the image, so
+          # its hash does not change with the ref.
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # What runs is the revision that SERVES the traffic, not the service's
-      # template: after a rollout that built a revision and never moved the
-      # traffic (a failed check, a cancelled job) the template already holds
-      # the new image while the old revision still serves, and comparing the
-      # template would report that as done. The serving revision is also
-      # recorded (`serving`), for the rollback of a failed public check.
-      #
-      # "Already running" means the serving revision has this image AND this
-      # release (its VIZ_ENV and VIZ_SHA, absent == empty): the image no
-      # longer changes with the ref, so every push to main, and a tag on
-      # main's image, still makes a revision (same image, new env). A revision
-      # whose JSON does not parse, that names no image, or whose env is not a
-      # list falls open to a deploy and the log says why (never a skip, never
-      # a dead job).
-      - name: Is that image already running?
-        id: current
+      # The image of this input hash exists: it is not rebuilt, the release
+      # tag is added to it.
+      - name: Add the release tag to the existing image
+        if: steps.check-image.outputs.exists == 'true'
         env:
+          IMAGE: ${{ steps.vars.outputs.image }}
           IMAGE_HASH: ${{ steps.vars.outputs.image_hash }}
+          REF: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          SERVICE="vizualisation-$ENV"
-          # The 100% entry of a service that follows the latest revision (what
-          # tofu creates) names none: scripts/serving-revision.sh then reads
-          # the latest ready one. An empty answer would silently disable the
-          # rollback, so it fails the job.
-          SERVING=$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format json \
-            | scripts/serving-revision.sh) \
-            || { echo "::error::no revision serves $SERVICE: the rollback would have nowhere to go"; exit 1; }
-          # The release this run intends (a refused ref fails the step here).
-          INTENDED=$(scripts/release-values.sh)
-          REVISION_JSON=$(gcloud run revisions describe "$SERVING" --project "$PROJECT" --region "$REGION" --format json)
-          CURRENT=$(printf '%s' "$REVISION_JSON" | jq -r '.spec.containers[0].image // empty' 2>/dev/null) || CURRENT=""
-          echo "serving=$SERVING" >> "$GITHUB_OUTPUT"
-          # An unreadable revision JSON (empty, not JSON, no image) fails OPEN
-          # to a deploy (an extra revision is the worst case) and says why; it
-          # never kills the step. The `gcloud run revisions describe` call
-          # above still fails the step: a transient failure is re-run by hand.
-          if [ -z "$CURRENT" ]; then
-            if printf '%s' "$REVISION_JSON" | jq -e . >/dev/null 2>&1; then
-              REASON="the revision JSON names no image"
-            else
-              REASON="the revision JSON is empty or does not parse"
-            fi
-            echo "running=false" >> "$GITHUB_OUTPUT"
-            echo "vizualisation: could not read the serving revision's image/release ($REASON): deploying a new revision"
-          elif [ "$CURRENT" != "$IMAGE_HASH" ]; then
-            echo "running=false" >> "$GITHUB_OUTPUT"
-          else
-            # `same`: 0 = this image and this release, 1 = another release,
-            # 2 = a revision whose env it cannot read (a wrong type): that one
-            # deploys too and says so, never "another release".
-            RELEASE_RC=0
-            scripts/release-values.sh same <<<"$REVISION_JSON" || RELEASE_RC=$?
-            case "$RELEASE_RC" in
-              0)
-                echo "running=true" >> "$GITHUB_OUTPUT"
-                echo "vizualisation: $SERVICE already serves $IMAGE_HASH as $INTENDED (revision $SERVING), nothing to deploy"
-                ;;
-              2)
-                echo "running=false" >> "$GITHUB_OUTPUT"
-                echo "vizualisation: could not read the serving revision's release (its env is not a list): deploying a new revision"
-                ;;
-              *)
-                echo "running=false" >> "$GITHUB_OUTPUT"
-                echo "vizualisation: $SERVICE serves the image but another release ($INTENDED intended): a new revision with the new env"
-                ;;
-            esac
-          fi
+          docker buildx imagetools create -t "$IMAGE:$REF" "$IMAGE_HASH"
 
-      # The revision is created with the release: the two env values VIZ_ENV
-      # and VIZ_SHA, written here and nowhere else, with the flag that updates
-      # the variables one by one (the flag that replaces them all would wipe
-      # RUST_LOG, VIZ_GATE and the origin secret reference, and every request
-      # would then be refused). The gate then checks the page of that revision
-      # says the release (rollout-check.sh exit 8 when it does not).
-      - name: Roll out without traffic, check, then serve
-        if: steps.current.outputs.running != 'true'
+      # What the stack takes: the digest, read back from the registry (the
+      # image just built, or the one that already existed).
+      - name: Summary, the digest to put in the stack
         env:
+          IMAGE: ${{ steps.vars.outputs.image }}
           IMAGE_HASH: ${{ steps.vars.outputs.image_hash }}
+          TAG: ${{ steps.vars.outputs.tag }}
+          REF: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          SERVICE="vizualisation-$ENV"
-          TAG="sha-${GITHUB_SHA::7}"
-          gcloud run deploy "$SERVICE" --project "$PROJECT" --region "$REGION" --image "$IMAGE_HASH" \
-            --update-env-vars "$(scripts/release-values.sh)" \
-            --no-traffic --tag "$TAG" --quiet
-          URL=$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format json \
-            | jq -r --arg t "$TAG" '[.status.traffic[] | select(.tag == $t) | .url] | .[0] // empty')
-          test -n "$URL" || { echo "no URL for the revision tag $TAG on $SERVICE"; exit 1; }
-
-          # The origin secret, into a 0600 header file that curl reads with
-          # `-H @file`: it is on no command line and in no log (masked).
-          umask 077
-          HEADER_FILE="$RUNNER_TEMP/origin-header"
-          trap 'rm -f "$HEADER_FILE"' EXIT
-          VALUE=$(gcloud secrets versions access latest --secret "vizualisation-origin-secret-$ENV" --project "$PROJECT")
-          test -n "$VALUE" || { echo "vizualisation-origin-secret-$ENV has no value (infra/README.md, Order)"; exit 1; }
-          echo "::add-mask::$VALUE"
-          printf 'x-origin-auth: %s\n' "$VALUE" > "$HEADER_FILE"
-          unset VALUE
-
-          # /health, the gate, the page and the release its viz-release metas
-          # carry, the wasm it links, the guard on: on the tagged revision,
-          # before it has any traffic. Exit 8 is the release check.
-          ROLLOUT_EXPECT_ENV="$(scripts/release-values.sh env)"
-          ROLLOUT_EXPECT_SHA="$(scripts/release-values.sh sha)"
-          export ROLLOUT_EXPECT_ENV ROLLOUT_EXPECT_SHA
-          RC=0
-          scripts/rollout-check.sh "$URL" "$HEADER_FILE" || RC=$?
-          if [ "$RC" = 8 ]; then
-            echo "::error::the revision at its tagged URL serves another release than the one deployed (its viz-release metas are not env '$ROLLOUT_EXPECT_ENV', sha '$ROLLOUT_EXPECT_SHA'); the traffic is untouched"
-            exit 1
-          elif [ "$RC" != 0 ]; then
-            echo "::error::the revision at its tagged URL failed rollout-check.sh (exit $RC); the traffic is untouched"
-            exit "$RC"
-          fi
-
-          gcloud run services update-traffic "$SERVICE" --project "$PROJECT" --region "$REGION" --to-latest --quiet
-          echo "vizualisation: $SERVICE now serves $IMAGE_HASH"
-
-      # The public-host check drives a headless Chrome (rollout-check.sh's
-      # `hydrate`: the page hydrates past the nodes Cloudflare injects,
-      # search-front 017, ui-lib 063); its path goes to the script as CHROME.
-      - uses: browser-actions/setup-chrome@v2
-        id: chrome
-
-      - name: Check the public host, and that the bare origin refuses
-        env:
-          CHROME: ${{ steps.chrome.outputs.chrome-path }}
-          # The revision that served before this run moved the traffic, and
-          # whether this run moved it at all (nothing to undo when the image
-          # was already served).
-          PREVIOUS: ${{ steps.current.outputs.serving }}
-          MOVED: ${{ steps.current.outputs.running != 'true' }}
-        run: |
-          set -euo pipefail
-          SERVICE="vizualisation-$ENV"
-
-          # Puts the traffic back on the revision that served before, when
-          # this run moved it, so a bad rollout does not stay public (D11).
-          # Only the public-host check calls it: a bare origin that answers
-          # is the service's env, which a rollback does not change.
-          # It may itself fail: that must not end the step with gcloud's
-          # exit code (set -e) in place of the check's, so a failed update
-          # only reports. Then the traffic is read back (status.traffic):
-          # when the previous revision does not serve 100%, whatever the
-          # reason, the job exits 5 (the rollback did not restore it); when
-          # it does, the function returns and the caller exits with the
-          # check's own code.
-          rollback() {
-            if [ "$MOVED" != true ] || [ -z "$PREVIOUS" ]; then
-              echo "vizualisation: this run moved no traffic, nothing to put back"
-              return 0
-            fi
-            gcloud run services update-traffic "$SERVICE" --project "$PROJECT" --region "$REGION" \
-              --to-revisions="$PREVIOUS=100" --quiet \
-              || echo "::error::rollback to $PREVIOUS failed"
-            NOW=$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format json \
-              | scripts/serving-revision.sh) || NOW=""
-            if [ "$NOW" != "$PREVIOUS" ]; then
-              echo "::error::rollback did not restore $PREVIOUS"
-              exit 5
-            fi
-            echo "::error::vizualisation: traffic of $SERVICE moved back to $PREVIOUS"
-          }
-
-          # 1. Through Cloudflare and the Worker (which adds the origin
-          #    header; this script sends none and is given none): /health,
-          #    the gate, the page, the wasm, and the page hydrating in Chrome on
-          #    /, a map route and /privacy (`hydrate`: a panic or no
-          #    data-hydrated is exit 1). Exit 1 is a refusal or a failed
-          #    check: a few tries (the new revision and the edge
-          #    settle), then the traffic goes back. Exit 4 is the Worker
-          #    itself answering 500 (it lost its secret): the rollout is not
-          #    at fault, so no rollback, the job fails naming the remedy.
-          RC=1
-          for _ in 1 2 3 4 5; do
-            RC=0
-            scripts/rollout-check.sh --via-worker "https://$HOST" || RC=$?
-            [ "$RC" = 1 ] || break
-            sleep 3
-          done
-          if [ "$RC" = 3 ]; then
-            # Ruling R6 (search-front): Cloudflare (Bot Fight, a managed
-            # challenge) turned the runner away; that is not the service
-            # failing. The decision is the user's (a WAF skip rule for the
-            # runner, or drop this check). It may come from Chrome's
-            # `hydrate` step, after the curl checks passed: hydration is then
-            # unchecked, which is not a pass. The orchestrator runs the check
-            # by hand before any prod tag.
-            echo "::warning::Cloudflare challenged the runner on https://$HOST/ (R6, infra/README.md): the public-host check did not complete (hydration unchecked): run scripts/rollout-check.sh --via-worker https://$HOST by hand before a prod tag"
-          elif [ "$RC" = 4 ]; then
-            echo "::error::the Worker answered 500 — run infra/scripts/origin-secret push $ENV"
-            exit "$RC"
-          elif [ "$RC" != 0 ]; then
-            echo "https://$HOST/ failed rollout-check.sh --via-worker (exit $RC: the service refused it, or a content check failed)"
-            # A refusal or a failed content check (exit 1, after the retries):
-            # put the traffic back, and fail the job (D11).
-            if [ "$RC" = 1 ]; then rollback; fi
-            exit "$RC"
-          fi
-
-          # 2. The bare Cloud Run URL, as anyone who learned it would call it:
-          #    403 with an empty body, with no header and with a wrong one.
-          SERVICE_URL=$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" \
-            --format='value(status.url)')
-          RC=0
-          scripts/rollout-check.sh --refused "$SERVICE_URL" || RC=$?
-          if [ "$RC" != 0 ]; then
-            # A bare origin that answers is open to anyone who learned the
-            # URL. NO rollback: both revisions boot from the same env, so the
-            # previous one answers too and moving the traffic restores
-            # nothing (D13). The cause is the service's ORIGIN_SECRET env.
-            echo "rollout-check.sh --refused on $SERVICE_URL: exit $RC"
-            echo "::error::the bare origin answers — the service's ORIGIN_SECRET env is missing or empty (infra: the secret reference); traffic left as is"
-            exit "$RC"
-          fi
-          echo "vizualisation: https://$HOST is served and the origin refuses a direct call"
+          DIGEST=$(docker buildx imagetools inspect "$IMAGE_HASH" --format '{{json .Manifest}}' | jq -r .digest)
+          test -n "$DIGEST" || { echo "::error::no digest for $IMAGE_HASH"; exit 1; }
+          {
+            echo "### Image pushed to GHCR"
+            echo
+            echo "- pinned ref: \`$IMAGE@$DIGEST\`"
+            echo "- hash tag: \`$TAG\`"
+            echo "- release tag: \`$REF\`"
+            echo
+            echo "The stack (Lsh0x/lsh-tech, stacks/palicanon/prod) is updated by hand with this digest."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "vizualisation: $IMAGE@$DIGEST"

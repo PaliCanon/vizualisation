@@ -301,7 +301,7 @@ jobs:
   scripts:
     # The shell and Python tests that guard the deploy. Every test file
     # has its step here (scripts/check_workflows.py checks it).
-    name: scripts, workflows, Worker
+    name: scripts, workflows
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -312,16 +312,11 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install pyyaml
-      - run: python3 scripts/infra_probe_test.py
       - run: python3 scripts/check_workflows_test.py
       - run: python3 scripts/check_workflows.py
-      - run: bash scripts/release-values.test.sh
       # No JavaScript at all (tasks 008, 022).
       - run: python3 scripts/no_js_test.py
       - run: bash scripts/manifest-ref.test.sh
-      - run: bash scripts/serving-revision.test.sh
-      - run: bash infra/scripts/origin-secret.test.sh
-      - run: bash infra/scripts/lifecycle.test.sh
 
   tofu:
     name: tofu (fmt, validate)

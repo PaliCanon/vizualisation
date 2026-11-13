@@ -9,14 +9,15 @@ own, each with its tests: a job that uses a local composite action running
 cargo needs the siblings too (`SiblingsThroughAnAction`: the React site's
 job built the engine through such an action until task 008), and every test file of
 the repository is run by a step of ci.yml (`EveryTestFileHasItsStep`, the
-task's S5 row). The real-ci test of the Worker glob is covered by the
-latter.
+task's S5 row).
 
-Task 016 (twin of learn-pali 060): the image takes no build args, and five
-rules of the release wiring (`ReleaseWiring`): no `--set-env-vars`, the deploy
-writes the release with `--update-env-vars "$(scripts/release-values.sh)"`, the
-skip compares it with `release-values.sh same`, the direct gate is given the
-expectation and has an arm for its exit 8.
+deploy.yml only builds the image and pushes it to GHCR (prod, on the lsh-tech
+server, pulls it by digest): its fixture is `GOOD_DEPLOY`, and each rule of
+`check_deploy` has its class below, with one mutation of the fixture that
+breaks it: no GCP (`NoGcp`), the job's permissions (`ImageJobPermissions`),
+the login (`GhcrLogin`), the image refs and tags (`ImageRefs`), the source
+label (`SourceLabel`), the existence check (`ExistenceCheck`), the digest in
+the job summary (`DigestSummary`), and no build args (`NoBuildArgs`).
 """
 
 import pathlib
@@ -39,78 +40,68 @@ concurrency:
   cancel-in-progress: false
 permissions:
   contents: read
-  id-token: write
 jobs:
-  site:
+  image:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: docker/build-push-action@v6
-        with:
-          push: true
-      - name: current
-        id: current
+      - name: vars
+        id: vars
         run: |
           set -euo pipefail
-          REV=$(gcloud run services describe svc --format json | scripts/serving-revision.sh) || { echo "::error::no revision serves svc"; exit 1; }
-          REVISION_JSON=$(gcloud run revisions describe "$REV" --format json)
-          CURRENT=$(printf '%s' "$REVISION_JSON" | jq -r '.spec.containers[0].image // empty')
-          echo "serving=$REV" >> "$GITHUB_OUTPUT"
-          RELEASE_RC=0
-          scripts/release-values.sh same <<<"$REVISION_JSON" || RELEASE_RC=$?
-          echo "running=$([ "$CURRENT" = "$IMAGE_HASH" ] && [ "$RELEASE_RC" = 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-      - name: deploy
-        run: |
-          gcloud run deploy svc --image "$IMAGE_HASH" \\
-            --update-env-vars "$(scripts/release-values.sh)" \\
-            --no-traffic --tag t --quiet
-      - name: rollout
-        run: |
-          # --set-env-vars is a flag this step never uses
-          ROLLOUT_EXPECT_ENV="$(scripts/release-values.sh env)"
-          ROLLOUT_EXPECT_SHA="$(scripts/release-values.sh sha)"
-          export ROLLOUT_EXPECT_ENV ROLLOUT_EXPECT_SHA
-          rc=0
-          scripts/rollout-check.sh "$URL" "$HEADER_FILE" || rc=$?
-          if [ "$rc" = 8 ]; then
-            echo "::error::another release than the one deployed"
-            exit 1
-          elif [ "$rc" != 0 ]; then
-            exit "$rc"
-          fi
-      - name: traffic
-        run: gcloud run services update-traffic svc --to-latest
-      - name: public
+          TAG=$(scripts/image-hash.sh ../ui-lib)
+          IMAGE=ghcr.io/palicanon/vizualisation
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "image_hash=$IMAGE:$TAG" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - name: check
+        id: check-image
         env:
-          PREVIOUS: ${{ steps.current.outputs.serving }}
+          IMAGE_HASH: ${{ steps.vars.outputs.image_hash }}
         run: |
-          rollback() {
-            gcloud run services update-traffic svc --to-revisions="$PREVIOUS=100" || echo "::error::rollback to $PREVIOUS failed"
-            NOW=$(gcloud run services describe svc --format json | scripts/serving-revision.sh) || NOW=""
-            if [ "$NOW" != "$PREVIOUS" ]; then
-              echo "::error::rollback did not restore $PREVIOUS"
-              exit 5
-            fi
-          }
-          rc=0
-          scripts/rollout-check.sh --via-worker "https://$HOST" || rc=$?
-          if [ "$rc" = 3 ]; then
-            echo "::warning::challenged"
-          elif [ "$rc" = 4 ]; then
-            echo "::error::the Worker answered 500 — run infra/scripts/origin-secret push $ENV"
-            exit "$rc"
-          elif [ "$rc" != 0 ]; then
-            if [ "$rc" = 1 ]; then rollback; fi
-            exit "$rc"
+          set -euo pipefail
+          # the image exists when its manifest can be read
+          if docker buildx imagetools inspect "$IMAGE_HASH" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
-          rc=0
-          scripts/rollout-check.sh --refused "$SERVICE_URL" || rc=$?
-          if [ "$rc" != 0 ]; then
-            echo "::error::the bare origin answers — the service's ORIGIN_SECRET env is missing or empty (infra: the secret reference); traffic left as is"
-            exit "$rc"
-          fi
+      - uses: docker/build-push-action@v6
+        if: steps.check-image.outputs.exists != 'true'
+        with:
+          push: true
+          tags: |
+            ${{ steps.vars.outputs.image_hash }}
+            ${{ steps.vars.outputs.image }}:${{ github.ref_name }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+      - name: release tag
+        if: steps.check-image.outputs.exists == 'true'
+        env:
+          IMAGE: ${{ steps.vars.outputs.image }}
+          IMAGE_HASH: ${{ steps.vars.outputs.image_hash }}
+          REF: ${{ github.ref_name }}
+        run: docker buildx imagetools create -t "$IMAGE:$REF" "$IMAGE_HASH"
+      - name: summary
+        env:
+          IMAGE: ${{ steps.vars.outputs.image }}
+          IMAGE_HASH: ${{ steps.vars.outputs.image_hash }}
+        run: |
+          set -euo pipefail
+          DIGEST=$(docker buildx imagetools inspect "$IMAGE_HASH" --format '{{json .Manifest}}' | jq -r .digest)
+          test -n "$DIGEST"
+          echo "digest: $IMAGE@$DIGEST" >> "$GITHUB_STEP_SUMMARY"
 """
 
 
@@ -126,17 +117,23 @@ def violations(deploy=GOOD_DEPLOY, extra=None, actions=None):
 
 
 def mutate(old, new):
-    assert old in GOOD_DEPLOY, old
+    assert GOOD_DEPLOY.count(old) >= 1, old
     return GOOD_DEPLOY.replace(old, new)
 
 
+def only(found, tag):
+    """The violations of one rule (their text holds `tag:`)."""
+    return [v for v in found if f" {tag}:" in v]
+
+
 class RealDeploy(unittest.TestCase):
-    """The real deploy.yml: prod only (the dev environment is gone)."""
+    """The real deploy.yml: a tag builds the image and pushes it to GHCR."""
 
     def setUp(self):
         self.path = pathlib.Path(__file__).parent.parent / ".github" / "workflows" / "deploy.yml"
         self.text = self.path.read_text()
         self.doc = yaml.safe_load(self.text)
+        self.code = "\n".join(l.split("#", 1)[0] for l in self.text.splitlines())
 
     def test_only_a_tag_triggers_it(self):
         push = self.doc[True]["push"]  # YAML 1.1 reads the key `on` as True
@@ -144,16 +141,29 @@ class RealDeploy(unittest.TestCase):
         self.assertEqual(push["tags"], ["v*"])
         self.assertEqual(list(self.doc[True]), ["push"])
 
-    def test_it_is_prod_with_plain_values(self):
-        self.assertEqual(self.doc["concurrency"]["group"], "deploy-prod")
-        self.assertEqual(self.doc["env"]["ENV"], "prod")
-        self.assertEqual(self.doc["env"]["HOST"], "map.palicanon.app")
+    def test_one_deploy_at_a_time_and_never_cancelled(self):
+        self.assertEqual(self.doc["concurrency"], {"group": "deploy-prod", "cancel-in-progress": False})
 
-    def test_no_dev_host_password_or_gate_is_left(self):
-        code = "\n".join(l.split("#", 1)[0] for l in self.text.splitlines())
-        for needle in ("map.dev.", "password", "GATE", "'dev'", "= dev", "-dev"):
-            self.assertNotIn(needle, code, needle)
-        self.assertNotIn("dev", [w.strip("'\"") for w in code.split()])
+    def test_it_has_no_environment_variables_of_the_old_deploy(self):
+        for key in ("env", "vars"):
+            self.assertNotIn(key, self.doc)
+        for needle in ("REGION", "PROJECT", "HOST", "WIF_PROVIDER", "DEPLOYER_SA", "GCP_PROJECT"):
+            self.assertNotIn(needle, self.code, needle)
+
+    def test_nothing_of_gcp_cloudflare_or_the_rollout_is_left(self):
+        for needle in ("gcloud", "google-github-actions", "docker.pkg.dev", "run.app", "id-token",
+                       "x-origin-auth", "ORIGIN_SECRET", "rollout-check", "browser-actions", "Worker"):
+            self.assertNotIn(needle, self.code, needle)
+
+    def test_the_one_job_pushes_to_ghcr(self):
+        self.assertEqual(list(self.doc["jobs"]), ["image"])
+        self.assertEqual(self.doc["permissions"], {"contents": "read"})
+        self.assertEqual(self.doc["jobs"]["image"]["permissions"], {"contents": "read", "packages": "write"})
+        self.assertIn("ghcr.io/palicanon/vizualisation", self.code)
+
+    def test_the_summary_pins_the_digest(self):
+        self.assertIn("GITHUB_STEP_SUMMARY", self.code)
+        self.assertIn("@$DIGEST", self.code)
 
 
 class Rules(unittest.TestCase):
@@ -161,41 +171,40 @@ class Rules(unittest.TestCase):
         self.assertEqual(violations(), [])
 
     def test_a_secret_in_a_run_line_is_refused(self):
-        bad = mutate('scripts/rollout-check.sh "$URL" "$HEADER_FILE" || rc=$?',
-                     'curl -H "x-t: ${{ secrets.TOKEN }}" "$URL" || rc=$?')
+        bad = mutate('echo "tag=$TAG" >> "$GITHUB_OUTPUT"',
+                     'echo "tag=${{ secrets.TOKEN }}" >> "$GITHUB_OUTPUT"')
         self.assertTrue(any("secret in a run" in v for v in violations(bad)))
 
     def test_a_secret_in_a_with_is_allowed(self):
         ok = mutate("push: true", "push: true\n          token: ${{ secrets.TOKEN }}")
         self.assertEqual(violations(ok), [])
 
-    def test_a_write_permission_other_than_id_token_is_refused(self):
+    def test_a_write_permission_other_than_packages_is_refused(self):
         bad = mutate("contents: read", "contents: write")
-        self.assertTrue(any("permissions" in v for v in violations(bad)))
+        self.assertTrue(any("permissions" in v and "more than read" in v for v in violations(bad)))
+
+    def test_a_job_write_permission_other_than_packages_is_refused(self):
+        bad = mutate("      contents: read\n      packages: write", "      contents: read\n      packages: write\n      issues: write")
+        self.assertTrue(any("permissions" in v and "issues" in v for v in violations(bad)))
+
+    def test_id_token_write_is_no_longer_allowed(self):
+        bad = mutate("permissions:\n  contents: read\njobs:", "permissions:\n  contents: read\n  id-token: write\njobs:")
+        self.assertTrue(any("permissions" in v and "id-token" in v for v in violations(bad)))
+
+    def test_packages_write_is_allowed_where_the_job_needs_it(self):
+        self.assertEqual([v for v in violations() if "permissions" in v], [])
 
     def test_missing_permissions_are_refused(self):
-        bad = mutate("permissions:\n  contents: read\n  id-token: write\n", "")
+        bad = mutate("permissions:\n  contents: read\njobs:", "jobs:")
         self.assertTrue(any("permissions" in v for v in violations(bad)))
 
     def test_the_prod_concurrency_group_is_required(self):
         bad = mutate("group: deploy-prod", "group: deploy")
         self.assertTrue(any("concurrency" in v for v in violations(bad)))
 
-    def test_a_deploy_must_not_cancel_a_running_rollout(self):
+    def test_a_deploy_must_not_cancel_a_running_build(self):
         bad = mutate("cancel-in-progress: false", "cancel-in-progress: true")
         self.assertTrue(any("concurrency" in v for v in violations(bad)))
-
-    def test_traffic_must_follow_the_check(self):
-        steps = GOOD_DEPLOY.split("      - name: rollout")[0]
-        bad = steps + (
-            "      - name: traffic\n        run: gcloud run services update-traffic svc --to-latest\n"
-            '      - name: rollout\n        run: scripts/rollout-check.sh "$URL" "$HEADER_FILE"\n'
-        )
-        self.assertTrue(any("traffic" in v for v in violations(bad)))
-
-    def test_a_deploy_without_a_check_is_refused(self):
-        bad = mutate('scripts/rollout-check.sh "$URL" "$HEADER_FILE" || rc=$?', "echo skipped")
-        self.assertTrue(any("rollout-check" in v for v in violations(bad)))
 
     def test_a_build_secret_is_refused(self):
         bad = mutate("push: true", "push: true\n          secrets: gh_token=${{ steps.t.outputs.token }}")
@@ -227,8 +236,8 @@ runs:
         self.assertTrue(any("secret in a run" in v for v in found))
 
 
-class RolloutCheckCalls(unittest.TestCase):
-    """deploy.yml calls scripts/rollout-check.sh by its real interface."""
+class NoBuildArgs(unittest.TestCase):
+    """The image takes no build args: the release is not in the image, so its hash does not change with the ref."""
 
     def test_the_build_has_no_build_args(self):
         # R1, the design sentence: "No build args: the release is not in the
@@ -245,439 +254,266 @@ class RolloutCheckCalls(unittest.TestCase):
         bad = mutate("push: true", "push: true\n          build-args: ''")
         self.assertTrue(any("takes no build args" in v for v in violations(bad)), violations(bad))
 
-    def test_the_public_host_is_checked_through_the_worker(self):
-        bad = mutate("--via-worker", "")
-        self.assertTrue(any("--via-worker" in v for v in violations(bad)))
 
-    def test_the_bare_origin_is_checked_refused(self):
-        bad = mutate("--refused", "")
-        self.assertTrue(any("--refused" in v for v in violations(bad)))
+class NoGcp(unittest.TestCase):
+    """(a) Nothing of Google Cloud is left: prod is the lsh-tech server, the registry is GHCR."""
 
-    def test_the_worker_check_never_gets_the_secret(self):
-        bad = mutate('--via-worker "https://$HOST"', '--via-worker "https://$HOST" "$HEADER_FILE"')
-        self.assertTrue(any("--via-worker" in v and "secret" in v for v in violations(bad)))
+    def refused(self, bad, needle):
+        found = only(violations(bad), "no-gcp")
+        self.assertTrue(any(needle in v for v in found), found)
 
-    def test_the_refused_check_never_gets_the_secret(self):
-        bad = mutate('--refused "$SERVICE_URL" ||', 'ORIGIN_SECRET=x scripts/rollout-check.sh --refused "$SERVICE_URL" ||')
-        self.assertTrue(any("--refused" in v and "secret" in v for v in violations(bad)))
+    def test_gcloud_in_a_run_is_refused(self):
+        self.refused(mutate("test -n \"$DIGEST\"", "gcloud auth list"), "gcloud")
 
-    def test_a_challenge_is_a_warning_not_a_failure(self):
-        bad = mutate('::warning::challenged', 'challenged')
-        self.assertTrue(any("exit 3" in v for v in violations(bad)))
+    def test_a_google_github_action_is_refused(self):
+        bad = mutate("      - uses: docker/setup-buildx-action@v3\n",
+                     "      - uses: google-github-actions/auth@v2\n      - uses: docker/setup-buildx-action@v3\n")
+        self.refused(bad, "google-github-actions")
 
-    def test_no_inline_curl_in_the_deploy(self):
-        bad = mutate('scripts/rollout-check.sh --refused "$SERVICE_URL" ||', 'curl "$SERVICE_URL" ||')
-        found = violations(bad)
-        self.assertTrue(any("curl" in v for v in found))
+    def test_an_artifact_registry_ref_is_refused(self):
+        self.refused(mutate("          echo \"tag=$TAG\"", "          echo europe-west1-docker.pkg.dev\n          echo \"tag=$TAG\""), "docker.pkg.dev")
+
+    def test_a_cloud_run_url_is_refused(self):
+        self.refused(mutate("test -n \"$DIGEST\"", "echo https://x.run.app"), "run.app")
+
+    def test_the_good_deploy_names_none(self):
+        self.assertEqual(only(violations(), "no-gcp"), [])
 
 
-class ReleaseWiring(unittest.TestCase):
-    """The release (VIZ_ENV, VIZ_SHA) is written onto the revision, compared
-    before a skip, and asserted by the gate (task 016, rules R2 to R5; R1 is
-    `test_the_build_has_no_build_args`). These tests read the workflow as
-    text and shell: they do not prove the script's values (release-values.test.sh
-    does) nor that the page serves them (rollout-check.sh does)."""
+class ImageJobPermissions(unittest.TestCase):
+    """(b) The job that builds has `packages: write` and `contents: read`, and no `id-token`."""
 
-    FLAG = '--update-env-vars "$(scripts/release-values.sh)"'
-    SAME = 'scripts/release-values.sh same <<<"$REVISION_JSON" || RELEASE_RC=$?'
-    ENV = 'ROLLOUT_EXPECT_ENV="$(scripts/release-values.sh env)"\n'
-    SHA = 'ROLLOUT_EXPECT_SHA="$(scripts/release-values.sh sha)"\n'
-    ARM = (
-        '          if [ "$rc" = 8 ]; then\n'
-        '            echo "::error::another release than the one deployed"\n'
-        '            exit 1\n'
-        '          elif'
+    JOB = "    permissions:\n      contents: read\n      packages: write\n"
+
+    def found(self, bad):
+        return only(violations(bad), "job-permissions")
+
+    def test_the_build_job_needs_packages_write(self):
+        found = self.found(mutate(self.JOB, "    permissions:\n      contents: read\n"))
+        self.assertTrue(any("packages: write" in v for v in found), found)
+
+    def test_a_build_job_without_permissions_is_refused(self):
+        found = self.found(mutate(self.JOB, ""))
+        self.assertTrue(any("packages: write" in v for v in found), found)
+
+    def test_the_build_job_needs_contents_read(self):
+        found = self.found(mutate(self.JOB, "    permissions:\n      packages: write\n"))
+        self.assertTrue(any("contents: read" in v for v in found), found)
+
+    def test_the_build_job_has_no_id_token(self):
+        found = self.found(mutate(self.JOB, self.JOB + "      id-token: none\n"))
+        self.assertTrue(any("id-token" in v for v in found), found)
+
+    def test_packages_read_is_not_enough(self):
+        found = self.found(mutate("packages: write", "packages: read"))
+        self.assertTrue(any("packages: write" in v for v in found), found)
+
+    def test_the_good_deploy_names_none(self):
+        self.assertEqual(self.found(GOOD_DEPLOY), [])
+
+
+class GhcrLogin(unittest.TestCase):
+    """(c) A docker/login-action on ghcr.io with the actor and the GITHUB_TOKEN, before the build, and no other registry."""
+
+    STEP = (
+        "      - uses: docker/login-action@v3\n"
+        "        with:\n"
+        "          registry: ghcr.io\n"
+        "          username: ${{ github.actor }}\n"
+        "          password: ${{ secrets.GITHUB_TOKEN }}\n"
     )
 
-    def test_the_release_blocks_are_in_the_good_fixture(self):
-        for part in (self.FLAG, self.SAME, self.ENV, self.SHA, self.ARM):
-            self.assertIn(part, GOOD_DEPLOY, part)
+    def found(self, bad):
+        return only(violations(bad), "login")
 
-    def test_set_env_vars_is_refused_anywhere(self):
-        # R2: it replaces every variable and would wipe RUST_LOG and the
-        # origin secret reference. A comment naming the flag is not a use.
-        bad = mutate("--update-env-vars", "--set-env-vars")
-        found = violations(bad)
-        self.assertTrue(any("--set-env-vars" in v and "never" in v for v in found), found)
+    def test_the_step_is_in_the_good_fixture(self):
+        self.assertIn(self.STEP, GOOD_DEPLOY)
 
-    def test_set_env_vars_in_another_step_is_refused(self):
-        bad = mutate("      - name: rollout\n", "      - name: other\n        run: gcloud run services update svc --set-env-vars A=b\n      - name: rollout\n")
-        found = violations(bad)
-        self.assertTrue(any("--set-env-vars" in v and "never" in v for v in found), found)
+    def test_a_build_without_a_login_is_refused(self):
+        found = self.found(mutate(self.STEP, ""))
+        self.assertTrue(any("ghcr.io" in v for v in found), found)
 
-    def test_a_comment_naming_set_env_vars_is_not_a_use(self):
-        self.assertIn("# --set-env-vars is a flag", GOOD_DEPLOY)
-        self.assertEqual([v for v in violations() if "--set-env-vars" in v], [])
+    def test_the_registry_must_be_ghcr(self):
+        found = self.found(mutate("registry: ghcr.io", "registry: docker.io"))
+        self.assertTrue(any("registry" in v for v in found), found)
 
-    def test_the_deploy_writes_the_release(self):
-        # R3
-        bad = mutate(' \\\n            ' + self.FLAG, "")
-        found = violations(bad)
-        self.assertTrue(any("--update-env-vars" in v and "release-values.sh" in v for v in found), found)
+    def test_a_login_without_a_registry_goes_to_docker_hub(self):
+        found = self.found(mutate("          registry: ghcr.io\n", ""))
+        self.assertTrue(any("registry" in v for v in found), found)
 
-    def test_the_deploy_writes_the_script_s_value_not_a_literal(self):
-        bad = mutate(self.FLAG, '--update-env-vars "VIZ_ENV=main"')
-        found = violations(bad)
-        self.assertTrue(any("--update-env-vars" in v and "release-values.sh" in v for v in found), found)
+    def test_the_username_is_the_actor(self):
+        found = self.found(mutate("username: ${{ github.actor }}", "username: someone"))
+        self.assertTrue(any("username" in v for v in found), found)
 
-    def test_a_workflow_with_no_deploy_command_is_refused(self):
-        bad = mutate("gcloud run deploy svc", "gcloud run services update svc")
-        found = violations(bad)
-        self.assertTrue(any("gcloud run deploy" in v for v in found), found)
+    def test_the_password_is_the_github_token(self):
+        found = self.found(mutate("password: ${{ secrets.GITHUB_TOKEN }}", "password: ${{ secrets.PAT }}"))
+        self.assertTrue(any("password" in v for v in found), found)
 
-    def test_the_skip_compares_the_release(self):
-        # R4
-        bad = mutate(self.SAME, "true")
-        found = violations(bad)
-        self.assertTrue(any("release-values.sh same" in v for v in found), found)
+    def test_the_login_comes_before_the_build(self):
+        late = mutate(self.STEP, "").replace(
+            "      - name: release tag\n", self.STEP + "      - name: release tag\n", 1)
+        found = self.found(late)
+        self.assertTrue(any("before" in v for v in found), found)
 
-    def test_the_gate_is_given_the_expected_env(self):
-        # R5
-        found = violations(mutate(self.ENV, ""))
-        self.assertTrue(any("ROLLOUT_EXPECT_ENV" in v for v in found), found)
+    def test_a_second_login_to_another_registry_is_refused(self):
+        other = self.STEP.replace("ghcr.io", "registry.example.com")
+        found = self.found(mutate(self.STEP, self.STEP + other))
+        self.assertTrue(any("registry.example.com" in v for v in found), found)
 
-    def test_the_gate_is_given_the_expected_sha(self):
-        found = violations(mutate(self.SHA, ""))
-        self.assertTrue(any("ROLLOUT_EXPECT_SHA" in v for v in found), found)
+    def test_a_docker_login_in_a_run_is_refused(self):
+        found = self.found(mutate("test -n \"$DIGEST\"", "docker login ghcr.io -u x --password-stdin"))
+        self.assertTrue(any("docker login" in v for v in found), found)
 
-    def test_the_expectation_comes_from_the_script(self):
-        bad = mutate(self.ENV, 'ROLLOUT_EXPECT_ENV=main\n')
-        found = violations(bad)
-        self.assertTrue(any("ROLLOUT_EXPECT_ENV" in v for v in found), found)
-
-    def test_the_expectation_is_set_before_the_call(self):
-        late = mutate(self.ENV + "          " + self.SHA, "").replace(
-            'if [ "$rc" = 8 ]; then', self.ENV + "          " + self.SHA + '          if [ "$rc" = 8 ]; then', 1)
-        found = violations(late)
-        self.assertTrue(any("before" in v and "ROLLOUT_EXPECT" in v for v in found), found)
-
-    def test_the_gate_has_an_arm_for_exit_8(self):
-        bad = mutate(self.ARM, "          if false; then\n            exit 1\n          elif")
-        found = violations(bad)
-        self.assertTrue(any("exit 8" in v for v in found), found)
-
-    def test_the_exit_8_arm_ends_in_an_error_annotation(self):
-        found = violations(mutate('echo "::error::another release than the one deployed"', 'echo "another release"'))
-        self.assertTrue(any("exit 8" in v and "::error::" in v for v in found), found)
-
-    def test_the_exit_8_arm_ends_in_an_exit(self):
-        bad = mutate('echo "::error::another release than the one deployed"\n            exit 1\n',
-                     'echo "::error::another release than the one deployed"\n')
-        found = violations(bad)
-        self.assertTrue(any("exit 8" in v and "exit" in v for v in found), found)
-
-    def test_the_other_calls_need_no_expectation(self):
-        # The design: --via-worker and --refused read neither variable.
-        bad = mutate(self.ENV, "").replace(self.SHA, "")
-        found = [v for v in violations(bad) if "--via-worker" in v or "--refused" in v]
-        self.assertEqual(found, [])
+    def test_the_good_deploy_names_none(self):
+        self.assertEqual(self.found(GOOD_DEPLOY), [])
 
 
-class ServingRevision(unittest.TestCase):
-    """The skip and the rollback look at the revision that serves (D7, D11)."""
+class ImageRefs(unittest.TestCase):
+    """(d) The image is ghcr.io/palicanon/..., tagged with the `h-` hash and with the release tag (github.ref_name)."""
 
-    SERVING = '$(gcloud run services describe svc --format json | scripts/serving-revision.sh) || { echo "::error::no revision serves svc"; exit 1; }'
+    HASH = "            ${{ steps.vars.outputs.image_hash }}\n"
+    RELEASE = "            ${{ steps.vars.outputs.image }}:${{ github.ref_name }}\n"
 
-    def test_the_skip_compares_the_revision_that_serves_not_the_spec(self):
-        bad = mutate(self.SERVING, "$(gcloud run services describe svc --format='value(spec.template.spec.containers[0].image)')")
-        self.assertTrue(any("serving revision" in v for v in violations(bad)), violations(bad))
+    def found(self, bad):
+        return only(violations(bad), "image-refs")
 
-    def test_the_serving_revision_is_read_by_the_script_that_knows_latest_revision(self):
-        # The inline jq of before read `.revisionName` only: empty for a
-        # service that follows the latest revision (what tofu creates).
-        inline = "$(gcloud run services describe svc --format json | jq -r '[.status.traffic[] | select(.percent == 100) | .revisionName] | .[0] // empty')"
-        bad = mutate(self.SERVING, inline)
-        self.assertTrue(any("serving-revision.sh" in v for v in violations(bad)), violations(bad))
+    def test_the_tags_are_in_the_good_fixture(self):
+        self.assertIn(self.HASH + self.RELEASE, GOOD_DEPLOY)
 
-    def test_an_empty_serving_revision_fails_the_job_loudly(self):
-        bad = mutate(self.SERVING, "$(gcloud run services describe svc --format json | scripts/serving-revision.sh)")
-        self.assertTrue(any("::error::" in v and "serving" in v for v in violations(bad)), violations(bad))
+    def test_the_image_is_under_ghcr_palicanon(self):
+        found = self.found(mutate("IMAGE=ghcr.io/palicanon/vizualisation", "IMAGE=ghcr.io/someone/vizualisation"))
+        self.assertTrue(any("ghcr.io/palicanon/" in v for v in found), found)
 
-    def test_the_pipe_to_the_script_is_not_masked(self):
-        bad = mutate("set -euo pipefail\n          REV=", "set -eu\n          REV=")
-        self.assertTrue(any("pipefail" in v for v in violations(bad)), violations(bad))
+    def test_the_image_is_not_another_registry(self):
+        found = self.found(mutate("IMAGE=ghcr.io/palicanon/vizualisation", "IMAGE=docker.io/palicanon/vizualisation"))
+        self.assertTrue(any("ghcr.io/palicanon/" in v for v in found), found)
 
-    def test_the_skip_reads_the_image_of_that_revision(self):
-        bad = mutate("gcloud run revisions describe", "gcloud run services describe")
-        self.assertTrue(any("serving revision" in v for v in violations(bad)), violations(bad))
+    def test_the_build_is_tagged_with_the_hash(self):
+        found = self.found(mutate(self.HASH, ""))
+        self.assertTrue(any("hash tag" in v for v in found), found)
 
-    def test_the_serving_revision_is_recorded_before_the_traffic_moves(self):
-        bad = mutate('          echo "serving=$REV" >> "$GITHUB_OUTPUT"\n', "")
-        self.assertTrue(any("serving=" in v for v in violations(bad)), violations(bad))
+    def test_the_build_is_tagged_with_the_release(self):
+        found = self.found(mutate(self.RELEASE, ""))
+        self.assertTrue(any("github.ref_name" in v for v in found), found)
 
-    def test_a_failed_public_check_moves_the_traffic_back(self):
-        bad = mutate('gcloud run services update-traffic svc --to-revisions="$PREVIOUS=100" || echo "::error::rollback to $PREVIOUS failed"', "true")
-        self.assertTrue(any("roll" in v and "back" in v for v in violations(bad)), violations(bad))
+    def test_the_release_tag_is_the_ref_not_the_commit(self):
+        found = self.found(mutate(":${{ github.ref_name }}\n", ":${{ github.sha }}\n"))
+        self.assertTrue(any("github.ref_name" in v for v in found), found)
 
-    def test_the_rollback_goes_to_the_recorded_revision(self):
-        bad = mutate("PREVIOUS: ${{ steps.current.outputs.serving }}", "PREVIOUS: ${{ github.sha }}")
-        self.assertTrue(any("roll" in v and "back" in v for v in violations(bad)), violations(bad))
+    def test_a_build_with_no_tags_is_refused(self):
+        found = self.found(mutate(self.HASH + self.RELEASE, "            ghcr.io/palicanon/vizualisation:latest\n"))
+        self.assertEqual(len(found), 2, found)
 
-    def test_a_cloudflare_challenge_does_not_move_the_traffic_back(self):
-        bad = mutate('echo "::warning::challenged"',
-                     'echo "::warning::challenged"; gcloud run services update-traffic svc --to-revisions="$PREVIOUS=100"')
-        self.assertTrue(any("challenge" in v and "back" in v for v in violations(bad)), violations(bad))
+    def test_the_hash_is_computed_by_the_script(self):
+        found = self.found(mutate("TAG=$(scripts/image-hash.sh ../ui-lib)", "TAG=latest"))
+        self.assertTrue(any("image-hash.sh" in v for v in found), found)
+
+    def test_the_good_deploy_names_none(self):
+        self.assertEqual(self.found(GOOD_DEPLOY), [])
 
 
-class RollbackFailure(unittest.TestCase):
-    """A rollback that fails must not hide the check's exit code (set -e)."""
+class SourceLabel(unittest.TestCase):
+    """(e) The image carries `org.opencontainers.image.source=`, which links the package to the repository."""
 
-    GUARD = ' || echo "::error::rollback to $PREVIOUS failed"'
-
-    def test_a_rollback_that_can_abort_the_step_is_refused(self):
-        bad = mutate(self.GUARD, "")
-        self.assertTrue(any("mask" in v for v in violations(bad)), violations(bad))
-
-    def test_the_failed_rollback_is_reported_as_an_error(self):
-        bad = mutate(self.GUARD, " || true")
-        self.assertTrue(any("mask" in v for v in violations(bad)), violations(bad))
-
-    def test_the_step_still_ends_with_the_checks_exit_code(self):
-        bad = mutate('            exit "$rc"\n          fi\n          rc=0\n',
-                     "          fi\n          rc=0\n")
-        self.assertTrue(any("exit" in v and "code" in v for v in violations(bad)), violations(bad))
-
-
-class WorkerFiveHundred(unittest.TestCase):
-    """The Worker's own 500 (exit 4) names its remedy and rolls nothing back."""
-
-    LINE = 'echo "::error::the Worker answered 500 — run infra/scripts/origin-secret push $ENV"'
-    ROLLBACK = 'gcloud run services update-traffic svc --to-revisions="$PREVIOUS=100" || echo "::error::rollback to $PREVIOUS failed"'
-
-    def test_the_arm_for_exit_4_must_exist(self):
-        bad = mutate('          elif [ "$rc" = 4 ]; then\n            ' + self.LINE + '\n            exit "$rc"\n', "")
-        self.assertTrue(any("exit 4" in v for v in violations(bad)), violations(bad))
-
-    def test_the_arm_for_exit_4_names_the_remedy(self):
-        bad = mutate(self.LINE, 'echo "::error::the Worker answered 500"')
-        self.assertTrue(any("origin-secret push" in v for v in violations(bad)), violations(bad))
-
-    def test_the_arm_for_exit_4_is_an_error_annotation(self):
-        bad = mutate(self.LINE, 'echo "the Worker answered 500 — run infra/scripts/origin-secret push $ENV"')
-        self.assertTrue(any("origin-secret push" in v for v in violations(bad)), violations(bad))
-
-    def test_a_worker_500_does_not_move_the_traffic_back(self):
-        bad = mutate(self.LINE, self.LINE + "; " + self.ROLLBACK)
-        found = violations(bad)
-        self.assertTrue(any("Worker" in v and "back" in v for v in found), found)
-
-    def test_a_worker_500_still_ends_with_the_exit_code(self):
-        bad = mutate('echo "::error::the Worker answered 500 — run infra/scripts/origin-secret push $ENV"\n            exit "$rc"\n',
-                     'echo "::error::the Worker answered 500 — run infra/scripts/origin-secret push $ENV"\n')
-        self.assertTrue(any("exit 4" in v for v in violations(bad)), violations(bad))
-
-
-class RefusedOrigin(unittest.TestCase):
-    """A bare *.run.app that answers fails the job and moves NO traffic (D13, round 3).
-
-    Both revisions boot from the same env: a rollback restores nothing, so the
-    job fails naming the missing `ORIGIN_SECRET` env of the service.
-    """
-
-    CALL = 'scripts/rollout-check.sh --refused "$SERVICE_URL" || rc=$?'
-    ERROR = (
-        'echo "::error::the bare origin answers — the service\'s ORIGIN_SECRET env is missing '
-        'or empty (infra: the secret reference); traffic left as is"'
-    )
-    BLOCK = (
-        '          rc=0\n'
-        f'          {CALL}\n'
-        '          if [ "$rc" != 0 ]; then\n'
-        f'            {ERROR}\n'
-        '            exit "$rc"\n'
-        '          fi\n'
+    LABELS = (
+        "          labels: |\n"
+        "            org.opencontainers.image.source=https://github.com/${{ github.repository }}\n"
     )
 
-    def test_the_block_is_in_the_good_fixture(self):
-        self.assertIn(self.BLOCK, GOOD_DEPLOY)
+    def found(self, bad):
+        return only(violations(bad), "labels")
 
-    def test_an_origin_that_answers_moves_no_traffic_back(self):
-        bad = mutate(self.BLOCK, self.BLOCK.replace(self.ERROR, self.ERROR + "\n            rollback"))
-        found = violations(bad)
-        self.assertTrue(any("refused" in v and "no rollback" in v for v in found), found)
+    def test_a_build_without_labels_is_refused(self):
+        found = self.found(mutate(self.LABELS, ""))
+        self.assertTrue(any("org.opencontainers.image.source=" in v for v in found), found)
 
-    def test_a_direct_rollback_in_the_refused_arm_is_caught_too(self):
-        direct = 'gcloud run services update-traffic svc --to-revisions="$PREVIOUS=100" || echo "::error::rollback to $PREVIOUS failed"'
-        bad = mutate(self.BLOCK, self.BLOCK.replace(self.ERROR, self.ERROR + "\n            " + direct))
-        found = violations(bad)
-        self.assertTrue(any("refused" in v and "no rollback" in v for v in found), found)
+    def test_another_label_does_not_link_the_package(self):
+        found = self.found(mutate("org.opencontainers.image.source=", "org.opencontainers.image.title="))
+        self.assertTrue(any("org.opencontainers.image.source=" in v for v in found), found)
 
-    def test_a_rollback_on_exit_1_of_the_refused_check_is_caught(self):
-        bad = mutate(self.BLOCK, self.BLOCK.replace(self.ERROR, 'if [ "$rc" = 1 ]; then rollback; fi'))
-        found = violations(bad)
-        self.assertTrue(any("refused" in v and "no rollback" in v for v in found), found)
-
-    def test_a_bare_refused_call_does_not_fail_the_job(self):
-        bad = mutate(self.BLOCK, '          scripts/rollout-check.sh --refused "$SERVICE_URL"\n')
-        found = violations(bad)
-        self.assertTrue(any("refused" in v and "::error::" in v for v in found), found)
-
-    def test_the_error_names_the_missing_origin_secret_env(self):
-        bad = mutate(self.ERROR, 'echo "::error::the bare origin answers"')
-        found = violations(bad)
-        self.assertTrue(any("refused" in v and "ORIGIN_SECRET" in v for v in found), found)
-
-    def test_the_error_is_an_annotation(self):
-        bad = mutate(self.ERROR, self.ERROR.replace("::error::", ""))
-        found = violations(bad)
-        self.assertTrue(any("refused" in v and "::error::" in v for v in found), found)
-
-    def test_the_refused_arm_still_ends_with_the_exit_code(self):
-        bad = mutate(self.BLOCK, self.BLOCK.replace('            exit "$rc"\n', ""))
-        found = violations(bad)
-        self.assertTrue(any("refused" in v and "exit" in v for v in found), found)
+    def test_the_good_deploy_names_none(self):
+        self.assertEqual(self.found(GOOD_DEPLOY), [])
 
 
-class RollbackFunction(unittest.TestCase):
-    """`rollback` is one function called from several arms: its arms are the callers'."""
+class ExistenceCheck(unittest.TestCase):
+    """(f) `docker buildx imagetools inspect` tells whether the image exists, and the build is skipped when it does."""
 
-    CALL = 'if [ "$rc" = 1 ]; then rollback; fi'
+    INSPECT = 'docker buildx imagetools inspect "$IMAGE_HASH" >/dev/null 2>&1'
+    BUILDX = "      - uses: docker/setup-buildx-action@v3\n"
 
-    def test_a_function_nobody_calls_rolls_nothing_back(self):
-        bad = GOOD_DEPLOY.replace(self.CALL, "true")
-        self.assertNotIn(self.CALL, bad)
-        found = violations(bad)
-        self.assertTrue(any("roll" in v and "back" in v for v in found), found)
+    def found(self, bad):
+        return only(violations(bad), "existence")
 
-    def test_a_call_in_the_challenge_arm_is_caught(self):
-        bad = mutate('echo "::warning::challenged"', 'echo "::warning::challenged"; rollback')
-        found = violations(bad)
-        self.assertTrue(any("challenge" in v and "back" in v for v in found), found)
+    def test_the_check_reads_the_manifest_with_buildx(self):
+        found = self.found(mutate(self.INSPECT, 'docker manifest inspect "$IMAGE_HASH" >/dev/null 2>&1'))
+        self.assertTrue(any("imagetools inspect" in v for v in found), found)
 
-    def test_a_call_in_the_worker_500_arm_is_caught(self):
-        bad = mutate(WorkerFiveHundred.LINE, WorkerFiveHundred.LINE + "; rollback")
-        found = violations(bad)
-        self.assertTrue(any("Worker" in v and "back" in v for v in found), found)
+    def test_the_check_is_not_only_a_comment(self):
+        found = self.found(mutate(self.INSPECT, "false"))
+        self.assertTrue(any("imagetools inspect" in v for v in found), found)
 
-    def test_a_call_outside_every_arm_is_caught(self):
-        bad = mutate(self.CALL, "true").replace("rc=0\n          scripts/rollout-check.sh --via-worker", "rollback\n          rc=0\n          scripts/rollout-check.sh --via-worker", 1)
-        found = violations(bad)
-        self.assertTrue(any("refusal" in v for v in found), found)
+    def test_the_build_is_skipped_when_the_image_exists(self):
+        found = self.found(mutate("        if: steps.check-image.outputs.exists != 'true'\n", ""))
+        self.assertTrue(any("exists != 'true'" in v for v in found), found)
 
+    def test_the_skip_reads_the_output_of_the_check(self):
+        found = self.found(mutate("steps.check-image.outputs.exists != 'true'", "steps.vars.outputs.exists != 'true'"))
+        self.assertTrue(any("exists != 'true'" in v for v in found), found)
 
-class RollbackArm(unittest.TestCase):
-    """The rollback sits in the arm whose condition is the refusal exit code."""
+    def test_the_skip_is_not_inverted(self):
+        bad = mutate("        if: steps.check-image.outputs.exists != 'true'\n", "        if: steps.check-image.outputs.exists == 'true'\n")
+        found = self.found(bad)
+        self.assertTrue(any("exists != 'true'" in v for v in found), found)
 
-    ARMS = (
-        '          if [ "$rc" = 3 ]; then\n'
-        '            echo "::warning::challenged"\n'
-        '          elif [ "$rc" = 4 ]; then\n'
-        '            echo "::error::the Worker answered 500 — run infra/scripts/origin-secret push $ENV"\n'
-        '            exit "$rc"\n'
-        '          elif [ "$rc" != 0 ]; then\n'
-        '            if [ "$rc" = 1 ]; then rollback; fi\n'
-        '            exit "$rc"\n'
-        '          fi\n'
-    )
-    ROLLBACK = 'gcloud run services update-traffic svc --to-revisions="$PREVIOUS=100" || echo "::error::rollback to $PREVIOUS failed"'
+    def test_buildx_is_set_up_before_the_check(self):
+        late = mutate(self.BUILDX, "").replace(
+            "      - uses: docker/build-push-action@v6\n", self.BUILDX + "      - uses: docker/build-push-action@v6\n", 1)
+        found = self.found(late)
+        self.assertTrue(any("setup-buildx-action" in v and "before" in v for v in found), found)
 
-    def back(self, found):
-        return [v for v in found if "roll" in v and "back" in v]
+    def test_buildx_is_set_up_unconditionally(self):
+        bad = mutate(self.BUILDX, self.BUILDX + "        if: steps.vars.outputs.tag != ''\n")
+        found = self.found(bad)
+        self.assertTrue(any("setup-buildx-action" in v and "if" in v for v in found), found)
 
-    def test_the_arms_of_the_good_fixture_are_what_these_tests_swap(self):
-        self.assertIn(self.ARMS, GOOD_DEPLOY)
+    def test_buildx_must_be_set_up(self):
+        found = self.found(mutate(self.BUILDX, ""))
+        self.assertTrue(any("setup-buildx-action" in v for v in found), found)
 
-    def test_swapping_the_bodies_of_the_arms_is_caught(self):
-        swapped = (
-            '          if [ "$rc" = 3 ]; then\n'
-            f"            {self.ROLLBACK}\n"
-            '          elif [ "$rc" != 0 ]; then\n'
-            '            echo "::warning::challenged"\n'
-            '            exit "$rc"\n'
-            "          fi\n"
-        )
-        found = self.back(violations(mutate(self.ARMS, swapped)))
-        self.assertTrue(any("challenge" in v for v in found), found)
-
-    def test_a_rollback_on_any_failure_not_only_a_refusal_is_caught(self):
-        bare = self.ARMS.replace(
-            'if [ "$rc" = 1 ]; then rollback; fi', self.ROLLBACK
-        )
-        self.assertNotEqual(bare, self.ARMS)
-        found = self.back(violations(mutate(self.ARMS, bare)))
-        self.assertTrue(any("refusal" in v for v in found), found)
-
-    def test_a_rollback_outside_every_arm_is_caught(self):
-        outside = (
-            self.ARMS.replace(
-                'if [ "$rc" = 1 ]; then rollback; fi', "true"
-            )
-            + f"          {self.ROLLBACK}\n"
-        )
-        found = self.back(violations(mutate(self.ARMS, outside)))
-        self.assertTrue(any("refusal" in v for v in found), found)
-
-    def test_the_arm_is_found_whatever_the_layout(self):
-        # The refusal block on several lines, the rollback not on the line of
-        # its `if`: still inside the arm, so still clean.
-        spread = self.ARMS.replace(
-            'if [ "$rc" = 1 ]; then rollback; fi',
-            f'if [ "$rc" = 1 ]; then\n              {self.ROLLBACK}\n            fi',
-        )
-        self.assertNotEqual(spread, self.ARMS)
-        # No call of the function is left: its body is the one in the arm.
-        inline = re.sub(
-            r"rollback\(\) \{.*?\n          \}", "rollback() {\n            true\n          }",
-            mutate(self.ARMS, spread), count=1, flags=re.S,
-        )
-        self.assertEqual(violations(inline), [])
+    def test_the_good_deploy_names_none(self):
+        self.assertEqual(self.found(GOOD_DEPLOY), [])
 
 
-class RollbackOutcome(unittest.TestCase):
-    """The rollback is observed: the previous revision serves 100%, else exit 5 (round 3)."""
+class DigestSummary(unittest.TestCase):
+    """(g) A step after the build writes the image's digest to `$GITHUB_STEP_SUMMARY`: what the stack is updated with."""
 
-    READ = '            NOW=$(gcloud run services describe svc --format json | scripts/serving-revision.sh) || NOW=""\n'
-    BRANCH = (
-        '            if [ "$NOW" != "$PREVIOUS" ]; then\n'
-        '              echo "::error::rollback did not restore $PREVIOUS"\n'
-        '              exit 5\n'
-        '            fi\n'
-    )
+    LINE = '          echo "digest: $IMAGE@$DIGEST" >> "$GITHUB_STEP_SUMMARY"\n'
 
-    def test_the_outcome_is_in_the_good_fixture(self):
-        self.assertIn(self.READ + self.BRANCH, GOOD_DEPLOY)
+    def found(self, bad):
+        return only(violations(bad), "summary")
 
-    def test_a_rollback_that_is_not_observed_is_caught(self):
-        found = violations(mutate(self.READ + self.BRANCH, ""))
-        self.assertTrue(any("rollback" in v and "exit 5" in v for v in found), found)
+    def test_a_deploy_without_a_summary_is_refused(self):
+        found = self.found(mutate(self.LINE, ""))
+        self.assertTrue(any("GITHUB_STEP_SUMMARY" in v for v in found), found)
 
-    def test_the_traffic_is_read_after_the_rollback(self):
-        found = violations(mutate(self.READ, ""))
-        self.assertTrue(any("rollback" in v and "status.traffic" in v for v in found), found)
+    def test_the_summary_must_hold_the_digest(self):
+        found = self.found(mutate('echo "digest: $IMAGE@$DIGEST" >> ', 'echo "built" >> '))
+        self.assertTrue(any("digest" in v for v in found), found)
 
-    def test_the_traffic_is_read_by_the_serving_revision_script(self):
-        bad = mutate(self.READ, '            NOW=$(gcloud run services describe svc --format="value(status.url)") || NOW=""\n')
-        found = violations(bad)
-        self.assertTrue(any("rollback" in v and "status.traffic" in v for v in found), found)
+    def test_the_digest_is_pinned_to_the_image_with_an_at_sign(self):
+        found = self.found(mutate("$IMAGE@$DIGEST", "$IMAGE:$DIGEST"))
+        self.assertTrue(any("@" in v for v in found), found)
 
-    def test_a_read_before_the_rollback_does_not_count(self):
-        update = '            gcloud run services update-traffic svc --to-revisions="$PREVIOUS=100" || echo "::error::rollback to $PREVIOUS failed"\n'
-        bad = mutate(update + self.READ, self.READ + update)
-        found = violations(bad)
-        self.assertTrue(any("rollback" in v and "status.traffic" in v for v in found), found)
+    def test_the_summary_comes_after_the_build(self):
+        at = GOOD_DEPLOY.index("      - name: summary\n")
+        summary = GOOD_DEPLOY[at:]
+        build = "      - uses: docker/build-push-action@v6\n"
+        early = GOOD_DEPLOY[:at].replace(build, summary + build, 1)
+        found = self.found(early)
+        self.assertTrue(any("after" in v for v in found), found)
 
-    def test_a_failed_rollback_ends_with_exit_5(self):
-        found = violations(mutate("              exit 5\n", "              exit 1\n"))
-        self.assertTrue(any("rollback" in v and "exit 5" in v for v in found), found)
-
-    def test_the_failure_is_an_error_annotation_naming_the_revision(self):
-        bad = mutate('echo "::error::rollback did not restore $PREVIOUS"', 'echo "rollback did not restore $PREVIOUS"')
-        found = violations(bad)
-        self.assertTrue(any("rollback" in v and "did not restore" in v for v in found), found)
-
-    def test_exit_5_outside_the_rollback_function_is_caught(self):
-        outside = mutate(self.BRANCH, "").replace(
-            'echo "::warning::challenged"', 'echo "::warning::challenged"; exit 5', 1
-        )
-        found = violations(outside)
-        self.assertTrue(any("rollback" in v and "exit 5" in v for v in found), found)
-
-    def test_the_checks_exit_code_still_follows_the_rollback(self):
-        # The success path leaves the function and the arm goes on to its exit.
-        bad = mutate('            if [ "$rc" = 1 ]; then rollback; fi\n            exit "$rc"\n          fi\n          rc=0\n',
-                     '            if [ "$rc" = 1 ]; then rollback; fi\n          fi\n          rc=0\n')
-        found = violations(bad)
-        self.assertTrue(any("exit" in v and "code" in v for v in found), found)
+    def test_the_good_deploy_names_none(self):
+        self.assertEqual(self.found(GOOD_DEPLOY), [])
 
 
 class NodeTestArguments(unittest.TestCase):
@@ -803,7 +639,7 @@ class EveryTestFileHasItsStep(unittest.TestCase):
         root = pathlib.Path(__file__).resolve().parent.parent
         files = cw.test_files(root)
         self.assertIn("scripts/check_workflows_test.py", files)
-        self.assertIn("scripts/serving-revision.test.sh", files)
+        self.assertIn("scripts/manifest-ref.test.sh", files)
 
     def test_a_repository_whose_ci_runs_no_test_is_refused(self):
         import tempfile

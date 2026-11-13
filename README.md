@@ -5,8 +5,8 @@ parallels, and a vectorial space built on the Pāli text. A Cargo workspace, in 
 `002 design` v4, tasks 004–008 in `.task/`; the React site it replaced was removed in task 008):
 
 - `app/` (package `vizualisation`): the Leptos app (SSR + hydrate) on
-  [`PaliCanon/ui-lib`](https://github.com/PaliCanon/ui-lib), served by Cloud Run (prod
-  on the lsh-tech server) — its shell, routes, footer pages, gates and deploy (005) and the map screen
+  [`PaliCanon/ui-lib`](https://github.com/PaliCanon/ui-lib), served from the
+  lsh-tech server — its shell, routes, footer pages, gates and deploy (005) and the map screen
   (006): each view at its path (`/` SuttaCentral, `/sim` the vectorial space), each text at
   `/<view>/<uid>` with its panel rendered by the server (a uid in no view is a 404), `?th=` the
   threshold, the browser's history the trail of texts visited; the legend and the texts' language
@@ -21,7 +21,7 @@ parallels, and a vectorial space built on the Pāli text. A Cargo workspace, in 
 - `i18n-check/`: the placeholder-parity check of the app's catalogue, for `app/build.rs`.
 
 Beside them: the data files (`public/`, committed), the deploy's scripts and their tests
-(`scripts/`), the infra (`infra/`, OpenTofu). The repository holds no JavaScript file (`scripts/no_js_test.py`). **Never holds**: SuttaCentral's
+(`scripts/`), the leftover `infra/` (OpenTofu, no managed resource). The repository holds no JavaScript file (`scripts/no_js_test.py`). **Never holds**: SuttaCentral's
 clones (`data/`, made by `scripts/fetch-data.sh`), pali-embedder's vectors, any secret.
 
 Comments that cite `src/…` (`src/App.tsx`, `src/locales/…`) or `scripts/*.mjs` name the React
@@ -38,9 +38,9 @@ VIZ_GATE=off cargo leptos watch
 ```
 
 `VIZ_GATE` is required at every boot: `off` locally and in every deployment (`password`, with
-`DEV_PASSWORD`, is still in the app, but no deployment uses it). Cloud Run (`K_SERVICE` present,
-even empty) also requires `ORIGIN_SECRET`. On other hosts, including `LEPTOS_ENV=PROD` behind a private
-Cloudflare tunnel, the origin secret is optional: a value enables the guard,
+`DEV_PASSWORD`, is still in the app, but no deployment uses it). Where `K_SERVICE` is present (even empty; Cloud Run,
+which prod no longer uses) `ORIGIN_SECRET` is also required. On other hosts, including `LEPTOS_ENV=PROD`
+behind a private Cloudflare tunnel (prod), the origin secret is optional: a value enables the guard,
 absence disables it, and a blank secret always refuses startup. `VIZ_GATE`
 remains required on every host. Invalid configuration stops boot, naming the
 variable, never its value. Set `VIZ_DEPLOYMENT_ENV=production` for production log metadata on the tunnel host. **No `.env` file.**
@@ -93,8 +93,8 @@ Every event carries `service.namespace: palicanon`, `service.name: map`,
 `VIZ_SHA`, `deployment.environment.name`, `runtime`, `timestamp`, `severity`
 and `event.name`. The release is the footer badge's and the browser reads the
 same head metas. Deployment environment comes from `VIZ_DEPLOYMENT_ENV`
-(letters, digits, `_` or `-`, at most 64 characters), otherwise Cloud Run's
-`-dev` / `-prod` service suffix, or `development` locally. Missing browser
+(letters, digits, `_` or `-`, at most 64 characters), otherwise the `-dev` / `-prod`
+suffix of `K_SERVICE` (Cloud Run, dead in prod), or `development` locally. Missing browser
 metas mean `unknown`; the deployed tag is independent of this environment.
 
 Events cover lifecycle, data ready/load failures, admitted application HTTP
@@ -141,15 +141,12 @@ LEPTOS_OUTPUT_NAME=vizualisation LEPTOS_SITE_ROOT=target/site LEPTOS_SITE_PKG_DI
 ```
 
 The same in CI (`.github/workflows/ci.yml`, one job per group), plus `cargo check --locked` on Rust
-1.88 (the MSRV), coverage (`cargo llvm-cov`), the deploy's own tests and `tofu fmt`/`validate`:
+1.88 (the MSRV), coverage (`cargo llvm-cov`), the scripts' own tests and `tofu fmt`/`validate` of the leftover `infra/`:
 
 ```sh
 python3 scripts/check_workflows_test.py && python3 scripts/check_workflows.py
-python3 scripts/infra_probe_test.py
 python3 scripts/no_js_test.py
-bash scripts/manifest-ref.test.sh && bash scripts/serving-revision.test.sh
-bash infra/scripts/origin-secret.test.sh
-bash scripts/release-values.test.sh && bash infra/scripts/lifecycle.test.sh
+bash scripts/manifest-ref.test.sh
 (cd infra && tofu fmt -check -recursive && tofu init -backend=false && tofu validate)
 ```
 
@@ -168,19 +165,22 @@ Functions stay under 50 lines (`clippy.toml`).
 
 ## Deploy
 
-A push to `main` runs CI only; a `v*` tag deploys prod to Cloud Run (`vizualisation-prod`) —
-`.github/workflows/deploy.yml`, from search-front's. Public prod traffic is served from the
-lsh-tech server (`Lsh0x/lsh-tech`, `stacks/palicanon/prod`, images by digest); the Cloud Run
-service answers 403 to any request without the `x-origin-auth` secret. The dev environment (Cloud
-Run `vizualisation-dev`, its Worker, `map.dev.palicanon.app` and the password gate's secret) was
-removed (task 022): no deployment uses `VIZ_GATE=password` now. The image is built with no
-credential (`Dockerfile`): ui-lib is COPYed as a sibling checkout. CI's checkouts use a GitHub App
-token (`.github/actions/siblings`); the repository secrets are `APP_ID` and `APP_PRIVATE_KEY`, the
-variables `WIF_PROVIDER`, `DEPLOYER_SA` and `GCP_PROJECT`. The infra and the ordered first-time
-commands are in `infra/README.md` (OpenTofu, applied from the laptop, state prefix
-`vizualisation`, no `-var-file`: prod is the default). The public-host check
-(`scripts/rollout-check.sh --via-worker`) also loads `/`, `/sim/mn10` and `/privacy` in headless
-Chrome (`$CHROME`) and fails on a hydration panic or a page without `<html data-hydrated>`
-(search-front 017, ui-lib 063).
+A push to `main` runs CI only. A `v*` tag runs `.github/workflows/deploy.yml`, which builds the
+image (content-addressed tag `h-<hash>`, plus the release tag) and pushes it to GHCR,
+`ghcr.io/palicanon/vizualisation`. It deploys nothing: prod (map.palicanon.app) runs on the lsh-tech
+server (`Lsh0x/lsh-tech`, `stacks/palicanon/prod`), behind a Cloudflare tunnel, and its stack is updated
+by hand with the `ghcr.io/...@sha256:` digest and the `h-` tag that the job writes in its summary (the
+container is pulled by digest). The map has no API token. Cloud Run, the Cloudflare Worker and the dev
+environment (`vizualisation-dev`, `map.dev.palicanon.app`) are gone: no deployment uses
+`VIZ_GATE=password`. The Cloud Run branches stay in the app (the `K_SERVICE` origin guard,
+`ORIGIN_SECRET`, the `x-origin-auth` guard): dead in prod, harmless, removed later with the password
+gate. The image is built with no credential (`Dockerfile`): ui-lib is COPYed as a sibling checkout.
+CI's checkouts use a GitHub App token (`.github/actions/siblings`); the repository secrets are
+`APP_ID` and `APP_PRIVATE_KEY`. `infra/` holds nothing managed any more; what is left to do there is in
+`infra/README.md`. `scripts/rollout-check.sh` (still tested, with `--via-worker` and the headless Chrome
+page checks) targeted a Cloud Run revision or the Worker: no workflow calls it now.
 
-The footer badge is the deploy's, not the image's: `deploy.yml` writes `VIZ_ENV` (the tag `v0.1.8`) and `VIZ_SHA` (empty for a tag, else 7 characters) on the Cloud Run revision with `gcloud run deploy --update-env-vars` (never `--set-env-vars`, which would wipe `RUST_LOG`, `VIZ_GATE` and the `ORIGIN_SECRET` reference); the server reads them at start (absent: `dev`), writes two `<meta name="viz-release-...">` and the browser reads them back; `/health` says `ok <env>[ <sha>]`; `scripts/rollout-check.sh` asserts the metas before the traffic moves (exit 8). Tofu ignores the container env: `tofu apply` it before the first deploy that writes the env (`infra/README.md`). The Map fragment of the PaliCanon app has no footer, so no badge.
+The footer badge is the release's, not the image's: the server reads `VIZ_ENV` (the tag, e.g. `v0.1.8`)
+and `VIZ_SHA` at start (absent: `dev`), writes two `<meta name="viz-release-...">` and the browser reads
+them back; `/health` says `ok <env>[ <sha>]`. The Map fragment of the PaliCanon app has no footer, so
+no badge.
