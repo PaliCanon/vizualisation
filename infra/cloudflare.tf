@@ -10,8 +10,15 @@ data "cloudflare_zone" "site" {
   name = var.zone
 }
 
+# Prod runs on ssh.lsh.tech behind the lsh-tech tunnel (Lsh0x/lsh-tech,
+# stacks/palicanon/prod), which owns its DNS record: the Worker and its
+# Custom Domain exist for the other environments only.
+locals {
+  worker_envs = { for env, cfg in var.envs : env => cfg if env != "prod" }
+}
+
 resource "cloudflare_workers_script" "proxy" {
-  for_each   = var.envs
+  for_each   = local.worker_envs
   account_id = var.cloudflare_account_id
   name       = "vizualisation-${each.key}"
   content    = file("${path.module}/worker/proxy.js")
@@ -45,7 +52,7 @@ resource "cloudflare_workers_script" "proxy" {
 # creates the proxied DNS record itself and issues the certificate for the
 # exact host, so there is no record and no route to declare.
 resource "cloudflare_workers_domain" "app" {
-  for_each    = var.envs
+  for_each    = local.worker_envs
   account_id  = var.cloudflare_account_id
   zone_id     = data.cloudflare_zone.site.id
   hostname    = each.value.host
