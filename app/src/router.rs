@@ -96,6 +96,7 @@ pub fn router(options: LeptosOptions, config: Config, data: Arc<Data>) -> axum::
                 move || shell(options.clone())
             },
         )
+        .route_layer(axum::middleware::from_fn(crate::telemetry::server::request))
         .fallback(file_and_error_handler(shell))
         .with_state(options);
     // The site's files first, the app for everything else: `/:uid` (an open
@@ -107,6 +108,7 @@ pub fn router(options: LeptosOptions, config: Config, data: Arc<Data>) -> axum::
     let site = axum::Router::new()
         .route("/sitemap.xml", get(sitemap).with_state(served.clone()))
         .route("/data/{file}", get(data_file).with_state(served))
+        .route_layer(axum::middleware::from_fn(crate::telemetry::server::request))
         .fallback_service(files)
         .layer(axum::middleware::from_fn_with_state(
             Arc::new(config.gate),
@@ -117,6 +119,7 @@ pub fn router(options: LeptosOptions, config: Config, data: Arc<Data>) -> axum::
         // `z` (`/healthz`, `/livez`, `/readyz`) for itself and answers them with its
         // own 404, so the container never sees them (005's first rollout, 2026-10-16).
         .route(HEALTH_PATH, get(health).with_state(data))
+        .route_layer(axum::middleware::from_fn(crate::telemetry::server::request))
         .merge(site)
         .layer(axum::middleware::from_fn_with_state(
             Arc::new(config.origin),

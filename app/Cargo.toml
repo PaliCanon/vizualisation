@@ -24,13 +24,16 @@ leptos_router.workspace = true
 leptos_i18n = { version = "0.6.2", default-features = false }
 leptos_axum = { workspace = true, optional = true }
 axum = { version = "0.8", optional = true }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "signal"], optional = true }
 # The data files' types (task 004): read at boot on the server, and in the browser by the
 # map's logic (`map/`, shared by ssr and hydrate; serde only, it builds for wasm32).
 map-formats = { version = "0.1.0", path = "../formats" }
 # The first render's decisions travel to the browser in the page (`map::first`, a Leptos
 # `SharedValue`, JSON): the panel and its parts derive `Serialize`/`Deserialize`.
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "json", "registry"], optional = true }
 # Search folds diacritics as the React page did (`normalize`, src/map/data.ts: NFD, then the
 # combining marks dropped).
 unicode-normalization = "0.1"
@@ -41,7 +44,6 @@ base64 = { version = "0.22", optional = true }
 # Serves the site's files before the app's routes (`router.rs`); already in the
 # tree through leptos_axum.
 tower-http = { version = "0.6", features = ["fs"], optional = true }
-console_error_panic_hook = { version = "0.1", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 # The map's data files are fetched by the browser (`map/fetch.rs`): a fetch's future, its
 # bytes.
@@ -133,6 +135,7 @@ web-sys = { version = "0.3", features = [
 # as well (`all(feature = "browser", target_arch = "wasm32")`): `csr` builds on the host,
 # where the PaliCanon app runs its native tests (task 012).
 browser = [
+  "dep:tracing-subscriber",
   "dep:send_wrapper",
   "dep:wasm-bindgen",
   "dep:wasm-bindgen-futures",
@@ -144,11 +147,11 @@ hydrate = [
   "leptos/hydrate",
   "palicanon-ui-lib/hydrate",
   "browser",
-  "dep:console_error_panic_hook",
 ]
 # The PaliCanon app: no server, the preferences in localStorage (ui-lib's `csr::mount`).
 csr = ["leptos/csr", "palicanon-ui-lib/csr", "browser"]
 ssr = [
+  "dep:tracing-subscriber",
   "dep:axum",
   "dep:tokio",
   "dep:leptos_axum",

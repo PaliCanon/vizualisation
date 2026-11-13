@@ -78,6 +78,36 @@ The graph and translation files were built by Node scripts (`scripts/build-graph
 in task 008: they are in git history (`git show 7d2e46f:scripts/build-graph.mjs`) until task 007
 ports them to Rust. `scripts/fetch-data.sh` still makes the SuttaCentral clones in `data/`.
 
+## Operational logs
+
+SSR emits JSON lines on stdout; hydration emits JSON to the local console.
+No collector, exporter or backend is required and no browser log is sent over
+the network. The CSR fragment leaves the subscriber to its host, which can opt
+into `vizualisation::telemetry::init_browser()`; an existing subscriber is kept.
+
+Every event carries `service.namespace: palicanon`, `service.name: map`,
+`service.version` from the deployed `VIZ_ENV` tag/ref, `service.commit` from
+`VIZ_SHA`, `deployment.environment.name`, `runtime`, `timestamp`, `severity`
+and `event.name`. The release is the footer badge's and the browser reads the
+same head metas. Deployment environment comes from `VIZ_DEPLOYMENT_ENV`
+(letters, digits, `_` or `-`, at most 64 characters), otherwise Cloud Run's
+`-dev` / `-prod` service suffix, or `development` locally. Missing browser
+metas mean `unknown`; the deployed tag is independent of this environment.
+
+Events cover lifecycle, data ready/load failures, admitted application HTTP
+requests, origin/password refusals, browser data fetch/parse failures, engine
+readiness/failures and panics. Asset labels and engine backends use closed lists.
+URLs, directories, queries, text IDs, cookies, passwords, origin secrets, raw
+parser/engine errors and panic payloads are excluded. Request IDs are generated
+locally, not accepted from headers. HTTP duration ends at response headers.
+
+INFO is the default; `VIZ_LOG_LEVEL=DEBUG` enables server detail, with dependency
+targets still filtered out. Static file access and unknown paths are quiet;
+health probes and HEAD summaries are DEBUG. Origin and password refusals each
+emit at most one warning per minute per process. Successful browser data fetches
+are DEBUG, browser logs otherwise stay at INFO. The rollout hydration gate
+recognizes `runtime.panic` alongside legacy panic and wasm-trap messages.
+
 ## Checks
 
 ```sh

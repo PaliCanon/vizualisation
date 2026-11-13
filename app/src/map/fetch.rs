@@ -10,9 +10,9 @@ use palicanon_ui_lib::Language;
 use crate::fragment::MapData;
 use crate::map::model::{Blurbs, Graph, Pairs, Translations};
 
-/// An error on the console: the map shows nothing for it.
-pub(crate) fn log(message: &str) {
-    web_sys::console::error_1(&format!("map data: {message}").into());
+/// A bounded data failure: never a raw URL, parser message or data value.
+pub(crate) fn log(name: &str, reason: &'static str, status: Option<u16>) {
+    crate::telemetry::data_failed(name, reason, status);
 }
 
 /// The name of the similarity pairs' file a graph names (`sim.url`): one of the names
@@ -21,7 +21,7 @@ pub(crate) fn pairs_name(url: &str) -> Option<&'static str> {
     const PAIRS: [&str; 1] = ["graph-sim.bin"];
     let name = PAIRS.into_iter().find(|name| *name == url);
     if name.is_none() {
-        log(&format!("{url}: not a data file the map reads"));
+        log("", "unknown_asset", None);
     }
     name
 }
@@ -30,7 +30,7 @@ pub(crate) fn pairs_name(url: &str) -> Option<&'static str> {
 pub(crate) async fn graph(data: Arc<dyn MapData>, file: &'static str) -> Option<Arc<Graph>> {
     let bytes = data.file(file).await?;
     Graph::from_json(&bytes)
-        .map_err(|e| log(&format!("{file}: {e}")))
+        .map_err(|_| log(file, "parse", None))
         .ok()
         .map(Arc::new)
 }
@@ -39,7 +39,7 @@ pub(crate) async fn graph(data: Arc<dyn MapData>, file: &'static str) -> Option<
 pub(crate) async fn pairs(data: Arc<dyn MapData>, file: &'static str) -> Option<Arc<Pairs>> {
     let bytes = data.file(file).await?;
     Pairs::from_bytes(&bytes)
-        .map_err(|e| log(&format!("{file}: {e}")))
+        .map_err(|_| log(file, "parse", None))
         .ok()
         .map(Arc::new)
 }
@@ -48,7 +48,7 @@ pub(crate) async fn pairs(data: Arc<dyn MapData>, file: &'static str) -> Option<
 pub(crate) async fn translations(data: Arc<dyn MapData>) -> Option<Arc<Translations>> {
     let bytes = data.file("translations.json").await?;
     Translations::from_json(&bytes)
-        .map_err(|e| log(&format!("translations.json: {e}")))
+        .map_err(|_| log("translations.json", "parse", None))
         .ok()
         .map(Arc::new)
 }
@@ -69,7 +69,7 @@ pub(crate) async fn blurbs(data: Arc<dyn MapData>, language: Language) -> Option
     let file = blurbs_file(language);
     let bytes = data.file(file).await?;
     Blurbs::from_json(&bytes)
-        .map_err(|e| log(&format!("{file}: {e}")))
+        .map_err(|_| log(file, "parse", None))
         .ok()
         .map(Arc::new)
 }

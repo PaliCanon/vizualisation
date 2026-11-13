@@ -88,6 +88,7 @@ pub async fn guard(State(origin): State<Arc<Origin>>, request: Request, next: Ne
     if origin.admits(request.headers()) {
         next.run(request).await
     } else {
+        crate::telemetry::server::origin_refused();
         forbidden()
     }
 }

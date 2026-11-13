@@ -68,6 +68,8 @@ fn command(port: u16, env: &[(&str, &str)]) -> Command {
         .env_remove("K_SERVICE")
         .env_remove("VIZ_ENV")
         .env_remove("VIZ_SHA")
+        .env_remove("VIZ_LOG_LEVEL")
+        .env_remove("VIZ_DEPLOYMENT_ENV")
         .env("LEPTOS_OUTPUT_NAME", "vizualisation")
         .env(
             "VIZ_DATA_DIR",
@@ -157,17 +159,26 @@ fn run_to_exit(mut command: Command) -> (std::process::Output, bool) {
     (child.wait_with_output().expect("the output"), by_itself)
 }
 
-/// Runs a build that must refuse to start: exit 2 before listening, stderr
+/// Runs a build that must refuse to start: exit 2 before listening, JSON
 /// names `named`, no canary is printed.
 fn assert_refuses(env: &[(&str, &str)], named: &str) {
     let (out, ended_by_itself) = run_to_exit(command(free_port(), env));
     assert!(ended_by_itself, "{env:?} must stop at boot, not listen");
     assert_eq!(out.status.code(), Some(2), "{env:?} must exit 2");
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains(named), "stderr names {named}: {stderr}");
-    let everything = format!("{stderr}{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(out.stderr, b"");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let records: Vec<serde_json::Value> = stdout
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert!(
+        records
+            .iter()
+            .any(|log| log["stage"] == named || log["asset"] == named),
+        "{stdout}"
+    );
     for canary in [PASSWORD_CANARY, ORIGIN_CANARY] {
-        assert!(!everything.contains(canary), "leaked: {everything}");
+        assert!(!stdout.contains(canary), "leaked: {stdout}");
     }
 }
 
@@ -262,9 +273,17 @@ fn dev_answers_the_origin_then_the_password_and_logs_each_once() {
         }
     }
     let ended = finish(service);
-    for line in ["gate: password", "origin: checked"] {
-        assert_eq!(ended.stdout.matches(line).count(), 1, "{}", ended.stdout);
-    }
+    let started = event(&ended.stdout, "service.started");
+    assert_eq!(started["gate.password"], true);
+    assert_eq!(started["origin.checked"], true);
+    assert_eq!(
+        event(&ended.stdout, "origin.refused")["reason"],
+        "invalid_origin_auth"
+    );
+    assert_eq!(
+        event(&ended.stdout, "gate.refused")["reason"],
+        "invalid_credentials"
+    );
     for (what, text) in [("stdout", &ended.stdout), ("stderr", &ended.stderr)] {
         assert!(!text.contains(PASSWORD_CANARY), "password in {what}");
         assert!(!text.contains(ORIGIN_CANARY), "origin secret in {what}");
@@ -293,10 +312,8 @@ fn prod_has_no_gate_and_asks_for_no_password() {
     assert_eq!(status, 403, "the origin guard is still on");
     let ended = finish(service);
     assert_eq!(
-        ended.stdout.matches("gate: off").count(),
-        1,
-        "{}",
-        ended.stdout
+        event(&ended.stdout, "service.started")["gate.password"],
+        false
     );
 }
 
@@ -308,10 +325,8 @@ fn a_local_run_says_the_origin_is_open() {
     assert_eq!(status, 200);
     let ended = finish(service);
     assert_eq!(
-        ended.stdout.matches("origin: open (local)").count(),
-        1,
-        "{}",
-        ended.stdout
+        event(&ended.stdout, "service.started")["origin.checked"],
+        false
     );
 }
 
@@ -348,18 +363,19 @@ fn the_boot_logs_the_release() {
         let (status, _) = get_with(port, "/", "");
         assert_eq!(status, 200);
         let ended = finish(service);
-        assert_eq!(
-            ended.stdout.matches(line).count(),
-            1,
-            "{line}: {}",
-            ended.stdout
+        let started = event(&ended.stdout, "service.started");
+        let expected = vizualisation::release::ReleaseInfo::from_vars(
+            release
+                .iter()
+                .find(|(key, _)| *key == "VIZ_ENV")
+                .map(|(_, value)| (*value).to_owned()),
+            release
+                .iter()
+                .find(|(key, _)| *key == "VIZ_SHA")
+                .map(|(_, value)| (*value).to_owned()),
         );
-        assert_eq!(
-            ended.stdout.matches("release: env=").count(),
-            1,
-            "{}",
-            ended.stdout
-        );
+        assert_eq!(started["service.version"], expected.env, "{line}");
+        assert_eq!(started["service.commit"], expected.sha, "{line}");
     }
 }
 
@@ -377,4 +393,43 @@ fn health_says_the_release_on_its_first_line() {
         let body = text.split("\r\n\r\n").nth(1).unwrap_or_default();
         assert_eq!(body.lines().next(), Some(first), "{text}");
     }
+}
+
+/// Parse all process output as JSON and require exactly one named event.
+fn event(stdout: &str, name: &str) -> serde_json::Value {
+    let records: Vec<serde_json::Value> = stdout
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("JSON log"))
+        .filter(|log: &serde_json::Value| log["event.name"] == name)
+        .collect();
+    assert_eq!(records.len(), 1, "one {name}: {stdout}");
+    records.into_iter().next().unwrap()
+}
+
+#[cfg(unix)]
+#[test]
+fn termination_emits_a_clean_stop() {
+    let mut service = start(free_port(), &[("VIZ_GATE", "off")]);
+    let child = service.0.as_mut().unwrap();
+    assert!(
+        Command::new("kill")
+            .args(["-TERM", &child.id().to_string()])
+            .status()
+            .unwrap()
+            .success()
+    );
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while child.try_wait().unwrap().is_none() {
+        assert!(
+            Instant::now() < deadline,
+            "SIGTERM did not stop the service"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let mut child = service.0.take().unwrap();
+    assert!(child.wait().unwrap().success());
+    let output = child.wait_with_output().unwrap();
+    assert_eq!(output.stderr, b"");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(event(&stdout, "service.stopped")["severity"], "INFO");
 }

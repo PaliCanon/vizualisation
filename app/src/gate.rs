@@ -103,6 +103,7 @@ pub async fn guard(State(gate): State<Arc<Gate>>, request: Request, next: Next) 
         }
         response
     } else {
+        crate::telemetry::server::gate_refused();
         unauthorized()
     }
 }

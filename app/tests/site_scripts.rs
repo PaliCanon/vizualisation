@@ -685,12 +685,6 @@ fn smoke_fails_on_a_password_in_prod_and_on_a_secret_in_a_log() {
             "prod-",
         ),
         (
-            "prod-ignores-sigterm",
-            "[ \"${VIZ_GATE:-}\" != off ] || trap '' TERM",
-            "prod",
-            "SIGTERM",
-        ),
-        (
             "server-log",
             "[ \"${VIZ_GATE:-}\" != password ] || echo \"debug: origin $ORIGIN_SECRET\" >&2",
             "leak",
@@ -714,6 +708,49 @@ fn smoke_fails_on_a_password_in_prod_and_on_a_secret_in_a_log() {
         let _ = std::fs::remove_file(binary);
     }
     let _ = std::fs::remove_dir_all(site);
+}
+
+/// A wrapper that stays alive on SIGTERM while its child serves prod.
+/// Setting `SIG_IGN` before exec is insufficient: Tokio installs its own handler.
+#[test]
+fn smoke_fails_if_prod_does_not_stop_on_sigterm() {
+    let site = site_root("smoke-stubborn-prod", true);
+    let pid_file = temp("stubborn-prod-child");
+    let _cleanup = ChildPidFile(pid_file.clone());
+    let body = format!(
+        r#"if [ "${{VIZ_GATE:-}}" = off ]; then
+trap '' TERM
+'{}' &
+child=$!
+printf '%s\n' "$child" > '{}'
+wait "$child"
+exit $?
+fi"#,
+        env!("CARGO_BIN_EXE_vizualisation"),
+        pid_file.display()
+    );
+    let binary = wrapper("stubborn-prod", &body);
+    let out = smoke_binary(binary.to_str().unwrap(), &site);
+    assert_fails_naming(&out, "prod", "ignored SIGTERM");
+    assert!(printed(&out).contains("SIGTERM"));
+    let _ = std::fs::remove_file(binary);
+    let _ = std::fs::remove_dir_all(site);
+}
+
+/// The service child must also stop if an assertion fails after the parent dies.
+struct ChildPidFile(PathBuf);
+
+impl Drop for ChildPidFile {
+    fn drop(&mut self) {
+        if let Ok(text) = std::fs::read_to_string(&self.0)
+            && let Ok(pid) = text.trim().parse::<u32>()
+        {
+            let _ = Command::new("kill")
+                .args(["-TERM", &pid.to_string()])
+                .status();
+        }
+        let _ = std::fs::remove_file(&self.0);
+    }
 }
 
 /// What only `smoke.sh` checks: the probe's body, the wasm's type, and no
@@ -1634,6 +1671,7 @@ if [ "$mode" = privacy-panic ]; then
 fi
 case "$mode" in
   ok) printf '%s\n' '{HYDRATED_DOM}' ;;
+  structured) printf '%s\n' '{{"event.name":"runtime.panic","severity":"ERROR"}}' >&2; printf '%s\n' '{HYDRATED_DOM}' ;;
   panic) printf '%s, source: %s\n' '{PANIC_LINE}' "$source" >&2; printf '%s\n' '{HYDRATED_DOM}' ;;
   runtime) printf '%s\n' 'Uncaught RuntimeError: unreachable' >&2; printf '%s\n' '{BARE_DOM}' ;;
   bare) printf '%s\n' '{BARE_DOM}' ;;
@@ -1849,7 +1887,7 @@ fn rollout_check_hydrate_fails_when_chrome_stays_on_the_launcher() {
 #[test]
 fn rollout_check_hydrate_fails_on_a_panic_in_the_browser() {
     let fake = Fake::start(prod_through_the_worker);
-    for mode in ["panic", "runtime"] {
+    for mode in ["panic", "structured", "runtime"] {
         let chrome = FakeChrome::new(mode);
         let out = run(
             &check_script(),

@@ -53,18 +53,38 @@ mod browser {
 
     /// The bytes at `url`, the data file `name`; `None` when the request fails.
     pub(super) async fn bytes(name: &str, url: &str) -> Option<Vec<u8>> {
+        let started = web_sys::window()?.performance().map_or(0.0, |p| p.now());
         let window = web_sys::window()?;
         let response: web_sys::Response = JsFuture::from(window.fetch_with_str(url))
             .await
-            .map_err(|_| log(&format!("{name}: the request failed")))
+            .map_err(|_| log(name, "network", None))
             .ok()?
             .dyn_into()
+            .map_err(|_| log(name, "response_type", None))
             .ok()?;
         if !response.ok() {
-            log(&format!("{name}: HTTP {}", response.status()));
+            log(name, "http_status", Some(response.status()));
             return None;
         }
-        let buffer = JsFuture::from(response.array_buffer().ok()?).await.ok()?;
-        Some(js_sys::Uint8Array::new(&buffer).to_vec())
+        let promise = response
+            .array_buffer()
+            .map_err(|_| log(name, "response_body", None))
+            .ok()?;
+        let buffer = JsFuture::from(promise)
+            .await
+            .map_err(|_| log(name, "response_body", None))
+            .ok()?;
+        let bytes = js_sys::Uint8Array::new(&buffer).to_vec();
+        let elapsed = window
+            .performance()
+            .map_or(0.0, |p| (p.now() - started).max(0.0));
+        crate::telemetry::event!(
+            DEBUG,
+            "map.data.loaded",
+            asset = crate::telemetry::asset(name),
+            bytes = bytes.len(),
+            duration_ms = elapsed
+        );
+        Some(bytes)
     }
 }

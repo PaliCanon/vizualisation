@@ -81,7 +81,7 @@ jobs:
           # The PaliCanon app's build (task 012): csr alone, on wasm32, with the browser
           # test's code (tests/csr.rs).
           - name: app csr wasm32
-            args: -p vizualisation --no-default-features --features csr --target wasm32-unknown-unknown --lib --test csr
+            args: -p vizualisation --no-default-features --features csr --target wasm32-unknown-unknown --lib --test csr --test telemetry_browser
           # The same build on the host, where the app runs its native tests: the browser-only
           # code is gated on wasm32 too (task 012, PaliCanon/app 003).
           - name: app csr host
@@ -160,7 +160,7 @@ jobs:
         env:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
           WASM_BINDGEN_TEST_TIMEOUT: "900"
-      - run: CHROMEDRIVER="$CHROMEWEBDRIVER/chromedriver" cargo test --locked -p vizualisation --no-default-features --features csr --target wasm32-unknown-unknown --test release_document
+      - run: CHROMEDRIVER="$CHROMEWEBDRIVER/chromedriver" cargo test --locked -p vizualisation --no-default-features --features csr --target wasm32-unknown-unknown --test release_document --test telemetry_browser
         env:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
           WASM_BINDGEN_TEST_TIMEOUT: "900"

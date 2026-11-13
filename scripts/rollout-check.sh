@@ -50,7 +50,7 @@
 # through the Worker only (Chrome cannot add the origin header), `hydrate`:
 # headless Chrome loads /, /sim/mn10 and /privacy (ui-lib 063: the page
 # hydrates past the nodes Cloudflare injects); a page passes when Chrome's
-# console (stderr) has no `panicked at` nor `RuntimeError` and its dumped
+# console (stderr) has no `runtime.panic`, `panicked at` or `RuntimeError` and its dumped
 # DOM has `<html data-hydrated>` (set by palicanon_ui_lib::hydrate). With
 # `--password-file`, Chrome opens a launcher page in the script's private
 # directory that gives it the password (a popup of the page with the
@@ -414,7 +414,7 @@ hydrate() {
     --enable-logging=stderr --virtual-time-budget=15000 --dump-dom "$page" \
     > "$work/dom-$n" 2> "$work/console-$n" || rc=$?
   local panic
-  panic="$(grep -aE -m 1 'panicked at|RuntimeError' "$work/console-$n" \
+  panic="$(grep -aE -m 1 'runtime[.]panic|panicked at|RuntimeError' "$work/console-$n" \
     | sed -E 's#//[^/@[:space:]]*@#//#g' | cut -c 1-300)"
   [ -z "$panic" ] || fail hydrate "$path: the page panicked in the browser: $panic"
   if grep -aEq '_cf_chl_opt|<title>Just a moment' "$work/dom-$n"; then

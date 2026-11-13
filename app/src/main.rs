@@ -1,55 +1,60 @@
-//! This service's server: renders the pages, serves the WASM bundle and the
-//! assets. Run with `VIZ_GATE=off cargo leptos watch` from the repository root
-//! (README.md: port 3301). The configuration is read once at boot
-//! ([`vizualisation::boot::Config`]); a bad one stops the service before it
-//! listens, naming the variable, never its value. The data files are read
-//! from `VIZ_DATA_DIR` (`public` when unset): one missing or unreadable stops
-//! the service too, naming the file.
+//! The Map server: bounded lifecycle/data logs, no configuration values or raw errors.
 
 #[cfg(feature = "ssr")]
 #[tokio::main]
 async fn main() {
-    use leptos::prelude::get_configuration;
-    use vizualisation::boot::Config;
-    use vizualisation::data::{DATA_VAR, Data};
-    use vizualisation::router::router;
-
-    let config = match Config::from_lookup(|name| std::env::var(name).ok()) {
-        Ok(config) => config,
-        Err(err) => {
-            eprintln!("vizualisation: {err}");
-            std::process::exit(2);
-        }
-    };
-    for line in config.log_lines() {
-        println!("{line}");
+    use vizualisation::telemetry::server;
+    server::init();
+    if let Err(stage) = serve().await {
+        server::failed(stage);
+        std::process::exit(2);
     }
-    println!(
-        "{}",
-        vizualisation::release::ReleaseInfo::server().log_line()
-    );
-    let dir = std::env::var(DATA_VAR).unwrap_or_else(|_| "public".into());
-    let data = match Data::load(std::path::Path::new(&dir)) {
-        Ok(data) => std::sync::Arc::new(data),
-        Err(err) => {
-            eprintln!("vizualisation: {err}");
-            std::process::exit(2);
-        }
-    };
-    println!("data: {dir}");
+    server::stopped();
+}
 
-    let conf = get_configuration(None).expect("leptos configuration");
-    let options = conf.leptos_options;
+#[cfg(feature = "ssr")]
+async fn serve() -> Result<(), &'static str> {
+    use leptos::prelude::get_configuration;
+    use vizualisation::{
+        boot::{BootError, Config},
+        gate::Gate,
+        origin::Origin,
+        router::router,
+        telemetry::server,
+    };
+    let started = std::time::Instant::now();
+    let config =
+        Config::from_lookup(|name| std::env::var(name).ok()).map_err(BootError::variable)?;
+    let checked = matches!(&config.origin, Origin::Checked(_));
+    let password = matches!(&config.gate, Gate::Password(_));
+    let shutdown = server::shutdown();
+    let data = load_data()?;
+    let options = get_configuration(None)
+        .map_err(|_| "leptos_config")?
+        .leptos_options;
     let addr = options.site_addr;
     let app = router(options, config, data);
-
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
-        .expect("bind this service's address");
-    println!("vizualisation on http://{addr}");
+        .map_err(|_| "listen")?;
+    server::started(checked, password, started.elapsed());
     axum::serve(listener, app.into_make_service())
+        .with_graceful_shutdown(shutdown)
         .await
-        .expect("serve this service");
+        .map_err(|_| "serve")
+}
+
+#[cfg(feature = "ssr")]
+fn load_data() -> Result<std::sync::Arc<vizualisation::data::Data>, &'static str> {
+    use vizualisation::data::{DATA_VAR, Data};
+    let started = std::time::Instant::now();
+    let dir = std::env::var(DATA_VAR).unwrap_or_else(|_| "public".into());
+    let data = Data::load(std::path::Path::new(&dir)).map_err(|error| {
+        vizualisation::telemetry::server::data_failed(&error.file);
+        DATA_VAR
+    })?;
+    vizualisation::telemetry::server::data_ready(data.raw.iter().count(), started.elapsed());
+    Ok(std::sync::Arc::new(data))
 }
 
 #[cfg(not(feature = "ssr"))]

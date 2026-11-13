@@ -668,7 +668,7 @@ mod browser {
     use map_engine::GraphView;
     use map_engine::live_layout::Core;
     use wasm_bindgen::closure::Closure;
-    use wasm_bindgen::{JsCast, JsError, JsValue};
+    use wasm_bindgen::{JsCast, JsError};
     use web_sys::{
         AddEventListenerOptions, Event, EventTarget, HtmlCanvasElement, HtmlElement, KeyboardEvent,
         PointerEvent, ResizeObserver, WheelEvent,
@@ -775,7 +775,7 @@ mod browser {
                     relaid = relayout(graph.fixed, at.threshold, self.laid_out_at);
                     self.laid_out_at = at.threshold;
                 } else {
-                    warn("map engine: links for another view, refused: none drawn");
+                    warn("incompatible_links");
                 }
             }
             relaid
@@ -817,7 +817,7 @@ mod browser {
             let (ends, lengths) = layout_links(&self.scene, range);
             match Core::new(&self.positions, &ends, &lengths) {
                 Ok(core) => self.layout = Some((core, 0)),
-                Err(e) => warn(&format!("map engine: no layout: {e}")),
+                Err(_) => warn("layout_unavailable"),
             }
         }
 
@@ -963,17 +963,13 @@ mod browser {
             if h.looping.try_update_value(|l| l.start.end(ok)).is_none() {
                 return; // the component is gone; the view is dropped
             }
-            match made {
-                Ok(view) => ready(h, &el, view, want, input),
-                Err(e) => {
-                    web_sys::console::error_2(
-                        &JsValue::from_str("map engine unavailable"),
-                        &JsValue::from(e),
-                    );
-                    let _ = h.no_gpu.try_set(true);
-                    if let Some(f) = h.out.no_gpu {
-                        f.run(());
-                    }
+            if let Ok(view) = made {
+                ready(h, &el, view, want, input);
+            } else {
+                crate::telemetry::event!(ERROR, "map.engine.failed", error.type = "initialization");
+                let _ = h.no_gpu.try_set(true);
+                if let Some(f) = h.out.no_gpu {
+                    f.run(());
                 }
             }
         });
@@ -989,6 +985,12 @@ mod browser {
         input: EngineInput,
     ) {
         let backend = view.backend();
+        let category = match backend.as_str() {
+            "BrowserWebGpu" => "webgpu",
+            "Gl" => "webgl",
+            _ => "unknown",
+        };
+        crate::telemetry::event!(INFO, "map.engine.ready", backend = category);
         let mut live = Live::new(view, &want.graph);
         // The input may have moved while the GPU was set up.
         let latest = untrack(|| read(input)).unwrap_or(want);
@@ -1279,14 +1281,14 @@ mod browser {
 
     /// Log an engine call that refused its input.
     fn report(r: Result<(), JsError>) {
-        if let Err(e) = r {
-            web_sys::console::error_2(&JsValue::from_str("map engine"), &JsValue::from(e));
+        if r.is_err() {
+            crate::telemetry::event!(ERROR, "map.engine.failed", error.type = "input_rejected");
         }
     }
 
     /// Log a warning.
-    fn warn(message: &str) {
-        web_sys::console::warn_1(&JsValue::from_str(message));
+    fn warn(reason: &'static str) {
+        crate::telemetry::event!(WARN, "map.engine.warning", reason);
     }
 }
 

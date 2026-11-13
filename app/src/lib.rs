@@ -28,6 +28,7 @@ pub mod release;
 mod route;
 #[cfg(feature = "ssr")]
 pub mod router;
+pub mod telemetry;
 
 /// Browser entry point: hydrate the server-rendered page from its root
 /// (`<div id="pc-app">`, written by [`app::shell`]), not from `<body>`,
@@ -40,7 +41,8 @@ pub mod router;
 pub fn hydrate() {
     use leptos::prelude::*;
 
-    console_error_panic_hook::set_once();
+    #[cfg(target_arch = "wasm32")]
+    telemetry::init_browser();
     // The release the server wrote in `<head>`, read before the app
     // mounts: the badge is the server's, never recomputed here (task 016).
     palicanon_ui_lib::hydrate(|| {
