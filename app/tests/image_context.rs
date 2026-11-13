@@ -430,8 +430,7 @@ fn the_server_runs_the_smoke_test_with_its_own_throwaway_secret() {
 }
 
 /// `scripts/smoke.sh BINARY` makes its own throwaway origin secret and dev
-/// password and a free port: the call is exactly `RUN ./smoke.sh
-/// ./vizualisation`, with no `ORIGIN_SECRET=` or `DEV_PASSWORD=` prefix (the
+/// password and a free port: the RUN simulates Cloud Run with a non-secret `K_SERVICE`, with no `ORIGIN_SECRET=` or `DEV_PASSWORD=` prefix (the
 /// script would overwrite them anyway).
 #[test]
 fn the_smoke_call_has_the_form_the_script_takes() {
@@ -441,8 +440,8 @@ fn the_smoke_call_has_the_form_the_script_takes() {
         .rfind(|i| i.starts_with("RUN ") && i.contains("smoke.sh"))
         .expect("a RUN runs smoke.sh");
     assert_eq!(
-        smoke, "RUN ./smoke.sh ./vizualisation",
-        "smoke.sh takes the binary and nothing else: no env prefix, no --port"
+        smoke, "RUN K_SERVICE=vizualisation-smoke ./smoke.sh ./vizualisation",
+        "smoke.sh receives the binary; only K_SERVICE simulates Cloud Run, no secrets or --port"
     );
 }
 

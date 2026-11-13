@@ -50,7 +50,7 @@ impl fmt::Debug for OriginSecret {
 /// Whether the service checks where a request came from.
 #[derive(Clone, Debug)]
 pub enum Origin {
-    /// No check: a local run.
+    /// No check: outside Cloud Run with no configured secret.
     Open,
     /// Every request must carry the secret.
     Checked(OriginSecret),

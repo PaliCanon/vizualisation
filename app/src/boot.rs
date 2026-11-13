@@ -6,8 +6,8 @@
 //! - `VIZ_GATE` is required everywhere: `password` (dev) or `off` (prod, or
 //!   a local run that says so). `password` without `DEV_PASSWORD` refuses to
 //!   start: the gate fails closed.
-//! - `ORIGIN_SECRET` as search-front: required in a deployed build (Cloud
-//!   Run's `K_SERVICE`, or `LEPTOS_ENV` prod), optional locally.
+//! - `ORIGIN_SECRET` as search-front: required only on Cloud Run (`K_SERVICE`
+//!   present), optional on other hosts, including production behind a tunnel.
 //!
 //! The data files are loaded here too once the `formats` crate lands (task
 //! 004): a missing or unparseable file is a boot error like these.
@@ -44,7 +44,7 @@ pub enum BootError {
     PasswordMissing,
     /// The variable is set to nothing, or to blanks.
     Empty(&'static str),
-    /// A deployed build has no origin secret.
+    /// Cloud Run (`K_SERVICE` present) has no origin secret.
     OriginRequired,
 }
 
@@ -78,7 +78,7 @@ impl fmt::Display for BootError {
             BootError::Empty(var) => write!(f, "{var} is set but empty"),
             BootError::OriginRequired => write!(
                 f,
-                "{ORIGIN_VAR} is not set: a deployed build answers only the requests that carry it"
+                "{ORIGIN_VAR} is not set: a Cloud Run service answers only the requests that carry it"
             ),
         }
     }
@@ -86,14 +86,9 @@ impl fmt::Display for BootError {
 
 impl std::error::Error for BootError {}
 
-/// Whether this is a deployed build: Cloud Run sets `K_SERVICE` in every
-/// container, and the image sets `LEPTOS_ENV` to `PROD`.
-fn deployed(lookup: &impl Fn(&str) -> Option<String>) -> bool {
-    let production = lookup("LEPTOS_ENV").is_some_and(|env| {
-        let env = env.trim();
-        env.eq_ignore_ascii_case("prod") || env.eq_ignore_ascii_case("production")
-    });
-    production || lookup("K_SERVICE").is_some()
+/// Cloud Run sets `K_SERVICE`, even when the process is not in production mode.
+fn on_cloud_run(lookup: &impl Fn(&str) -> Option<String>) -> bool {
+    lookup("K_SERVICE").is_some()
 }
 
 /// The value of `var` through `lookup`, trimmed; blank is an error, not "unset".
@@ -126,7 +121,7 @@ impl Config {
         };
         let origin = match read(&lookup, ORIGIN_VAR)? {
             Some(secret) => Origin::Checked(OriginSecret::new(secret)),
-            None if deployed(&lookup) => return Err(BootError::OriginRequired),
+            None if on_cloud_run(&lookup) => return Err(BootError::OriginRequired),
             None => Origin::Open,
         };
         Ok(Config { gate, origin })
@@ -166,9 +161,50 @@ mod tests {
     }
 
     #[test]
+    fn origin_cloud_run_matrix() {
+        for (service, secret, checked, failure) in [
+            (None, None, false, None),
+            (
+                Some("service-dev"),
+                None,
+                false,
+                Some(BootError::OriginRequired),
+            ),
+            (Some(""), None, false, Some(BootError::OriginRequired)),
+            (None, Some(SECRET), true, None),
+            (Some("service-dev"), Some(SECRET), true, None),
+            (None, Some(""), false, Some(BootError::Empty(ORIGIN_VAR))),
+            (
+                Some("service-dev"),
+                Some(" "),
+                false,
+                Some(BootError::Empty(ORIGIN_VAR)),
+            ),
+        ] {
+            let mut env = vec![("LEPTOS_ENV", "PROD"), (GATE_VAR, "off")];
+            if let Some(service) = service {
+                env.push(("K_SERVICE", service));
+            }
+            if let Some(secret) = secret {
+                env.push((ORIGIN_VAR, secret));
+            }
+            let got = boot(&env).map(|config| config.origin);
+            if let Some(expected) = failure {
+                assert_eq!(got.unwrap_err(), expected);
+            } else {
+                let origin = got.unwrap();
+                assert_eq!(matches!(origin, Origin::Checked(_)), checked);
+                if let Origin::Checked(secret) = origin {
+                    assert!(secret.matches(SECRET.as_bytes()));
+                }
+            }
+        }
+    }
+
+    #[test]
     fn the_boot_refuses_what_the_design_says_and_names_the_variable() {
         // (case, environment, the error expected)
-        let cases: [Case; 7] = [
+        let cases: [Case; 6] = [
             ("gate unset", &[], BootError::GateUnset),
             (
                 "gate unknown",
@@ -193,11 +229,6 @@ mod tests {
             (
                 "deployed without the origin secret (Cloud Run)",
                 &[(GATE_VAR, "off"), ("K_SERVICE", "vizualisation-prod")],
-                BootError::OriginRequired,
-            ),
-            (
-                "deployed without the origin secret (image)",
-                &[(GATE_VAR, "off"), ("LEPTOS_ENV", "PROD")],
                 BootError::OriginRequired,
             ),
         ];

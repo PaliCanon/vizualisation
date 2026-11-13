@@ -39,8 +39,12 @@ VIZ_GATE=off cargo leptos watch
 ```
 
 `VIZ_GATE` is required at every boot: `off` locally and in prod, `password` in dev (with
-`DEV_PASSWORD`). A deployed build also requires `ORIGIN_SECRET` (the Worker's). A missing or blank
-variable stops the service at boot, naming the variable, never its value. **No `.env` file.**
+`DEV_PASSWORD`). Cloud Run (`K_SERVICE` present, even empty) also requires `ORIGIN_SECRET`
+(the Worker's). On other hosts, including `LEPTOS_ENV=PROD` behind a private
+Cloudflare tunnel, the origin secret is optional: a value enables the guard,
+absence disables it, and a blank secret always refuses startup. `VIZ_GATE`
+remains required on every host. Invalid configuration stops boot, naming the
+variable, never its value. Set `VIZ_DEPLOYMENT_ENV=production` for production log metadata on the tunnel host. **No `.env` file.**
 
 The app depends on `palicanon-ui-lib` by git tag (`v0.3.1`), with the workspace's `[patch]` to
 `../ui-lib` (a worktree reaches it through the `wt/ui-lib` symlink).

@@ -113,8 +113,9 @@ COPY --chown=app:app \
 # the image. Cloud Run sends its traffic to 8080. The runtime settings that
 # differ per deployment (VIZ_GATE, and the secrets ORIGIN_SECRET and, on dev,
 # DEV_PASSWORD from Secret Manager) are the service's env (infra/gcp.tf),
-# never the image's: the boot refuses an unset VIZ_GATE. LEPTOS_ENV=PROD
-# makes it refuse to start without ORIGIN_SECRET.
+# never the image's: the boot refuses an unset VIZ_GATE. Only Cloud Run
+# (K_SERVICE present at runtime) requires ORIGIN_SECRET. The smoke check below
+# simulates it for that RUN only; K_SERVICE is not an image ENV.
 ENV LEPTOS_OUTPUT_NAME=vizualisation \
     LEPTOS_SITE_ROOT=site \
     LEPTOS_SITE_PKG_DIR=pkg \
@@ -138,5 +139,5 @@ EXPOSE 8080
 # 2; no response and no log of the three runs holds a secret. A
 # broken build or a missing site root fails here, not on Cloud Run. Plain
 # bash (/dev/tcp): the image has no curl and gains none.
-RUN ./smoke.sh ./vizualisation
+RUN K_SERVICE=vizualisation-smoke ./smoke.sh ./vizualisation
 CMD ["./vizualisation"]

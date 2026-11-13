@@ -212,7 +212,7 @@ fn missing_data_refuses_to_start_and_names_the_file() {
 #[test]
 fn a_deployed_build_without_the_origin_secret_refuses_to_start() {
     let dev = [("VIZ_GATE", "password"), ("DEV_PASSWORD", PASSWORD_CANARY)];
-    for deployed in [("LEPTOS_ENV", "PROD"), ("K_SERVICE", "vizualisation-dev")] {
+    for deployed in [("K_SERVICE", "vizualisation-dev"), ("K_SERVICE", "")] {
         let mut env = dev.to_vec();
         env.push(deployed);
         assert_refuses(&env, "ORIGIN_SECRET");
@@ -220,6 +220,23 @@ fn a_deployed_build_without_the_origin_secret_refuses_to_start() {
     let mut blank = dev.to_vec();
     blank.push(("ORIGIN_SECRET", "  "));
     assert_refuses(&blank, "ORIGIN_SECRET");
+}
+
+#[test]
+fn production_outside_cloud_run_starts_without_origin_secret() {
+    let port = free_port();
+    let service = start(port, &[("VIZ_GATE", "off"), ("LEPTOS_ENV", "PROD")]);
+    assert_eq!(get_with(port, "/health", "").0, 200);
+    assert_eq!(get_with(port, "/", "").0, 200);
+    let ended = finish(service);
+    assert_eq!(
+        event(&ended.stdout, "service.started")["origin.checked"],
+        false
+    );
+    assert_eq!(
+        event(&ended.stdout, "service.started")["gate.password"],
+        false
+    );
 }
 
 /// The requests dev is asked, in the layers' order: (path, header lines,
