@@ -1,5 +1,5 @@
 //! The axum router (design v4, the server's layers): the origin guard
-//! outermost, on every path; `/health` behind it alone; then the password
+//! outermost, on every path; `/health` and `/healthz` behind it alone; then the password
 //! gate around the pages and the files (the site's files answered first, the
 //! app for every other path). The signature takes the boot
 //! [`Config`], so `main` cannot forget a layer.
@@ -27,9 +27,19 @@ use crate::{gate, origin};
 /// it for good.
 const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 
-/// The health probe's path. Not `/healthz`: Cloud Run reserves the paths
-/// ending in `z` and answers them itself.
+/// The health probe's path, the server's own probes (rollout check, smoke
+/// test) read. Kept beside [`LIVENESS_PATH`] until they move to it.
 pub const HEALTH_PATH: &str = "/health";
+
+/// The uniform liveness path of every public service: 200, the body `ok`,
+/// never cached, behind the origin guard alone (answered before the password
+/// gate and without rendering the app).
+pub const LIVENESS_PATH: &str = "/healthz";
+
+/// `GET /healthz`: `ok`, uncached.
+async fn liveness() -> ([(axum::http::HeaderName, &'static str); 1], &'static str) {
+    ([(header::CACHE_CONTROL, "no-store")], "ok")
+}
 
 /// The health probe: behind the origin guard only, so the rollout check
 /// reaches it through the Worker without the dev password. Public data only:
@@ -115,10 +125,9 @@ pub fn router(options: LeptosOptions, config: Config, data: Arc<Data>) -> axum::
             gate::guard,
         ));
     axum::Router::new()
-        // `/health`, not `/healthz`: Cloud Run's front end keeps the paths ending in
-        // `z` (`/healthz`, `/livez`, `/readyz`) for itself and answers them with its
-        // own 404, so the container never sees them (005's first rollout, 2026-10-16).
+        // `/health` (the server's probes) and `/healthz` (the uniform check).
         .route(HEALTH_PATH, get(health).with_state(data))
+        .route(LIVENESS_PATH, get(liveness))
         .route_layer(axum::middleware::from_fn(crate::telemetry::server::request))
         .merge(site)
         .layer(axum::middleware::from_fn_with_state(
@@ -182,11 +191,6 @@ mod tests {
         (status, headers)
     }
 
-    #[test]
-    fn the_health_path_is_not_one_cloud_run_keeps() {
-        assert!(!HEALTH_PATH.ends_with('z'), "{HEALTH_PATH}");
-    }
-
     #[tokio::test]
     async fn the_layers_answer_in_the_designs_order() {
         // (path, with the origin header, with the password, status)
@@ -194,6 +198,8 @@ mod tests {
             ("/health", false, false, StatusCode::FORBIDDEN),
             ("/health", false, true, StatusCode::FORBIDDEN),
             ("/health", true, false, StatusCode::OK),
+            ("/healthz", false, false, StatusCode::FORBIDDEN),
+            ("/healthz", true, false, StatusCode::OK),
             ("/", false, true, StatusCode::FORBIDDEN),
             ("/", true, false, StatusCode::UNAUTHORIZED),
             (
@@ -291,6 +297,34 @@ mod tests {
         // line is checked on the real binary, `tests/boot_process.rs`).
         assert_eq!(lines[0], "ok dev", "{body}");
         assert_eq!(&lines[1..], stamps.as_slice(), "{body}");
+    }
+
+    /// `/healthz` is the uniform liveness check of every public service: 200,
+    /// the body `ok`, nothing cached, no password and no app rendered.
+    #[tokio::test]
+    async fn healthz_answers_ok_uncached_without_the_password() {
+        let response = dev()
+            .oneshot(
+                Request::get("/healthz")
+                    .header(ORIGIN_HEADER, SECRET)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        let body = axum::body::to_bytes(response.into_body(), 1 << 10)
+            .await
+            .unwrap();
+        assert_eq!(body.as_ref(), b"ok");
+    }
+
+    /// `/health` stays an alias for now: the server's probes still use it.
+    #[tokio::test]
+    async fn health_still_answers_beside_healthz() {
+        let (code, _) = status("/health", true, false).await;
+        assert_eq!(code, StatusCode::OK);
     }
 
     /// The URL a data file of the committed data should be served at,
