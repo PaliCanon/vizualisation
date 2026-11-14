@@ -182,5 +182,6 @@ page checks) targeted a Cloud Run revision or the Worker: no workflow calls it n
 
 The footer badge is the release's, not the image's: the server reads `VIZ_ENV` (the tag, e.g. `v0.1.8`)
 and `VIZ_SHA` at start (absent: `dev`), writes two `<meta name="viz-release-...">` and the browser reads
-them back; `/health` says `ok <env>[ <sha>]`. The Map fragment of the PaliCanon app has no footer, so
+them back; `/health` says `ok <env>[ <sha>]`; `/healthz` is the uniform liveness check of every public service
+(200, `ok`, `Cache-Control: no-store`, no password, no app rendered), and `/health` stays its alias for the server's probes. The Map fragment of the PaliCanon app has no footer, so
 no badge.
