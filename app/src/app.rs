@@ -13,7 +13,9 @@ use leptos_meta::provide_meta_context;
 use leptos_meta::{HashedStylesheet, MetaTags};
 use leptos_router::components::{Router, Routes};
 use leptos_router::hooks::use_location;
-use palicanon_ui_lib::{AppShell, IconName, NavEntry, NavList, NavSection, provide_language};
+use palicanon_ui_lib::{
+    AppShell, IconName, NavEntry, NavList, NavSection, ShellAppearance, provide_language,
+};
 #[cfg(feature = "ssr")]
 use palicanon_ui_lib::{HydrationRoot, language_attribute, theme_attribute};
 
@@ -131,8 +133,8 @@ fn first_render() -> FirstRender {
 
 /// The rail's entries: the services, Search (search.palicanon.app, as the
 /// showcase's `SERVICE_LINKS`), Learn, then Map
-/// (this one, the current entry on every map address: [`rail_current`]). `IconName::Grid` stands in for Learn
-/// as in learn-pali, `IconName::Motion` for Map, until ui-lib has their icons.
+/// (this one, the current entry on every map address: [`rail_current`]). `IconName::BookOpen` stands in for Learn
+/// as in learn-pali, `IconName::Network` for Map, until ui-lib has their icons.
 pub(crate) fn nav_entries(locale: crate::catalogue::Locale) -> Vec<NavEntry> {
     vec![
         NavEntry {
@@ -142,12 +144,12 @@ pub(crate) fn nav_entries(locale: crate::catalogue::Locale) -> Vec<NavEntry> {
         },
         NavEntry {
             label: td_string!(locale, nav_learn),
-            icon: IconName::Grid,
+            icon: IconName::BookOpen,
             href: "https://learn.palicanon.app",
         },
         NavEntry {
             label: td_string!(locale, nav_map),
-            icon: IconName::Motion,
+            icon: IconName::Network,
             href: "/",
         },
     ]
@@ -185,7 +187,14 @@ fn Layout() -> impl IntoView {
     let location = use_location();
     let current = Signal::derive(move || location.pathname.with(|path| rail_current(path)));
     view! {
-        <AppShell nav=nav(current) footer=|| view! { <SiteFooter /> }>
+        <AppShell
+            appearance=ShellAppearance::Editorial
+            product_label=Some(
+                Signal::derive(move || td_string!(strings().locale(), nav_map).to_owned()),
+            )
+            nav=nav(current)
+            footer=|| view! { <SiteFooter /> }
+        >
             <Routes fallback=|| view! { <NotFoundPage /> }>
                 <MapRoutes />
             </Routes>

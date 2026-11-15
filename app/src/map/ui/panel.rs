@@ -222,7 +222,7 @@ fn PanelHeading(item: TextItem, place: String) -> impl IntoView {
     let t = strings();
     let href = read_href(&item.uid);
     view! {
-        <div class="px-4 pt-4">
+        <div data-map-heading="" class="px-4 pt-4">
             <div>
                 <SuttaRef reference=item.reference variant=RefVariant::Heading />
             </div>

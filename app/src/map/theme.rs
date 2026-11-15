@@ -47,13 +47,13 @@ pub const NO_TYPE_COLOR: &str = "#8a8a8a";
 
 /// The page's background (`--ps-page`) and gold (`--ps-gold`) on the dark theme: the React
 /// page's fallbacks (theme.ts lines 30–31) and ui-lib's dark tokens.
-pub const DARK_PAGE: (&str, &str) = ("#20262e", "#c9a84c");
+pub const DARK_PAGE: (&str, &str) = ("#0b1c28", "#e5cb93");
 
 /// The same on the light theme: ui-lib's light page (`--ps-page`, `style/theme.css` at
 /// v0.3.0, palicanon.app's cream since ui-lib 0.2.0), so the canvas matches the page around
 /// it, and a bright amber for the points: ui-lib's light gold (`#84590a`) drew them near
 /// black on a flat disc (user, 2026-10-16, variant B of two; task 010 for the page).
-pub const LIGHT_PAGE: (&str, &str) = ("#fdf6e3", "#c9952e");
+pub const LIGHT_PAGE: (&str, &str) = ("#f6f2e9", "#c9952e");
 
 /// The colours the map is drawn with (theme.ts's `MapTheme`).
 #[derive(Clone, Debug, PartialEq)]
@@ -161,7 +161,7 @@ mod tests {
     #[test]
     fn the_light_map_is_ui_libs_page_with_a_bright_amber() {
         let theme = MapTheme::new(true, &crate::map::fixture());
-        assert_eq!(theme.background, "#fdf6e3");
+        assert_eq!(theme.background, "#f6f2e9");
         assert_eq!(theme.gold, "#c9952e");
     }
     use crate::map::fixture;

@@ -122,8 +122,8 @@ pub fn MapScreen(
     tooltip: Option<ViewFn>,
 ) -> impl IntoView {
     view! {
-        <div class="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col sm:h-dvh">
-            <div class="relative z-[35] shrink-0 border-b border-line">
+        <div data-map-screen="" class="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col sm:h-dvh">
+            <div data-map-search="" class="relative z-[35] shrink-0 border-b border-line">
                 <div class="mx-auto w-full max-w-[40rem] px-4 py-3">{search.run()}</div>
             </div>
             <div class="relative flex min-h-0 flex-1">
@@ -138,7 +138,10 @@ pub fn MapScreen(
                         .get()
                         .then(|| {
                             view! {
-                                <aside class="absolute inset-y-0 right-0 z-30 w-full shrink-0 border-l border-line bg-page sm:w-80 lg:static">
+                                <aside
+                                    data-map-panel=""
+                                    class="absolute inset-y-0 right-0 z-30 w-full shrink-0 border-l border-line bg-page sm:w-80 lg:static"
+                                >
                                     {panel.run()}
                                 </aside>
                             }
