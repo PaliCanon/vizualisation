@@ -10,12 +10,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::manifest::Manifest;
 use crate::map::draw::{Links, Scene};
+#[cfg(feature = "ssr")]
 use palicanon_ui_lib::Language;
 
 use crate::map::model::TextRef;
 use crate::map::ui::Texts;
 use crate::map::ui::panel::{PanelText, panel_text};
-use crate::map::ui::translators::{TranslatorRow, people};
 use crate::route::View;
 
 /// What a map address opened on the server.
@@ -54,54 +54,6 @@ pub(crate) struct FirstRender {
     pub open: FirstOpen,
     /// How many texts each language has a title for (the texts chip's hints).
     pub counts: BTreeMap<String, usize>,
-    /// The Acknowledgements page's translators table (with every page: the browser may reach
-    /// that page by its own navigation, without a server render of it; under a kilobyte).
-    pub credits: Option<Credits>,
-}
-
-/// What the Acknowledgements' translators table shows (`Translators.tsx`), read from the
-/// data: the Pāli texts' count, then each language's translators and texts.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub(crate) struct Credits {
-    /// How many texts the Pāli edition has: the vectorial space's, every Pāli text.
-    pub pali_texts: usize,
-    /// Each language of `translations.json`: its code, its credits, how many texts it has.
-    pub languages: Vec<(String, Vec<String>, usize)>,
-}
-
-#[cfg(feature = "ssr")]
-impl Credits {
-    /// The credits of `translations`, with `pali_texts` Pāli texts.
-    pub(crate) fn of(translations: &crate::map::model::Translations, pali_texts: usize) -> Credits {
-        Credits {
-            pali_texts,
-            languages: translations
-                .0
-                .iter()
-                .map(|(code, tr)| (code.clone(), tr.translators.clone(), tr.titles.len()))
-                .collect(),
-        }
-    }
-}
-
-impl Credits {
-    /// The table's rows after Pāli, in `language`
-    /// ([`translator_rows`](crate::map::ui::translators::translator_rows)'s, from these
-    /// credits): each interface language they have, in `Language::ALL`'s order.
-    pub(crate) fn rows(&self, language: Language) -> Vec<TranslatorRow> {
-        Language::ALL
-            .into_iter()
-            .filter_map(|code| {
-                let (_, translators, texts) =
-                    self.languages.iter().find(|(c, ..)| c == code.code())?;
-                Some(TranslatorRow {
-                    language: code.name(),
-                    authors: people(translators, language).join(", "),
-                    texts: *texts,
-                })
-            })
-            .collect()
-    }
 }
 
 impl FirstRender {
@@ -214,7 +166,6 @@ pub(crate) fn first_render(
         manifest: (*served.manifest).clone(),
         open: FirstOpen::Nothing,
         counts: translated_counts(&data.translations),
-        credits: None,
     };
     let Some(uid) = request.uid else {
         return first;
@@ -321,7 +272,7 @@ pub(crate) fn of_request() -> FirstRender {
         _ => (View::Parallels, None),
     };
     let th = crate::map::address::th_param(parts.uri.query(), view);
-    let mut first = first_render(
+    first_render(
         &served,
         &FirstRequest {
             path,
@@ -332,12 +283,7 @@ pub(crate) fn of_request() -> FirstRender {
             texts,
             light,
         },
-    );
-    first.credits = Some(Credits::of(
-        &served.data.translations,
-        served.data.sim.nodes.len(),
-    ));
-    first
+    )
 }
 
 #[cfg(test)]

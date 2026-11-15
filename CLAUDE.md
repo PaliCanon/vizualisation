@@ -20,8 +20,9 @@ CI and the image build from it, never refetch it. The Node tools that built it a
   headless Chrome), rustdoc, MSRV 1.88, cargo-deny, coverage, `cargo leptos build --release`, the
   deploy's tests (Python, shell), tofu fmt/validate.
 - App: `VIZ_GATE=off cargo leptos watch` (port 3301).
-- Strings: `app/locales/*.json` (the `leptos_i18n` catalogue) and `app/src/pages/content_*.rs` (the
-  footer pages) are ordinary source, edited by hand (their port from React: `app/STRINGS.md`).
+- Strings: `app/locales/*.json` (the `leptos_i18n` catalogue) is ordinary source, edited by hand
+  (its port from React: `app/STRINGS.md`). The footer pages (Acknowledgements, Terms, Privacy,
+  Legal, Support) live on palicanon.app: their paths here are a 301 there (`app/src/moved.rs`).
 - Deploy: push to main is CI only; tag v* builds the image and pushes it to GHCR
   (`ghcr.io/palicanon/vizualisation`), nothing more. Prod runs on the lsh-tech server (`Lsh0x/lsh-tech`,
   `stacks/palicanon/prod`, pulled by digest, behind a Cloudflare tunnel); its stack is updated by hand

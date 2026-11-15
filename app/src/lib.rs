@@ -21,9 +21,9 @@ pub mod gate;
 mod head;
 pub mod manifest;
 pub mod map;
+mod moved;
 #[cfg(feature = "ssr")]
 pub mod origin;
-mod pages;
 pub mod release;
 mod route;
 #[cfg(feature = "ssr")]

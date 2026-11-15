@@ -18,7 +18,6 @@
 //! - [`section`]: a folding section of the panel, closed until opened, remembered.
 //! - [`text_ref`](mod@text_ref): a text's reference as rows, cards, chips and links show it.
 //! - [`tooltip`]: the text under the pointer.
-//! - [`translators`]: the Acknowledgements page's table of translators.
 //!
 //! The data each component shows is built by pure functions here ([`Texts::item`],
 //! `panel::panel_text`, `legend::collection_rows`…), tested without a DOM.
@@ -34,7 +33,6 @@ pub mod sim_controls;
 pub mod text_ref;
 pub mod texts_menu;
 pub mod tooltip;
-pub mod translators;
 // Crate-wide: it takes the crate's own `View`.
 pub(crate) mod view_menu;
 

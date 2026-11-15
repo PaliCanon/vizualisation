@@ -1,13 +1,13 @@
-//! The page footer: ui-lib's [`Footer`] with the site's five pages
+//! The page footer: ui-lib's [`Footer`] with the site's five links
 //! (Acknowledgements · Terms · Privacy · Legal · Support, each a page of
-//! `crate::pages`), as the React `Footer.tsx`. At its left, this deploy's
+//! palicanon.app in the current language, `crate::moved`), as the React `Footer.tsx`. At its left, this deploy's
 //! release badge (from the [`ReleaseInfo`] the document provides) and the three outbound icons
 //! (App Store, Instagram, Ko-fi: the React `SocialLinks`).
 //!
 //! From learn-pali/app/src/components/site_footer.rs (commit cd65d7b; the
 //! shell's `footer` slot owns the wrapper that pushes it to the bottom of
 //! a short page, this component adds none) and search-front's (the links
-//! are this site's own pages). What differs: five links, Legal included;
+//! go to palicanon.app, where the pages live). What differs: five links, Legal included;
 //! the icons, which ui-lib's `Footer` has no slot for, sit in its
 //! `leading` slot after the badge — where the React map page put them
 //! (`App.tsx`: `<Footer social={false} leading={<SocialLinks …/>} />`);
@@ -16,10 +16,10 @@
 
 use leptos::prelude::*;
 use leptos_i18n::td_string;
-use palicanon_ui_lib::{EnvBadge, Footer, FooterLink};
+use palicanon_ui_lib::{EnvBadge, Footer, FooterLink, language_signal};
 
 use crate::catalogue::{Strings, strings};
-use crate::pages::PageKind;
+use crate::moved::{Page, url};
 use crate::release::ReleaseInfo;
 
 /// The App Store link from the footer, tagged with the React map's
@@ -55,13 +55,17 @@ pub fn SiteFooter() -> impl IntoView {
     }
 }
 
-/// The five pages, in the React footer's order, labelled in `t`'s language.
+/// The five pages, in the React footer's order, labelled in `t`'s language and linked to
+/// palicanon.app in the same language. Read where `t.locale()` is tracked, so a language
+/// switch redraws both.
 fn links(t: Strings) -> Vec<FooterLink> {
-    PageKind::ALL
+    let locale = t.locale();
+    let language = language_signal().get();
+    Page::ALL
         .into_iter()
-        .map(|kind| FooterLink {
-            label: kind.label(t.locale()),
-            href: kind.path(),
+        .map(|page| FooterLink {
+            label: page.label(locale),
+            href: url(language, page),
         })
         .collect()
 }
@@ -219,17 +223,22 @@ mod tests {
         format!(r#"href="{}""#, url.replace('&', "&amp;"))
     }
 
+    /// The five pages, in the React footer's order, each an absolute link to palicanon.app
+    /// (the pages live there), in the same tab.
     #[test]
-    fn the_footer_lists_the_five_pages_in_order() {
+    fn the_footer_links_the_five_pages_on_palicanon_app_in_order() {
         let html = render();
         let nav = &html[html.find("<nav").expect(&html)..html.find("</nav>").expect(&html)];
         let mut last = 0;
         for (href, label) in [
-            ("/acknowledgements", "Acknowledgements"),
-            ("/terms", "Terms"),
-            ("/privacy", "Privacy"),
-            ("/legal", "Legal"),
-            ("/support", "Support"),
+            (
+                "https://palicanon.app/acknowledgements/",
+                "Acknowledgements",
+            ),
+            ("https://palicanon.app/terms/", "Terms"),
+            ("https://palicanon.app/privacy/", "Privacy"),
+            ("https://palicanon.app/legal/", "Legal"),
+            ("https://palicanon.app/support/", "Support"),
         ] {
             let at = nav.find(&format!(r#"<a href="{href}""#)).expect(nav);
             assert!(at > last, "{nav}");
@@ -237,13 +246,17 @@ mod tests {
             assert!(nav.contains(&format!(">{label}</a>")), "{nav}");
         }
         assert_eq!(nav.matches("<a ").count(), 5, "exactly five links: {nav}");
+        assert!(!nav.contains("target="), "same tab: {nav}");
     }
 
+    /// The labels follow the language, and each link goes to the page in that language:
+    /// `/fr/…`, `/vi/…`.
     #[test]
-    fn the_footer_labels_follow_the_language() {
-        for (language, labels) in [
+    fn the_footer_labels_and_links_follow_the_language() {
+        for (language, prefix, labels) in [
             (
                 Language::Fr,
+                "/fr",
                 [
                     "Crédits",
                     "Conditions",
@@ -254,6 +267,7 @@ mod tests {
             ),
             (
                 Language::Vi,
+                "/vi",
                 [
                     "Tri ân",
                     "Điều khoản",
@@ -267,7 +281,10 @@ mod tests {
                 palicanon_ui_lib::provide_language().set(language);
                 view! { <SiteFooter /> }.to_html()
             });
-            for label in labels {
+            let slugs = ["acknowledgements", "terms", "privacy", "legal", "support"];
+            for (slug, label) in slugs.into_iter().zip(labels) {
+                let link = format!(r#"<a href="https://palicanon.app{prefix}/{slug}/""#);
+                assert!(html.contains(&link), "{language:?} {slug}: {html}");
                 assert!(html.contains(&format!(">{label}</a>")), "{html}");
             }
         }

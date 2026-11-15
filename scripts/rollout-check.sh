@@ -48,7 +48,7 @@
 # hashed name in a release build, is 200 and text/css), `guard` (direct mode: without the header, or
 # with a wrong one, / is 403; /health without it is 403), `refused`, and,
 # through the Worker only (Chrome cannot add the origin header), `hydrate`:
-# headless Chrome loads /, /sim/mn10 and /privacy (ui-lib 063: the page
+# headless Chrome loads /, /sim/mn10 and an unknown path, the 404 (ui-lib 063: the page
 # hydrates past the nodes Cloudflare injects); a page passes when Chrome's
 # console (stderr) has no `runtime.panic`, `panicked at` or `RuntimeError` and its dumped
 # DOM has `<html data-hydrated>` (set by palicanon_ui_lib::hydrate). With
@@ -431,7 +431,7 @@ hydrate() {
 }
 
 n=0
-for path in / /sim/mn10 /privacy; do
+for path in / /sim/mn10 /no-such-page; do
   n=$((n + 1))
   hydrate "$path" "$n"
 done

@@ -62,6 +62,27 @@ async fn sitemap(
     )
 }
 
+/// The files for crawlers, not for results: `sitemap.xml` (served by [`sitemap`]) and
+/// `robots.txt` (a site file).
+const CRAWLER_FILES: [&str; 2] = ["/sitemap.xml", "/robots.txt"];
+
+/// `X-Robots-Tag: noindex` on the answers to [`CRAWLER_FILES`]: a crawler reads them, a
+/// search engine does not list them.
+async fn crawler_files_noindex(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let crawler_file = CRAWLER_FILES.contains(&request.uri().path());
+    let mut response = next.run(request).await;
+    if crawler_file {
+        response.headers_mut().insert(
+            header::HeaderName::from_static("x-robots-tag"),
+            HeaderValue::from_static("noindex"),
+        );
+    }
+    response
+}
+
 /// `/data/{file}`: the data file whose hashed name `file` is, as read at
 /// boot; a 404 for any other name, a stale hash included.
 async fn data_file(State(served): State<Served>, Path(file): Path<String>) -> Response {
@@ -115,15 +136,19 @@ pub fn router(options: LeptosOptions, config: Config, data: Arc<Data>) -> axum::
         .append_index_html_on_directories(false)
         .call_fallback_on_method_not_allowed(true)
         .fallback(app);
+    // The pages that moved to palicanon.app answer their 301 before any page is rendered
+    // (`crate::moved`).
     let site = axum::Router::new()
         .route("/sitemap.xml", get(sitemap).with_state(served.clone()))
         .route("/data/{file}", get(data_file).with_state(served))
+        .merge(crate::moved::routes())
         .route_layer(axum::middleware::from_fn(crate::telemetry::server::request))
         .fallback_service(files)
         .layer(axum::middleware::from_fn_with_state(
             Arc::new(config.gate),
             gate::guard,
-        ));
+        ))
+        .layer(axum::middleware::from_fn(crawler_files_noindex));
     axum::Router::new()
         // `/health` (the server's probes) and `/healthz` (the uniform check).
         .route(HEALTH_PATH, get(health).with_state(data))
@@ -536,6 +561,177 @@ mod tests {
             body.contains("<loc>https://map.palicanon.app/mn10</loc>"),
             "{body}"
         );
-        assert_eq!(body.matches("<loc>").count(), 1 + 5 + 8268);
+        assert_eq!(
+            body.matches("<loc>").count(),
+            1 + 8268,
+            "the home and the texts"
+        );
+        for page in ["acknowledgements", "terms", "privacy", "legal", "support"] {
+            assert!(
+                !body.contains(&format!("<loc>https://map.palicanon.app/{page}</loc>")),
+                "{page} lives on palicanon.app: {body}"
+            );
+        }
+    }
+
+    /// A language's code, its prefix on palicanon.app, and the requests' headers that pick it.
+    type LanguageCases = (
+        &'static str,
+        &'static str,
+        Vec<Vec<(&'static str, &'static str)>>,
+    );
+
+    /// The five pages that moved to palicanon.app.
+    const MOVED: [&str; 5] = ["acknowledgements", "terms", "privacy", "legal", "support"];
+
+    /// `method path` on `app` with `headers`: the status, the headers, the body.
+    async fn call(
+        app: axum::Router,
+        method: &str,
+        path: &str,
+        headers: &[(&str, &str)],
+    ) -> (StatusCode, axum::http::HeaderMap, String) {
+        let mut request = Request::builder().method(method).uri(path);
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
+        let response = app
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let headers = response.headers().clone();
+        let body = axum::body::to_bytes(response.into_body(), 1 << 24)
+            .await
+            .unwrap();
+        (status, headers, String::from_utf8(body.to_vec()).unwrap())
+    }
+
+    /// 5 pages x 3 languages (cookie, `Accept-Language` or nothing) x slash / no slash x
+    /// GET / HEAD: a 301 to the page on palicanon.app (English bare, fr and vi under their
+    /// prefix, the slash form), no body, a verdict that depends on the request's language
+    /// and so is never cached for good (search-front 037).
+    #[tokio::test]
+    async fn the_moved_pages_are_a_301_to_palicanon_app_in_the_language() {
+        let languages: [LanguageCases; 3] = [
+            (
+                "en",
+                "",
+                vec![
+                    vec![],
+                    vec![("Accept-Language", "en-GB,en;q=0.9")],
+                    vec![("Accept-Language", "de-DE,de;q=0.9")],
+                    vec![("Cookie", "pc_lang=en")],
+                ],
+            ),
+            (
+                "fr",
+                "/fr",
+                vec![
+                    vec![("Cookie", "a=b; pc_lang=fr; c=d")],
+                    vec![("Accept-Language", "fr-FR,fr;q=0.9,en;q=0.5")],
+                ],
+            ),
+            (
+                "vi",
+                "/vi",
+                vec![
+                    vec![("Cookie", "pc_lang=vi")],
+                    vec![("Accept-Language", "vi-VN,vi;q=0.9")],
+                ],
+            ),
+        ];
+        for (lang, prefix, requests) in languages {
+            for headers in requests {
+                for page in MOVED {
+                    for path in [format!("/{page}"), format!("/{page}/")] {
+                        for method in ["GET", "HEAD"] {
+                            let case = format!("{method} {path} {lang} {headers:?}");
+                            let (status, got, body) = call(prod(), method, &path, &headers).await;
+                            let want = format!("https://palicanon.app{prefix}/{page}/");
+                            assert_eq!(status, StatusCode::MOVED_PERMANENTLY, "{case}");
+                            assert_eq!(got[header::LOCATION], want.as_str(), "{case}");
+                            assert_eq!(got[header::CACHE_CONTROL], "no-cache", "{case}");
+                            assert_eq!(got[header::VARY], "Cookie, Accept-Language", "{case}");
+                            assert_eq!(body, "", "{case}: no body");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The cookie decides over `Accept-Language`, as on every page of the site; the query
+    /// string is not carried to palicanon.app.
+    #[tokio::test]
+    async fn the_cookie_wins_over_accept_language_and_the_query_is_dropped() {
+        let both = [("Cookie", "pc_lang=vi"), ("Accept-Language", "fr")];
+        let (_, headers, _) = call(prod(), "GET", "/terms", &both).await;
+        assert_eq!(headers[header::LOCATION], "https://palicanon.app/vi/terms/");
+        let (status, headers, _) = call(prod(), "GET", "/support/?utm_source=x", &[]).await;
+        assert_eq!(status, StatusCode::MOVED_PERMANENTLY);
+        assert_eq!(headers[header::LOCATION], "https://palicanon.app/support/");
+    }
+
+    /// Only the five paths move: a longer path, a near miss or a capital is a 404, no
+    /// redirect.
+    #[tokio::test]
+    async fn other_paths_are_not_moved() {
+        for path in [
+            "/privacyx",
+            "/xprivacy",
+            "/privacy/x",
+            "/terms//",
+            "/Privacy",
+            "/fr/privacy",
+        ] {
+            let (status, headers, _) = call(prod(), "GET", path, &[]).await;
+            assert_eq!(status, StatusCode::NOT_FOUND, "{path}");
+            assert!(headers.get(header::LOCATION).is_none(), "{path}");
+        }
+    }
+
+    /// A site root holding `robots.txt`, as `cargo leptos build` copies `app/public/`.
+    fn site_with_robots() -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!("viz-robots-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("robots.txt"),
+            include_str!("../public/robots.txt"),
+        )
+        .unwrap();
+        root
+    }
+
+    /// `/sitemap.xml` and `/robots.txt` are for crawlers, not results: each carries
+    /// `X-Robots-Tag: noindex`; a page and an image do not.
+    #[tokio::test]
+    async fn the_sitemap_and_robots_txt_are_noindex() {
+        let root = site_with_robots();
+        let app = || {
+            router(
+                LeptosOptions::builder()
+                    .output_name("vizualisation")
+                    .site_root(root.to_string_lossy().into_owned())
+                    .build(),
+                Config {
+                    gate: Gate::Off,
+                    origin: Origin::Open,
+                },
+                data(),
+            )
+        };
+        for path in ["/sitemap.xml", "/robots.txt"] {
+            let (status, headers, body) = call(app(), "GET", path, &[]).await;
+            assert_eq!(status, StatusCode::OK, "{path}");
+            assert!(!body.is_empty(), "{path}");
+            let values: Vec<_> = headers.get_all("x-robots-tag").iter().collect();
+            assert_eq!(values, ["noindex"], "{path}");
+        }
+        for path in ["/", "/mn10"] {
+            let (status, headers, _) = call(app(), "GET", path, &[]).await;
+            assert_eq!(status, StatusCode::OK, "{path}");
+            assert!(headers.get("x-robots-tag").is_none(), "{path}");
+        }
     }
 }

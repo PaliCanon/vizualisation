@@ -1,8 +1,9 @@
 //! The typed route table: every path this site answers, as data. A map
 //! route is a [`View`] and an optional text uid (`/`, `/mn10`, `/sim`,
-//! `/sim/mn10`); a page route is one of the footer pages
-//! ([`PageKind`]: `/acknowledgements`, `/terms`, `/privacy`, `/legal`,
-//! `/support`); anything else is the 404 ([`Route::parse`] gives `None`).
+//! `/sim/mn10`); anything else is the 404 ([`Route::parse`] gives `None`).
+//! The footer pages (`/acknowledgements`, `/terms`, `/privacy`, `/legal`,
+//! `/support`) live on palicanon.app: the server answers them with a 301
+//! before any route is read (`crate::moved`).
 //!
 //! The React site had one map at `/` and its pages (`src/main.tsx`'s
 //! `pageFromPath`); design v4 (task 005) gives each view its path and each
@@ -14,7 +15,6 @@ use leptos_i18n::td_string;
 use serde::{Deserialize, Serialize};
 
 use crate::catalogue::Locale;
-use crate::pages::PageKind;
 
 /// One of the map's views, each at its own path segment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -70,31 +70,24 @@ pub(crate) enum Route {
         /// is the data's question (task 006), not the path's.
         uid: Option<String>,
     },
-    /// A footer page.
-    Page(PageKind),
 }
 
 impl Route {
     /// The route at `path` (no query, no fragment), `None` for a 404.
     pub(crate) fn parse(path: &str) -> Option<Self> {
         path.strip_prefix('/')?;
-        if let Some(kind) = PageKind::ALL.into_iter().find(|kind| kind.path() == path) {
-            return Some(Self::Page(kind));
-        }
         let (view, uid) = map_address(path)?;
         Some(Self::Map { view, uid })
     }
 
     /// The route's path, the one [`Route::parse`] reads back.
     pub(crate) fn path(&self) -> String {
-        match self {
-            Self::Page(kind) => kind.path().to_owned(),
-            Self::Map { view, uid } => match (view.segment(), uid) {
-                ("", None) => "/".to_owned(),
-                ("", Some(uid)) => format!("/{uid}"),
-                (segment, None) => format!("/{segment}"),
-                (segment, Some(uid)) => format!("/{segment}/{uid}"),
-            },
+        let Self::Map { view, uid } = self;
+        match (view.segment(), uid) {
+            ("", None) => "/".to_owned(),
+            ("", Some(uid)) => format!("/{uid}"),
+            (segment, None) => format!("/{segment}"),
+            (segment, Some(uid)) => format!("/{segment}/{uid}"),
         }
     }
 }
@@ -103,7 +96,7 @@ impl Route {
 /// `crate::fragment::MapRoutes`): the empty path or `/` the parallels, `/<uid>` a text there, `/sim`
 /// the vectorial space, `/sim/<uid>` a text there; `None` for anything else (`/MN10`, a
 /// third segment, a removed view's `/pca/mn10`): the map's 404. The same rule at the root
-/// and under the app's `/map`; a footer page's path is not the map's to decide.
+/// and under the app's `/map`.
 pub(crate) fn map_address(rest: &str) -> Option<(View, Option<String>)> {
     if rest.is_empty() || rest == "/" {
         return Some((View::Parallels, None));
@@ -141,9 +134,9 @@ fn is_uid(segment: &str) -> bool {
 mod tests {
     use super::*;
 
-    /// Every page, every view without a uid and with one.
+    /// Every view without a uid and with one.
     fn every_route() -> Vec<Route> {
-        let mut routes: Vec<Route> = PageKind::ALL.into_iter().map(Route::Page).collect();
+        let mut routes = Vec::new();
         for view in View::ALL {
             routes.push(Route::Map { view, uid: None });
             for uid in ["mn10", "sn56.11", "pli-tv-bu-vb-pj1"] {
@@ -187,7 +180,6 @@ mod tests {
                     uid: None,
                 },
             ),
-            ("/legal", Route::Page(PageKind::Legal)),
         ] {
             assert_eq!(Route::parse(path), Some(route.clone()), "{path}");
             assert_eq!(route.path(), path, "{route:?}");
@@ -251,11 +243,20 @@ mod tests {
         }
     }
 
-    /// A page's path is the page, never a text whose uid it would spell.
+    /// The footer pages are no route of this site any more (they moved to palicanon.app,
+    /// the server's 301 answers before the table is read): their path reads as a text's
+    /// uid, which no text has (a 404).
     #[test]
-    fn a_page_path_is_the_page_not_a_uid() {
-        for kind in PageKind::ALL {
-            assert_eq!(Route::parse(kind.path()), Some(Route::Page(kind)));
+    fn a_moved_page_is_no_page_route() {
+        for page in ["acknowledgements", "terms", "privacy", "legal", "support"] {
+            assert_eq!(
+                Route::parse(&format!("/{page}")),
+                Some(Route::Map {
+                    view: View::Parallels,
+                    uid: Some(page.to_owned()),
+                }),
+                "{page}"
+            );
         }
     }
 }
