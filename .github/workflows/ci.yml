@@ -11,14 +11,14 @@
 # wasm32). What differs from search-front: one sibling; the app is
 # `-p vizualisation`; the engine, layout and formats crates keep their jobs,
 # each beside the app's (they build for wasm32 too); MSRV 1.88; the coverage
-# keeps this repository's job-level CODECOV_TOKEN and its summary; no token
+# keeps this repository's summary; no token
 # check in the bundle job (this service holds no API token, Dockerfile); the
 # React site's job went with the site (task 008). Every cargo step names its packages
 # with `-p`, never `--workspace` or `--all-features`: the app's `ssr` and
 # `hydrate` do not build together.
 #
 # Repository secrets used: APP_ID, APP_PRIVATE_KEY (the GitHub App, Contents:
-# read on ui-lib and vizualisation), CODECOV_TOKEN (optional).
+# read on ui-lib and vizualisation).
 name: CI
 
 on:
@@ -236,8 +236,6 @@ jobs:
   coverage:
     name: coverage
     runs-on: ubuntu-latest
-    env:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -251,17 +249,11 @@ jobs:
         with:
           components: llvm-tools-preview
       - uses: taiki-e/install-action@cargo-llvm-cov
-      # The coverage table goes to the job summary; Codecov only once a CODECOV_TOKEN exists.
+      # The coverage table goes to the job summary.
       # One run over the app (its `ssr` feature named by package: several -p) and the map crates.
       - run: |
-          cargo llvm-cov --locked -p vizualisation --features vizualisation/ssr $MAP_CRATES --lcov --output-path lcov.info
+          cargo llvm-cov --locked -p vizualisation --features vizualisation/ssr $MAP_CRATES
           { echo '```'; cargo llvm-cov report --summary-only; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: codecov/codecov-action@v5
-        if: env.CODECOV_TOKEN != ''
-        with:
-          files: lcov.info
-          working-directory: vizualisation
-          fail_ci_if_error: true
 
   bundle:
     # `cargo leptos build --release` as the Dockerfile runs it, on pull
