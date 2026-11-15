@@ -16,9 +16,6 @@ use crate::catalogue::strings;
 use crate::components::not_found::NotFoundHead;
 use crate::fragment::MapHead;
 
-#[cfg(feature = "ssr")]
-use crate::pages::PageKind;
-
 /// The production origin every canonical and `og:url` starts with.
 pub const CANONICAL_BASE: &str = "https://map.palicanon.app";
 
@@ -92,16 +89,14 @@ const JSON_LD: &str = concat!(
     r#""isPartOf":{"@type":"WebSite","name":"PaliCanon","url":"https://palicanon.app/"}}"#,
 );
 
-/// `sitemap.xml`: the map's home, the footer pages, then every text of
+/// `sitemap.xml`: the map's home, then every text of
 /// `texts` once, at its canonical address (`TextIndex::canonical`, the rule
 /// of `open_text` the first render's head follows: `/mn10`, `/sim/ds1.1`).
 #[cfg(feature = "ssr")]
 #[must_use]
 pub(crate) fn sitemap(texts: &crate::data::TextIndex) -> String {
     use crate::map::address::address;
-    let pages = std::iter::once("/")
-        .chain(PageKind::ALL.map(PageKind::path))
-        .map(str::to_owned);
+    let pages = std::iter::once("/".to_owned());
     let texts = texts.iter().filter_map(|(uid, _)| {
         let view = texts.canonical(uid)?;
         Some(address(view, Some(uid), None))
@@ -199,7 +194,7 @@ mod tests {
         }
     }
 
-    /// The home and every page once, then every text once at its canonical
+    /// The home once (the footer pages live on palicanon.app), then every text once at its canonical
     /// address — its first view (`/mn10` for a text of the parallels,
     /// `/sim/ds1.1` for one of the vectorial space only) —, an address the
     /// route table reads back as that text. Mutations it catches: a text
@@ -215,7 +210,6 @@ mod tests {
             "{xml}"
         );
         let mut expected = vec![format!("{CANONICAL_BASE}/")];
-        expected.extend(PageKind::ALL.map(|kind| format!("{CANONICAL_BASE}{}", kind.path())));
         for (uid, entry) in texts.iter() {
             let view = entry.views[0].0;
             let path = Route::Map {

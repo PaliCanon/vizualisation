@@ -1625,13 +1625,13 @@ const CHALLENGE_DOM: &str = "<html><head><title>Just a moment...</title></head><
 const PANIC_LINE: &str =
     "[1:2:INFO:CONSOLE(1)] \"panicked at tachys-0.2.19/src/hydration.rs:227:9\"";
 /// The pages the check loads.
-const HYDRATE_PAGES: [&str; 3] = ["/", "/sim/mn10", "/privacy"];
+const HYDRATE_PAGES: [&str; 3] = ["/", "/sim/mn10", "/no-such-page"];
 
 /// A `chrome` that logs its arguments and plays `FAKE_CHROME_MODE` per page:
 /// `ok`, `panic` (the panic on stderr, the marker still dumped: stderr is
 /// read on its own), `runtime` (a wasm `RuntimeError`), `bare` (no marker),
-/// `challenge`, `hang` (never answers), `privacy-panic` (`ok` but on
-/// `/privacy`, which panics), `stuck` (dumps the launcher page itself, as
+/// `challenge`, `hang` (never answers), `notfound-panic` (`ok` but on
+/// `/no-such-page`, the 404, which panics), `stuck` (dumps the launcher page itself, as
 /// when its popup never opens). Given a `file://` page (dev: the launcher
 /// that carries the password), it reads the URL the launcher's popup opens
 /// (with the password) and the one it then goes to, logs them in
@@ -1666,8 +1666,8 @@ case "$url" in
     ;;
 esac
 mode="${{FAKE_CHROME_MODE:-ok}}"
-if [ "$mode" = privacy-panic ]; then
-  if [ "${{target%/privacy}}" != "$target" ]; then mode=panic; else mode=ok; fi
+if [ "$mode" = notfound-panic ]; then
+  if [ "${{target%/no-such-page}}" != "$target" ]; then mode=panic; else mode=ok; fi
 fi
 case "$mode" in
   ok) printf '%s\n' '{HYDRATED_DOM}' ;;
@@ -1738,7 +1738,7 @@ fn dev_through_the_worker(req: &Req) -> Resp {
 }
 
 /// T3 (search-front 017, ui-lib 063): through the Worker, a page that
-/// hydrates on `/`, a map route and `/privacy` passes, and Chrome ran
+/// hydrates on `/`, a map route and an unknown path (the 404) passes, and Chrome ran
 /// headless, with its console on stderr, a virtual-time budget, its DOM
 /// dumped, on the three pages.
 #[test]
@@ -1901,16 +1901,16 @@ fn rollout_check_hydrate_fails_on_a_panic_in_the_browser() {
             printed(&out)
         );
     }
-    let chrome = FakeChrome::new("privacy-panic");
+    let chrome = FakeChrome::new("notfound-panic");
     let out = run(
         &check_script(),
         &["--via-worker", &fake.url()],
-        &chrome.env("privacy-panic"),
+        &chrome.env("notfound-panic"),
     );
     assert_fails_naming(
         &out,
-        "hydrate: /privacy: the page panicked",
-        "only /privacy panics",
+        "hydrate: /no-such-page: the page panicked",
+        "only /no-such-page panics",
     );
     let gated = Fake::start(dev_through_the_worker);
     let pass = password_file("hydrate-panic");

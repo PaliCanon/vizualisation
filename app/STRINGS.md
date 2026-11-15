@@ -5,6 +5,12 @@ ported by `scripts/port_strings.py` (task 005) to the two files below. The catal
 were removed in task 008 (they are in git history): both files are now ordinary source, edited by
 hand, and this page maps where each old key went.
 
+**The footer pages moved to palicanon.app** (Acknowledgements, Terms, Privacy, Legal, Support): the
+site answers their paths with a 301 there (`app/src/moved.rs`). `app/src/pages/` and the
+Acknowledgements' translators table went with them, and so did the keys only they read
+(`pages_updated`, `panel_back`, `credits_table_*`, `credits_col_*`, `credits_pali_edition`); the
+lines below that name them are history. The footer's labels (`footer_nav_*`) stay.
+
 - `app/locales/<lang>.json`: the `leptos_i18n` 0.6 catalogue, flat snake_case keys, values
   verbatim, every key but `pages.*` (and `pages.updated`, kept as `pages_updated`).
 - `app/src/pages/content_<lang>.rs`: `pages.*` as typed const data (`PAGES`, types in

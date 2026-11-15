@@ -1,20 +1,18 @@
 //! The service's shell: the HTML document ([`shell`], server-rendered), the
 //! app root ([`App`], what hydration mounts), and `AppShell`'s rail with the
-//! services Search, Learn and Map (this one), its routes (the map's views,
-//! the footer pages, the 404: `crate::route`), the footer under each
-//! (`SiteFooter`) carrying the release badge. From search-front/app/src/app.rs
-//! (commit 6d370b4) and learn-pali/app/src/app.rs; what differs: three rail
-//! entries, and one view for every route, rendering what the typed table
-//! says (`RoutedPage`).
+//! services Search, Learn and Map (this one), its routes (the map's views
+//! and the 404: `crate::route`), the footer under each (`SiteFooter`)
+//! carrying the release badge. From search-front/app/src/app.rs (commit
+//! 6d370b4) and learn-pali/app/src/app.rs; what differs: three rail
+//! entries. The footer pages live on palicanon.app (`crate::moved`).
 
 use leptos::prelude::*;
 use leptos_i18n::td_string;
 use leptos_meta::provide_meta_context;
 #[cfg(feature = "ssr")]
 use leptos_meta::{HashedStylesheet, MetaTags};
-use leptos_router::components::{Route, Router, Routes};
+use leptos_router::components::{Router, Routes};
 use leptos_router::hooks::use_location;
-use leptos_router::path;
 use palicanon_ui_lib::{AppShell, IconName, NavEntry, NavList, NavSection, provide_language};
 #[cfg(feature = "ssr")]
 use palicanon_ui_lib::{HydrationRoot, language_attribute, theme_attribute};
@@ -26,7 +24,6 @@ use crate::fragment::{MapProvider, MapRoutes};
 use crate::head::{SiteHead, site_map_head};
 use crate::map::first::FirstRender;
 use crate::map::site_data::SiteData;
-use crate::pages::FooterPage;
 #[cfg(feature = "ssr")]
 use crate::release::{ENV_META, ReleaseInfo, SHA_META};
 use crate::route;
@@ -157,12 +154,12 @@ pub(crate) fn nav_entries(locale: crate::catalogue::Locale) -> Vec<NavEntry> {
 }
 
 /// The path the rail marks current for `path`: the Map entry's (`/`) on every map
-/// address — a view, a text in a view —, the path itself elsewhere (a footer page, the
-/// 404: no entry).
+/// address — a view, a text in a view —, the path itself elsewhere (the 404: no entry).
 pub(crate) fn rail_current(path: &str) -> String {
-    match route::Route::parse(path) {
-        Some(route::Route::Map { .. }) => "/".to_owned(),
-        _ => path.to_owned(),
+    if route::Route::parse(path).is_some() {
+        "/".to_owned()
+    } else {
+        path.to_owned()
     }
 }
 
@@ -179,13 +176,10 @@ fn nav(current: Signal<String>) -> NavList {
 }
 
 /// The shell around the pages: `AppShell`'s rail, theme and languages, the
-/// routes, the footer under each. The footer pages come first, then the Map
-/// fragment's routes at the root (`MapRoutes`: `/`, `/sim`, `/sim/:uid`,
-/// `/:uid`; routes match in the order given, so a page is never read as a
-/// text); the rest falls to the 404 with its status. The map is one parent
-/// route, kept while the reader moves between views and texts (the engine
-/// and the data with it), mounted on the first map address and dropped on a
-/// page.
+/// Map fragment's routes at the root (`MapRoutes`: `/`, `/sim`, `/sim/:uid`,
+/// `/:uid`), the footer under each; the rest falls to the 404 with its
+/// status. The map is one parent route, kept while the reader moves between
+/// views and texts (the engine and the data with it).
 #[component]
 fn Layout() -> impl IntoView {
     let location = use_location();
@@ -193,24 +187,9 @@ fn Layout() -> impl IntoView {
     view! {
         <AppShell nav=nav(current) footer=|| view! { <SiteFooter /> }>
             <Routes fallback=|| view! { <NotFoundPage /> }>
-                <Route path=path!("/acknowledgements") view=RoutedPage />
-                <Route path=path!("/terms") view=RoutedPage />
-                <Route path=path!("/privacy") view=RoutedPage />
-                <Route path=path!("/legal") view=RoutedPage />
-                <Route path=path!("/support") view=RoutedPage />
                 <MapRoutes />
             </Routes>
         </AppShell>
-    }
-}
-
-/// The footer page at the current path, as [`route::Route::parse`] reads it.
-#[component]
-fn RoutedPage() -> impl IntoView {
-    let location = use_location();
-    move || match route::Route::parse(&location.pathname.get()) {
-        Some(route::Route::Page(kind)) => view! { <FooterPage kind=kind /> }.into_any(),
-        _ => view! { <NotFoundPage /> }.into_any(),
     }
 }
 
@@ -297,29 +276,6 @@ mod tests {
         })
     }
 
-    /// The footer pages' paths and their titles in en, fr, vi.
-    #[cfg(feature = "ssr")]
-    const PAGE_TITLES: [(&str, [&str; 3]); 5] = [
-        (
-            "/acknowledgements",
-            ["Acknowledgements", "Remerciements", "Tri ân"],
-        ),
-        (
-            "/terms",
-            [
-                "Terms of use",
-                "Conditions d’utilisation",
-                "Điều khoản sử dụng",
-            ],
-        ),
-        ("/privacy", ["Privacy", "Confidentialité", "Quyền riêng tư"]),
-        (
-            "/legal",
-            ["Legal notice", "Mentions légales", "Thông tin pháp lý"],
-        ),
-        ("/support", ["Support", "Soutenir", "Ủng hộ"]),
-    ];
-
     /// The views' path prefixes and their names in en, fr, vi.
     #[cfg(feature = "ssr")]
     const VIEW_TITLES: [(&str, [&str; 3]); 2] = [
@@ -331,22 +287,18 @@ mod tests {
     ];
 
     /// Every route of the table renders, inside the shell, its title in
-    /// each language (a page's `<h1>`, the view's name on a map route),
-    /// before the footer, and is no 404; a map route with a text opens its
-    /// panel.
+    /// each language (the view's name), before the footer, and is no 404; a
+    /// map route with a text opens its panel.
     #[cfg(feature = "ssr")]
     #[test]
     fn every_route_renders() {
-        let mut routes: Vec<(String, [&str; 3], Option<&str>)> = PAGE_TITLES
-            .iter()
-            .map(|(path, titles)| ((*path).to_owned(), *titles, None))
-            .collect();
+        let mut routes: Vec<(String, [&str; 3], Option<&str>)> = Vec::new();
         for (prefix, titles) in VIEW_TITLES {
             let bare = if prefix.is_empty() { "/" } else { prefix };
             routes.push((bare.to_owned(), titles, None));
             routes.push((format!("{prefix}/mn10"), titles, Some("mn10")));
         }
-        assert_eq!(routes.len(), 9, "5 pages, 2 views with and without a uid");
+        assert_eq!(routes.len(), 4, "2 views with and without a uid");
         for (path, titles, uid) in routes {
             for (language, title) in Language::ALL.into_iter().zip(titles) {
                 let html = render_layout(language, &path);
@@ -450,7 +402,6 @@ mod tests {
             ("/", home, "/"),
             ("/sim", home, "/sim"),
             ("/sim/mn10", mn10, "/mn10"),
-            ("/terms", "Terms of use — Suttas Map", "/terms"),
         ] {
             let html = render_document(path);
             let head = &html[..html.find("</head>").expect(&html)];
@@ -530,7 +481,7 @@ mod tests {
 
     /// The 404 asks not to be indexed (`<meta name="robots"
     /// content="noindex">` in the document's `<head>`, through
-    /// `leptos_meta`); a page and a map route do not.
+    /// `leptos_meta`); a map route does not.
     #[cfg(feature = "ssr")]
     #[test]
     fn the_404_is_noindex() {
@@ -552,7 +503,7 @@ mod tests {
                 "{head}"
             );
         }
-        for path in ["/terms", "/sim/mn10"] {
+        for path in ["/", "/sim/mn10"] {
             let html = render_document(path);
             assert!(!html.contains("noindex"), "{path}: {html}");
         }
@@ -562,7 +513,7 @@ mod tests {
     #[cfg(feature = "ssr")]
     #[test]
     fn the_badge_sits_in_the_footer_after_the_page() {
-        let html = render_layout(Language::En, "/terms");
+        let html = render_layout(Language::En, "/");
         let badge = r#"title="main · 34c489c""#;
         let page = html.find("</main>").expect(&html);
         let footer = html.find("<footer").expect(&html);
@@ -682,7 +633,7 @@ mod tests {
     #[cfg(feature = "ssr")]
     #[test]
     fn the_shell_body_is_the_hydration_root_around_the_app() {
-        let html = render_document("/privacy");
+        let html = render_document("/mn10");
         let body = html.find("<body>").expect(&html) + "<body>".len();
         let end = html.find("</body>").expect(&html);
         assert!(
@@ -694,7 +645,7 @@ mod tests {
             end,
             "the root closes the body: {html}"
         );
-        let page = html.find(">Privacy</h1>").expect(&html);
+        let page = html.find("Read on SuttaCentral").expect(&html);
         let footer = html.find("<footer").expect(&html);
         assert!(body < page && footer < end, "the app is inside: {html}");
     }
@@ -861,7 +812,7 @@ mod tests {
     }
 
     /// 006 review: the rail's Map entry (`/`) is current on every map route — a view, a
-    /// text in a view —, never on a footer page.
+    /// text in a view —, never on the 404.
     #[cfg(feature = "ssr")]
     #[test]
     fn the_rails_map_entry_is_current_on_every_map_route() {
@@ -873,7 +824,7 @@ mod tests {
                 assert!(tag.contains(r#"href="/""#), "{path}: {tag}");
             }
         }
-        for path in ["/terms", "/acknowledgements"] {
+        for path in ["/nope/x/y", "/MN10"] {
             let html = render_layout(Language::En, path);
             assert!(
                 current_tags(&html)
@@ -928,21 +879,24 @@ mod tests {
         }
     }
 
-    /// The Acknowledgements page has the translators table, read from the
-    /// data: the Pāli edition's 7,286 texts (the vectorial space's), then a
-    /// row per language with its count (`translations.json`: 6,516 English,
-    /// 1,191 French, 5,259 Vietnamese).
+    /// The footer pages moved to palicanon.app (the server's 301, `crate::moved`): should
+    /// the app's router ever see their path, it is no page of its own but the 404, in each
+    /// language, with no page text left behind.
     #[cfg(feature = "ssr")]
     #[test]
-    fn the_acknowledgements_list_the_translators_from_the_data() {
-        use crate::map::ui::test_support::plain;
-        let html = plain(&render_layout(Language::En, "/acknowledgements"));
-        assert!(html.contains("Texts and translators"), "{html}");
-        for count in ["7,286", "6,516", "1,191", "5,259"] {
-            assert!(html.contains(&format!(">{count}<")), "{count}: {html}");
+    fn a_moved_page_is_no_page_of_the_app() {
+        for path in [
+            "/acknowledgements",
+            "/terms",
+            "/privacy",
+            "/legal",
+            "/support",
+        ] {
+            for language in Language::ALL {
+                let html = render_layout(language, path);
+                assert!(html.contains(">Anattā</h1>"), "{path}: {html}");
+                assert!(!html.contains("Last updated"), "{path}: {html}");
+            }
         }
-        assert!(html.contains("Mahāsaṅgīti Tipiṭaka"), "{html}");
-        let fr = plain(&render_layout(Language::Fr, "/acknowledgements"));
-        assert!(fr.contains("7\u{202f}286"), "{fr}");
     }
 }
