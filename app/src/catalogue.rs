@@ -84,12 +84,13 @@ mod tests {
     /// Keys whose French or Vietnamese value is, rightly, the English one:
     /// names ("Suttas Map", "SuttaCentral", "Anattā" and
     /// the 404 title built from them), the numeral "404", and words French
-    /// spells the same ("Collections", "Mention", "Site").
-    const SAME_AS_ENGLISH: [(&str, &str); 13] = [
+    /// spells the same ("Audio", "Collections", "Mention", "Site").
+    const SAME_AS_ENGLISH: [(&str, &str); 14] = [
         ("fr", "brand"),
         ("fr", "footer_nav"),
         ("fr", "head_notfound_title"),
         ("fr", "legend_collections"),
+        ("fr", "nav_audio"),
         ("fr", "notfound_eyebrow"),
         ("fr", "notfound_title"),
         ("fr", "types_mentions"),

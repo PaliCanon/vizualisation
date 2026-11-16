@@ -31,6 +31,7 @@
   "loading": "Chargement de la carte…",
   "map_error_body": "Ses données ne sont pas arrivées. Vérifiez votre connexion, puis rechargez la page.",
   "map_error_title": "La carte n’a pas pu se charger",
+  "nav_audio": "Audio",
   "nav_learn": "Apprendre",
   "nav_map": "Carte",
   "nav_search": "Recherche",

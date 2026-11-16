@@ -1,9 +1,9 @@
 //! The service's shell: the HTML document ([`shell`], server-rendered), the
 //! app root ([`App`], what hydration mounts), and `AppShell`'s rail with the
-//! services Search, Learn and Map (this one), its routes (the map's views
+//! services Search, Learn, Map (this one) and Audio, its routes (the map's views
 //! and the 404: `crate::route`), the footer under each (`SiteFooter`)
 //! carrying the release badge. From search-front/app/src/app.rs (commit
-//! 6d370b4) and learn-pali/app/src/app.rs; what differs: three rail
+//! 6d370b4) and learn-pali/app/src/app.rs; what differs: four rail
 //! entries. The footer pages live on palicanon.app (`crate::moved`).
 
 use leptos::prelude::*;
@@ -132,9 +132,12 @@ fn first_render() -> FirstRender {
 }
 
 /// The rail's entries: the services, Search (search.palicanon.app, as the
-/// showcase's `SERVICE_LINKS`), Learn, then Map
-/// (this one, the current entry on every map address: [`rail_current`]). `IconName::BookOpen` stands in for Learn
+/// showcase's `SERVICE_LINKS`), Learn, Map
+/// (this one, the current entry on every map address: [`rail_current`]), then Audio
+/// (audio.palicanon.app, external: current nowhere here). `IconName::BookOpen` stands in for Learn
 /// as in learn-pali, `IconName::Network` for Map, until ui-lib has their icons.
+/// `IconName::Motion` (three lines of different lengths, as a level meter) stands in for Audio
+/// until ui-lib has a headphones icon.
 pub(crate) fn nav_entries(locale: crate::catalogue::Locale) -> Vec<NavEntry> {
     vec![
         NavEntry {
@@ -151,6 +154,11 @@ pub(crate) fn nav_entries(locale: crate::catalogue::Locale) -> Vec<NavEntry> {
             label: td_string!(locale, nav_map),
             icon: IconName::Network,
             href: "/",
+        },
+        NavEntry {
+            label: td_string!(locale, nav_audio),
+            icon: IconName::Motion,
+            href: "https://audio.palicanon.app",
         },
     ]
 }
@@ -210,12 +218,18 @@ mod tests {
     use crate::catalogue::Locale;
 
     #[test]
-    fn the_rail_lists_search_learn_then_map() {
-        let labels: Vec<&str> = nav_entries(Locale::from(Language::En))
-            .iter()
-            .map(|entry| entry.label)
-            .collect();
-        assert_eq!(labels, ["Search", "Learn", "Map"]);
+    fn the_rail_lists_search_learn_map_then_audio() {
+        for (language, labels) in [
+            (Language::En, ["Search", "Learn", "Map", "Audio"]),
+            (Language::Fr, ["Recherche", "Apprendre", "Carte", "Audio"]),
+            (Language::Vi, ["Tìm kiếm", "Học", "Bản đồ", "Âm thanh"]),
+        ] {
+            let got: Vec<&str> = nav_entries(Locale::from(language))
+                .iter()
+                .map(|entry| entry.label)
+                .collect();
+            assert_eq!(got, labels, "{language:?}");
+        }
         let hrefs: Vec<&str> = nav_entries(Locale::from(Language::Fr))
             .iter()
             .map(|entry| entry.href)
@@ -225,8 +239,27 @@ mod tests {
             [
                 "https://search.palicanon.app",
                 "https://learn.palicanon.app",
-                "/"
+                "/",
+                "https://audio.palicanon.app"
             ]
+        );
+    }
+
+    /// Audio is an external entry: no path of this site makes it current, the Map entry
+    /// stays the only one marked on every map address.
+    #[test]
+    fn the_audio_entry_is_never_current() {
+        for path in ["/", "/sim", "/sim/mn10", "/mn10", "/nope/x/y"] {
+            assert_ne!(rail_current(path), "https://audio.palicanon.app", "{path}");
+        }
+        let hrefs: Vec<&str> = nav_entries(Locale::from(Language::En))
+            .iter()
+            .map(|entry| entry.href)
+            .collect();
+        assert_eq!(
+            hrefs.iter().filter(|href| **href == "/").count(),
+            1,
+            "{hrefs:?}"
         );
     }
 
@@ -831,7 +864,12 @@ mod tests {
             assert!(!current.is_empty(), "{path}: no current entry");
             for tag in current {
                 assert!(tag.contains(r#"href="/""#), "{path}: {tag}");
+                assert!(!tag.contains("audio.palicanon.app"), "{path}: {tag}");
             }
+            assert!(
+                html.contains(r#"href="https://audio.palicanon.app""#),
+                "{path}: the rail lists Audio"
+            );
         }
         for path in ["/nope/x/y", "/MN10"] {
             let html = render_layout(Language::En, path);
